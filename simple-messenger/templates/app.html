@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Simple Messenger{% endblock %}
+
+{% block body %}
+<div class="messenger">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-logo">💬</span>
+      <span class="sidebar-title">Messenger</span>
+      <button id="logout-btn" class="btn-icon" title="Sign out">⎋</button>
+    </div>
+
+    <div class="me-badge" id="me-badge">
+      <span class="avatar" id="me-avatar">?</span>
+      <span id="me-username">…</span>
+    </div>
+
+    <div class="sidebar-search">
+      <input id="user-search" type="search" placeholder="Search users…" />
+    </div>
+
+    <ul class="user-list" id="user-list">
+      <li class="user-list-empty">Loading…</li>
+    </ul>
+  </aside>
+
+  <!-- ── Chat panel ── -->
+  <main class="chat-panel">
+    <div class="chat-empty" id="chat-empty">
+      <div class="chat-empty-icon">💬</div>
+      <p>Select a conversation</p>
+    </div>
+
+    <div class="chat-view hidden" id="chat-view">
+      <header class="chat-header">
+        <span class="avatar" id="chat-avatar">?</span>
+        <span id="chat-username" class="chat-username">…</span>
+      </header>
+
+      <div class="message-list" id="message-list"></div>
+
+      <footer class="composer">
+        <textarea
+          id="composer-input"
+          class="composer-input"
+          placeholder="Type a message…"
+          rows="1"
+          maxlength="4000"
+        ></textarea>
+        <button id="send-btn" class="btn btn-primary">Send</button>
+      </footer>
+    </div>
+  </main>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
