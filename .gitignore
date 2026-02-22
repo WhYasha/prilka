@@ -1,3 +1,10 @@
+# simple-messenger runtime files
+simple-messenger/.venv/
+simple-messenger/__pycache__/
+simple-messenger/*.db
+simple-messenger/server.log
+simple-messenger/jar_*.txt
+
 # Auto Claude data directory
 .auto-claude/
 
