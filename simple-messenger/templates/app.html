@@ -1,62 +1,180 @@
-{% extends "base.html" %}
-{% block title %}Simple Messenger{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simple Messenger</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body data-theme="light">
 
-{% block body %}
-<div class="messenger">
+<div class="layout" id="layout">
 
-  <!-- ── Sidebar ── -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <span class="sidebar-logo">💬</span>
-      <span class="sidebar-title">Messenger</span>
-      <button id="logout-btn" class="btn-icon" title="Sign out">⎋</button>
+  <!-- ===================== LEFT DRAWER ===================== -->
+  <div class="drawer" id="drawer">
+    <div class="drawer-header">
+      <button class="icon-btn" id="drawerCloseBtn" aria-label="Close menu">&#10005;</button>
+      <span class="drawer-title">Menu</span>
     </div>
-
-    <div class="me-badge" id="me-badge">
-      <span class="avatar" id="me-avatar">?</span>
-      <span id="me-username">…</span>
+    <div class="drawer-avatar-wrap">
+      <div class="avatar avatar-lg" id="drawerAvatar">?</div>
+      <div class="drawer-user-info">
+        <div class="drawer-display-name" id="drawerDisplayName">—</div>
+        <div class="drawer-username" id="drawerUsername">@—</div>
+      </div>
     </div>
+    <nav class="drawer-nav">
+      <button class="drawer-nav-item" id="openProfileBtn">
+        <span class="nav-icon">&#128100;</span> Profile &amp; Settings
+      </button>
+      <button class="drawer-nav-item" id="drawerLogoutBtn">
+        <span class="nav-icon">&#128682;</span> Log out
+      </button>
+    </nav>
+    <div class="drawer-footer">Simple Messenger v2</div>
+  </div>
+  <div class="drawer-overlay" id="drawerOverlay"></div>
 
-    <div class="sidebar-search">
-      <input id="user-search" type="search" placeholder="Search users…" />
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar" id="sidebar">
+    <header class="sidebar-header">
+      <button class="icon-btn" id="hamburgerBtn" aria-label="Menu">&#9776;</button>
+      <div class="search-wrap">
+        <input class="search-input" id="searchInput" type="search" placeholder="Search chats…" />
+      </div>
+      <button class="icon-btn" id="newChatBtn" aria-label="New chat" title="New chat">&#9998;</button>
+    </header>
+
+    <div class="chat-list" id="chatList">
+      <div class="empty-state-small">No conversations yet.<br/>Click &#9998; to start one.</div>
     </div>
-
-    <ul class="user-list" id="user-list">
-      <li class="user-list-empty">Loading…</li>
-    </ul>
   </aside>
 
-  <!-- ── Chat panel ── -->
-  <main class="chat-panel">
-    <div class="chat-empty" id="chat-empty">
-      <div class="chat-empty-icon">💬</div>
-      <p>Select a conversation</p>
+  <!-- ===================== CHAT PANEL ===================== -->
+  <main class="chat-panel" id="chatPanel">
+
+    <div class="empty-chat" id="emptyChat">
+      <div class="empty-chat-icon">&#128172;</div>
+      <div class="empty-chat-text">Select a chat to start messaging</div>
     </div>
 
-    <div class="chat-view hidden" id="chat-view">
-      <header class="chat-header">
-        <span class="avatar" id="chat-avatar">?</span>
-        <span id="chat-username" class="chat-username">…</span>
+    <div class="chat-view hidden" id="chatView">
+
+      <header class="chat-header" id="chatHeader">
+        <button class="icon-btn back-btn" id="backBtn" aria-label="Back">&#8592;</button>
+        <div class="avatar chat-header-avatar" id="chatHeaderAvatar">?</div>
+        <div class="chat-header-info">
+          <div class="chat-header-name" id="chatHeaderName">—</div>
+          <div class="chat-header-sub" id="chatHeaderSub">@—</div>
+        </div>
       </header>
 
-      <div class="message-list" id="message-list"></div>
+      <div class="msg-list" id="msgList">
+        <div class="msgs-loading" id="msgsLoading">Loading…</div>
+      </div>
 
-      <footer class="composer">
+      <div class="sticker-picker hidden" id="stickerPicker">
+        <div class="sticker-grid" id="stickerGrid"></div>
+      </div>
+
+      <div class="composer" id="composer">
+        <button class="icon-btn composer-btn" id="stickerBtn" aria-label="Stickers" title="Stickers">&#127773;</button>
         <textarea
-          id="composer-input"
           class="composer-input"
-          placeholder="Type a message…"
+          id="composerInput"
+          placeholder="Message…"
           rows="1"
           maxlength="4000"
         ></textarea>
-        <button id="send-btn" class="btn btn-primary">Send</button>
-      </footer>
+        <button class="icon-btn composer-btn record-btn" id="recordBtn" aria-label="Voice message" title="Record voice">&#127908;</button>
+        <button class="icon-btn composer-btn send-btn" id="sendBtn" aria-label="Send" title="Send">&#10148;</button>
+      </div>
+
+      <div class="recording-bar hidden" id="recordingBar">
+        <span class="rec-dot"></span>
+        <span class="rec-time" id="recTime">0:00</span>
+        <span class="rec-label">Recording&#8230; tap mic to stop</span>
+        <button class="icon-btn rec-cancel" id="recCancelBtn" title="Cancel">&#10005;</button>
+      </div>
+
     </div>
   </main>
 
 </div>
-{% endblock %}
 
-{% block scripts %}
+<!-- ===================== NEW CHAT MODAL ===================== -->
+<div class="modal-backdrop hidden" id="newChatModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">New Conversation</h2>
+      <button class="icon-btn" id="newChatCloseBtn">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <input class="search-input" id="userSearchInput" type="search" placeholder="Search users…" />
+      <div class="user-pick-list" id="userList">
+        <div class="empty-state-small">Loading users…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== PROFILE & SETTINGS MODAL ===================== -->
+<div class="modal-backdrop hidden" id="profileModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 class="modal-title">Profile &amp; Settings</h2>
+      <button class="icon-btn" id="profileCloseBtn">&#10005;</button>
+    </div>
+    <div class="modal-body profile-body">
+
+      <div class="profile-avatar-section">
+        <div class="avatar avatar-xl" id="profileAvatar">?</div>
+        <button class="btn btn-outline btn-sm" id="changeAvatarBtn">Change photo</button>
+        <input type="file" id="avatarFileInput" accept="image/*" class="hidden" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Display name</label>
+        <input class="form-input" id="profileDisplayName" type="text" maxlength="64" placeholder="Your name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Bio</label>
+        <textarea class="form-input" id="profileBio" maxlength="200" rows="3" placeholder="About you…"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Username (read-only)</label>
+        <input class="form-input" id="profileUsername" type="text" disabled />
+      </div>
+
+      <hr class="modal-divider" />
+
+      <h3 class="settings-title">Settings</h3>
+      <div class="form-group form-inline">
+        <label class="form-label">Theme</label>
+        <select class="form-input form-select" id="settingsTheme">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+      <div class="form-group form-inline">
+        <label class="form-label">Notifications</label>
+        <label class="toggle">
+          <input type="checkbox" id="settingsNotifications" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="saveProfileBtn">Save</button>
+        <button class="btn btn-ghost" id="profileCancelBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TOAST ===================== -->
+<div class="toast hidden" id="toast"></div>
+
 <script src="{{ url_for('static', filename='app.js') }}"></script>
-{% endblock %}
+</body>
+</html>
