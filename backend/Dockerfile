@@ -52,8 +52,11 @@ WORKDIR /app
 COPY --from=builder /src/build/messenger_api .
 COPY --from=builder /src/www ./www
 
-# Non-root user
-RUN useradd -r -u 1001 -g 0 messenger
+# Non-root user + writable temp upload dir for Drogon multipart handling
+RUN useradd -r -u 1001 -g 0 messenger \
+    && mkdir -p ./uploads/tmp \
+    && chown -R 1001:0 ./uploads \
+    && chmod -R g=u ./uploads
 USER 1001
 
 EXPOSE 8080
