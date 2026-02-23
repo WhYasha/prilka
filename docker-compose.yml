@@ -83,6 +83,7 @@ services:
 
   # ──────────────────────────────────────────────────────────
   # MinIO bucket initializer (runs once, then exits)
+  # Creates all per-purpose buckets and seeds sticker SVGs.
   # ──────────────────────────────────────────────────────────
   minio_init:
     image: minio/mc:latest
@@ -94,11 +95,28 @@ services:
     restart: "no"
     environment:
       MC_HOST_local: "http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-changeme_minio}@minio:9000"
+    volumes:
+      - ./infra/minio/stickers:/stickers:ro
     entrypoint: >-
-      /bin/sh -c
-      "mc mb --ignore-existing local/${MINIO_BUCKET:-messenger-files} &&
-       mc anonymous set none local/${MINIO_BUCKET:-messenger-files} &&
-       echo MinIO bucket ready."
+      /bin/sh -c "
+      mc mb --ignore-existing local/${MINIO_AVATARS_BUCKET:-bh-avatars} &&
+      mc mb --ignore-existing local/${MINIO_UPLOADS_BUCKET:-bh-uploads} &&
+      mc mb --ignore-existing local/${MINIO_STICKERS_BUCKET:-bh-stickers} &&
+      mc mb --ignore-existing local/${MINIO_TESTS_BUCKET:-bh-test-artifacts} &&
+      mc anonymous set none local/${MINIO_AVATARS_BUCKET:-bh-avatars} &&
+      mc anonymous set none local/${MINIO_UPLOADS_BUCKET:-bh-uploads} &&
+      mc anonymous set none local/${MINIO_STICKERS_BUCKET:-bh-stickers} &&
+      mc anonymous set none local/${MINIO_TESTS_BUCKET:-bh-test-artifacts} &&
+      mc cp /stickers/s01.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s01.svg &&
+      mc cp /stickers/s02.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s02.svg &&
+      mc cp /stickers/s03.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s03.svg &&
+      mc cp /stickers/s04.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s04.svg &&
+      mc cp /stickers/s05.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s05.svg &&
+      mc cp /stickers/s06.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s06.svg &&
+      mc cp /stickers/s07.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s07.svg &&
+      mc cp /stickers/s08.svg local/${MINIO_STICKERS_BUCKET:-bh-stickers}/stickers/s08.svg &&
+      echo 'MinIO buckets and stickers ready.'
+      "
 
   # ──────────────────────────────────────────────────────────
   # Flyway – database migrations
@@ -138,27 +156,31 @@ services:
         condition: service_healthy
       flyway:
         condition: service_completed_successfully
-      minio:
-        condition: service_healthy
+      minio_init:
+        condition: service_completed_successfully
     environment:
-      DB_HOST:           postgres
-      DB_PORT:           5432
-      DB_NAME:           ${POSTGRES_DB:-messenger}
-      DB_USER:           ${POSTGRES_USER:-messenger}
-      DB_PASS:           ${POSTGRES_PASSWORD:-changeme_postgres}
-      REDIS_HOST:        redis
-      REDIS_PORT:        6379
-      REDIS_PASS:        ${REDIS_PASSWORD:-changeme_redis}
-      MINIO_ENDPOINT:    minio:9000
-      MINIO_ACCESS_KEY:  ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY:  ${MINIO_ROOT_PASSWORD:-changeme_minio}
-      MINIO_BUCKET:      ${MINIO_BUCKET:-messenger-files}
-      JWT_SECRET:        ${JWT_SECRET:-change-me-in-production}
-      JWT_ACCESS_TTL:    ${JWT_ACCESS_TTL:-3600}
-      JWT_REFRESH_TTL:   ${JWT_REFRESH_TTL:-604800}
-      MAX_FILE_SIZE_MB:  ${MAX_FILE_SIZE_MB:-50}
-      API_THREADS:       ${API_THREADS:-0}
-      API_PORT:          ${API_PORT:-8080}
+      DB_HOST:                postgres
+      DB_PORT:                5432
+      DB_NAME:                ${POSTGRES_DB:-messenger}
+      DB_USER:                ${POSTGRES_USER:-messenger}
+      DB_PASS:                ${POSTGRES_PASSWORD:-changeme_postgres}
+      REDIS_HOST:             redis
+      REDIS_PORT:             6379
+      REDIS_PASS:             ${REDIS_PASSWORD:-changeme_redis}
+      MINIO_ENDPOINT:         minio:9000
+      MINIO_ACCESS_KEY:       ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY:       ${MINIO_ROOT_PASSWORD:-changeme_minio}
+      MINIO_AVATARS_BUCKET:   ${MINIO_AVATARS_BUCKET:-bh-avatars}
+      MINIO_UPLOADS_BUCKET:   ${MINIO_UPLOADS_BUCKET:-bh-uploads}
+      MINIO_STICKERS_BUCKET:  ${MINIO_STICKERS_BUCKET:-bh-stickers}
+      MINIO_PRESIGN_TTL:      ${MINIO_PRESIGN_TTL:-900}
+      MINIO_PUBLIC_URL:       ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      JWT_SECRET:             ${JWT_SECRET:-change-me-in-production}
+      JWT_ACCESS_TTL:         ${JWT_ACCESS_TTL:-3600}
+      JWT_REFRESH_TTL:        ${JWT_REFRESH_TTL:-604800}
+      MAX_FILE_SIZE_MB:       ${MAX_FILE_SIZE_MB:-50}
+      API_THREADS:            ${API_THREADS:-0}
+      API_PORT:               ${API_PORT:-8080}
     ports:
       - "8080:8080"
     networks:
@@ -185,14 +207,19 @@ services:
         condition: service_healthy
       flyway:
         condition: service_completed_successfully
+      minio_init:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-messenger}:${POSTGRES_PASSWORD:-changeme_postgres}@postgres:5432/${POSTGRES_DB:-messenger}"
-      SECRET_KEY:   ${JWT_SECRET:-change-me-in-production}
-      MINIO_ENDPOINT:   minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-changeme_minio}
-      MINIO_BUCKET:     ${MINIO_BUCKET:-messenger-files}
-      DB_PATH:      /app/data/messenger.db   # persisted on flask_data volume
+      DATABASE_URL:           "postgresql://${POSTGRES_USER:-messenger}:${POSTGRES_PASSWORD:-changeme_postgres}@postgres:5432/${POSTGRES_DB:-messenger}"
+      SECRET_KEY:             ${JWT_SECRET:-change-me-in-production}
+      MINIO_ENDPOINT:         minio:9000
+      MINIO_ACCESS_KEY:       ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY:       ${MINIO_ROOT_PASSWORD:-changeme_minio}
+      MINIO_AVATARS_BUCKET:   ${MINIO_AVATARS_BUCKET:-bh-avatars}
+      MINIO_STICKERS_BUCKET:  ${MINIO_STICKERS_BUCKET:-bh-stickers}
+      MINIO_PRESIGN_TTL:      ${MINIO_PRESIGN_TTL:-900}
+      MINIO_PUBLIC_URL:       ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      DB_PATH:                /app/data/messenger.db
     volumes:
       - flask_data:/app/data
     ports:

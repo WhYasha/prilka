@@ -16,13 +16,14 @@ def get_db():
 
 
 def init_db():
-    """Create tables from schema.sql if they don't exist, then seed users."""
+    """Create tables from schema.sql if they don't exist, then seed users and stickers."""
     schema_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
     with get_db() as conn:
         with open(schema_path, "r") as f:
             conn.executescript(f.read())
     print(f"Database initialised at: {DB_PATH}")
     _seed_users()
+    _seed_stickers()
 
 
 def _seed_users():
@@ -49,3 +50,29 @@ def _seed_users():
                     (username, generate_password_hash(password), username.capitalize()),
                 )
     print("Seed users ensured.")
+
+
+def _seed_stickers():
+    """Insert seed stickers (MinIO bh-stickers object keys) if not already present."""
+    seeds = [
+        ("Emojis", "grin",  "stickers/s01.svg"),
+        ("Emojis", "lol",   "stickers/s02.svg"),
+        ("Emojis", "heart", "stickers/s03.svg"),
+        ("Emojis", "like",  "stickers/s04.svg"),
+        ("Emojis", "party", "stickers/s05.svg"),
+        ("Emojis", "cry",   "stickers/s06.svg"),
+        ("Emojis", "cool",  "stickers/s07.svg"),
+        ("Emojis", "fire",  "stickers/s08.svg"),
+    ]
+    with get_db() as conn:
+        for pack_name, label, file_path in seeds:
+            exists = conn.execute(
+                "SELECT 1 FROM stickers WHERE label = ? AND pack_name = ?",
+                (label, pack_name),
+            ).fetchone()
+            if not exists:
+                conn.execute(
+                    "INSERT INTO stickers (pack_name, label, file_path) VALUES (?, ?, ?)",
+                    (pack_name, label, file_path),
+                )
+    print("Seed stickers ensured.")

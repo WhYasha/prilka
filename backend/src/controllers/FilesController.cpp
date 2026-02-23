@@ -140,12 +140,17 @@ static void sigV4PutHeaders(const std::string& host,
 // ── AWS Signature V4 Presigned URL ─────────────────────────────────────────
 // Generates a presigned GET URL for MinIO (S3-compatible).
 
+// publicUrl: if non-empty, the returned URL's "http://<endpoint>" prefix is
+// replaced with this value (e.g. "https://behappy.rest/minio").
+// nginx must forward the /minio/ location with Host: minio:9000 so MinIO
+// validates the signature against the internal host used during signing.
 static std::string generatePresignedUrl(const std::string& endpoint,
+                                         const std::string& publicUrl,
                                          const std::string& bucket,
                                          const std::string& key,
                                          const std::string& accessKey,
                                          const std::string& secretKey,
-                                         int ttlSeconds = 3600) {
+                                         int ttlSeconds = 900) {
     const std::string region  = "us-east-1";
     const std::string service = "s3";
 
@@ -195,7 +200,15 @@ static std::string generatePresignedUrl(const std::string& endpoint,
     std::string signature = toHex(h, hlen);
 
     std::string scheme = "http://";
-    return scheme + host + uri + "?" + qs.str() + "&X-Amz-Signature=" + signature;
+    std::string url = scheme + host + uri + "?" + qs.str() + "&X-Amz-Signature=" + signature;
+
+    // Rewrite internal endpoint to public URL if configured.
+    if (!publicUrl.empty()) {
+        std::string internalBase = scheme + host;
+        if (url.rfind(internalBase, 0) == 0)
+            url = publicUrl + url.substr(internalBase.size());
+    }
+    return url;
 }
 
 // ── UUID generator ─────────────────────────────────────────────────────────
@@ -230,8 +243,8 @@ void FilesController::uploadFile(const drogon::HttpRequestPtr& req,
     const auto& f     = files[0];
     std::string orig  = f.getFileName();
     std::string mime  = std::string(drogon::contentTypeToMime(f.getContentType()));
-    std::string objectKey= newUuid() + "_" + orig;
-    std::string bucket   = cfg.minioBucket;
+    std::string objectKey= "uploads/" + newUuid() + "_" + orig;
+    std::string bucket   = cfg.minioUploadsBucket;
 
     // Upload to MinIO via HTTP PUT using AWS Signature V4.
     std::string minioHost = cfg.minioEndpoint;
@@ -307,10 +320,11 @@ void FilesController::downloadFile(const drogon::HttpRequestPtr& req,
             std::string objectKey = r[0]["object_key"].as<std::string>();
 
             std::string presignedUrl = generatePresignedUrl(
-                "http://" + cfg.minioEndpoint,
+                cfg.minioEndpoint,
+                cfg.minioPublicUrl,
                 bucket, objectKey,
                 cfg.minioAccessKey, cfg.minioSecretKey,
-                3600);
+                cfg.presignTtl);
 
             auto resp = drogon::HttpResponse::newRedirectionResponse(presignedUrl);
             cb(resp);

@@ -13,6 +13,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from db import get_db, init_db
+import storage as _storage
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -61,6 +62,11 @@ def require_auth():
 
 def allowed_ext(filename, allowed):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
+
+
+def resolve_avatar(path):
+    """Return a presigned MinIO URL for an avatar object key, or None."""
+    return _storage.get_avatar_url(path) if path else None
 
 
 def get_or_create_conversation(conn, uid, other_id):
@@ -220,7 +226,7 @@ def api_me():
         "username": row["username"],
         "display_name": row["display_name"] or row["username"],
         "bio": row["bio"] or "",
-        "avatar_path": row["avatar_path"],
+        "avatar_url": resolve_avatar(row["avatar_path"]),
     })
 
 
@@ -243,7 +249,7 @@ def api_users():
         "id": r["id"],
         "username": r["username"],
         "display_name": r["display_name"] or r["username"],
-        "avatar_path": r["avatar_path"],
+        "avatar_url": resolve_avatar(r["avatar_path"]),
     } for r in rows])
 
 
@@ -297,7 +303,7 @@ def api_get_chats():
             "other_id": r["other_id"],
             "other_username": r["other_username"],
             "other_display_name": r["other_display_name"] or r["other_username"],
-            "other_avatar_path": r["other_avatar_path"],
+            "other_avatar_url": resolve_avatar(r["other_avatar_path"]),
             "last_preview": last_preview,
             "last_at": r["last_at"] or r["updated_at"],
         })
@@ -380,12 +386,12 @@ def api_get_messages():
         "from_user_id": r["from_user_id"],
         "from_username": r["from_username"],
         "from_display_name": r["from_display_name"] or r["from_username"],
-        "from_avatar_path": r["from_avatar_path"],
+        "from_avatar_url": resolve_avatar(r["from_avatar_path"]),
         "content": r["content"],
         "message_type": r["message_type"],
         "attachment_path": r["attachment_path"],
         "duration_seconds": r["duration_seconds"],
-        "sticker_path": r["sticker_path"],
+        "sticker_url": _storage.get_sticker_url(r["sticker_path"]) if r["sticker_path"] else None,
         "sticker_label": r["sticker_label"],
         "created_at": r["created_at"],
     } for r in rows])
@@ -461,12 +467,12 @@ def api_send_message():
         "from_user_id": row["from_user_id"],
         "from_username": row["from_username"],
         "from_display_name": row["from_display_name"] or row["from_username"],
-        "from_avatar_path": row["from_avatar_path"],
+        "from_avatar_url": resolve_avatar(row["from_avatar_path"]),
         "content": row["content"],
         "message_type": row["message_type"],
         "attachment_path": row["attachment_path"],
         "duration_seconds": row["duration_seconds"],
-        "sticker_path": row["sticker_path"],
+        "sticker_url": _storage.get_sticker_url(row["sticker_path"]) if row["sticker_path"] else None,
         "sticker_label": row["sticker_label"],
         "created_at": row["created_at"],
     }), 201
@@ -495,15 +501,16 @@ def api_upload_avatar():
         return jsonify({"error": "File too large (max 5MB)"}), 400
 
     ext = f.filename.rsplit(".", 1)[1].lower()
-    filename = f"avatar_{uid}_{uuid.uuid4().hex[:8]}.{ext}"
-    save_path = os.path.join(AVATAR_FOLDER, filename)
-    f.save(save_path)
+    try:
+        object_key = _storage.upload_avatar(f.stream, uid, ext)
+    except Exception as exc:
+        app.logger.error("MinIO avatar upload failed: %s", exc)
+        return jsonify({"error": "Storage upload failed"}), 502
 
-    rel_path = f"avatars/{filename}"
     with get_db() as conn:
-        conn.execute("UPDATE users SET avatar_path=? WHERE id=?", (rel_path, uid))
+        conn.execute("UPDATE users SET avatar_path=? WHERE id=?", (object_key, uid))
 
-    return jsonify({"avatar_path": rel_path})
+    return jsonify({"avatar_path": object_key, "url": resolve_avatar(object_key)})
 
 
 # ---------------------------------------------------------------------------
@@ -578,12 +585,12 @@ def api_upload_voice():
         "from_user_id": row["from_user_id"],
         "from_username": row["from_username"],
         "from_display_name": row["from_display_name"] or row["from_username"],
-        "from_avatar_path": row["from_avatar_path"],
+        "from_avatar_url": resolve_avatar(row["from_avatar_path"]),
         "content": "",
         "message_type": "voice",
         "attachment_path": row["attachment_path"],
         "duration_seconds": row["duration_seconds"],
-        "sticker_path": None,
+        "sticker_url": None,
         "sticker_label": None,
         "created_at": row["created_at"],
     }), 201
@@ -608,7 +615,7 @@ def api_get_profile():
         "username": row["username"],
         "display_name": row["display_name"] or row["username"],
         "bio": row["bio"] or "",
-        "avatar_path": row["avatar_path"],
+        "avatar_url": resolve_avatar(row["avatar_path"]),
     })
 
 
@@ -634,7 +641,7 @@ def api_update_profile():
         "username": row["username"],
         "display_name": row["display_name"] or row["username"],
         "bio": row["bio"] or "",
-        "avatar_path": row["avatar_path"],
+        "avatar_url": resolve_avatar(row["avatar_path"]),
     })
 
 
@@ -699,7 +706,7 @@ def api_stickers():
         "id": r["id"],
         "pack_name": r["pack_name"],
         "label": r["label"],
-        "file_path": r["file_path"],
+        "url": _storage.get_sticker_url(r["file_path"]),
     } for r in rows])
 
 

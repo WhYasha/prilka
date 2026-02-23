@@ -39,6 +39,47 @@ MinIO, and a full monitoring stack — all running locally with a single command
 > Grafana and MinIO Console are not behind additional auth at the nginx level.
 > Restrict by IP (`allow`/`deny` in nginx) before publishing publicly.
 
+## Storage Layout (MinIO)
+
+All buckets are **private** (no anonymous access). Files are delivered via
+short-lived presigned GET URLs (default TTL: 900 s) routed through nginx.
+
+| Bucket | Purpose | Key pattern |
+|--------|---------|-------------|
+| `bh-avatars` | User profile pictures | `avatars/{user_id}/{uuid}.{ext}` |
+| `bh-uploads` | General file attachments (C++ API) | `uploads/{uuid}_{filename}` |
+| `bh-stickers` | Sticker SVG files (seeded at init) | `stickers/s0N.svg` |
+| `bh-test-artifacts` | Integration test assets | free-form |
+
+### Public URL routing
+
+```
+Browser → https://behappy.rest/minio/{bucket}/{key}?X-Amz-Signature=…
+            └─► nginx /minio/ (Host: minio:9000, GET-only)
+                    └─► MinIO :9000 – validates presigned signature
+```
+
+Set `MINIO_PUBLIC_URL=https://behappy.rest/minio` in production (already done
+in `docker-compose.prod.yml`).  For local development the default
+`http://localhost:9000` works with the exposed port mapping.
+
+### Stickers (8 seed SVGs)
+
+Eight Unicode-emoji SVGs are uploaded to `bh-stickers` on first startup by
+the `minio_init` container and referenced in the `stickers` table.  All are
+rendered by the browser's own emoji font — no proprietary assets.
+
+| Key | Label | Emoji |
+|-----|-------|-------|
+| `stickers/s01.svg` | grin  | 😀 |
+| `stickers/s02.svg` | lol   | 😂 |
+| `stickers/s03.svg` | heart | ❤️ |
+| `stickers/s04.svg` | like  | 👍 |
+| `stickers/s05.svg` | party | 🎉 |
+| `stickers/s06.svg` | cry   | 😢 |
+| `stickers/s07.svg` | cool  | 😎 |
+| `stickers/s08.svg` | fire  | 🔥 |
+
 ### Quick API test
 
 ```bash

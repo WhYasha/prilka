@@ -28,11 +28,14 @@ services:
     ports: []
     restart: always
     environment:
-      API_THREADS: "0"            # auto = nproc
+      API_THREADS:     "0"        # auto = nproc
+      MINIO_PUBLIC_URL: "https://behappy.rest/minio"
 
   api_legacy:
     ports: []
     restart: always
+    environment:
+      MINIO_PUBLIC_URL: "https://behappy.rest/minio"
 
   prometheus:
     ports: []
