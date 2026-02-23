@@ -79,7 +79,7 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                 auto db2 = drogon::app().getDbClient();
                 db2->execSqlAsync(
                     "INSERT INTO chats (type, name, title, description, public_name, owner_id) "
-                    "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+                    "VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6) RETURNING id",
                     [cb, members, me, type, title](const drogon::orm::Result& r2) mutable {
                         long long chatId = r2[0]["id"].as<long long>();
                         auto db3 = drogon::app().getDbClient();
@@ -115,7 +115,7 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "INSERT INTO chats (type, name, title, description, public_name, owner_id) "
-        "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        "VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6) RETURNING id",
         [cb, members, me, type, title](const drogon::orm::Result& r) mutable {
             long long chatId = r[0]["id"].as<long long>();
             auto db2 = drogon::app().getDbClient();

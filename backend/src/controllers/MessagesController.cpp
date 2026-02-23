@@ -114,27 +114,31 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
     if (content.empty() && fileId == 0 && stickerId == 0)
         return cb(jsonErr("content, file_id or sticker_id required", drogon::k400BadRequest));
 
-    requireMember(chatId, me, [=, cb = std::move(cb)](bool isMember) mutable {
-        if (!isMember) return cb(jsonErr("Not a member of this chat", drogon::k403Forbidden));
+    // Use shared_ptr so cb can be safely shared across all async callbacks
+    // without triggering bad_function_call from double-move.
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    requireMember(chatId, me, [=, cbPtr](bool isMember) mutable {
+        if (!isMember) return (*cbPtr)(jsonErr("Not a member of this chat", drogon::k403Forbidden));
 
         auto db0 = drogon::app().getDbClient();
         db0->execSqlAsync(
             "SELECT c.type, cm.role FROM chats c "
             "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $2 "
             "WHERE c.id = $1",
-            [=, cb = std::move(cb)](const drogon::orm::Result& pr) mutable {
+            [=, cbPtr](const drogon::orm::Result& pr) mutable {
                 if (!pr.empty()) {
                     std::string chatType = pr[0]["type"].as<std::string>();
                     std::string role     = pr[0]["role"].as<std::string>();
                     if (chatType == "channel" && role != "owner" && role != "admin")
-                        return cb(jsonErr("Only admins can post in channels", drogon::k403Forbidden));
+                        return (*cbPtr)(jsonErr("Only admins can post in channels", drogon::k403Forbidden));
                 }
 
-                auto doInsert = [=, cb = std::move(cb)](long long resolvedStickerId,
-                                                         long long resolvedFileId) mutable {
+                auto doInsert = [=, cbPtr](long long resolvedStickerId,
+                                           long long resolvedFileId) mutable {
                     auto db = drogon::app().getDbClient();
                     std::string sql;
-                    // Build SQL dynamically based on what fields we have
                     if (resolvedStickerId > 0) {
                         sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, sticker_id) "
                               "VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at";
@@ -149,8 +153,8 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                               "VALUES ($1, $2, $3, $4) RETURNING id, created_at";
                     }
 
-                    auto onInserted = [=, cb = std::move(cb)](const drogon::orm::Result& r) mutable {
-                        long long msgId    = r[0]["id"].as<long long>();
+                    auto onInserted = [=, cbPtr](const drogon::orm::Result& r) mutable {
+                        long long msgId       = r[0]["id"].as<long long>();
                         std::string createdAt = r[0]["created_at"].as<std::string>();
 
                         auto db2 = drogon::app().getDbClient();
@@ -161,7 +165,6 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                                 LOG_WARN << "chat updated_at: " << e.base().what();
                             }, chatId);
 
-                        // WS fan-out
                         Json::Value wsMsg;
                         wsMsg["type"]         = "message";
                         wsMsg["id"]           = Json::Int64(msgId);
@@ -172,7 +175,6 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                         wsMsg["created_at"]   = createdAt;
                         WsDispatch::publishMessage(chatId, wsMsg);
 
-                        // Return minimal response; client-side uses S.me for sender info
                         Json::Value resp;
                         resp["id"]           = Json::Int64(msgId);
                         resp["chat_id"]      = Json::Int64(chatId);
@@ -187,12 +189,12 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                             resp["duration_seconds"] = durationSecs;
                         auto httpResp = drogon::HttpResponse::newHttpJsonResponse(resp);
                         httpResp->setStatusCode(drogon::k201Created);
-                        cb(httpResp);
+                        (*cbPtr)(httpResp);
                     };
 
-                    auto onErr = [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                    auto onErr = [cbPtr](const drogon::orm::DrogonDbException& e) mutable {
                         LOG_ERROR << "sendMessage insert: " << e.base().what();
-                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                        (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
                     };
 
                     if (resolvedStickerId > 0)
@@ -209,26 +211,25 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                                          chatId, me, content, msgType);
                 };
 
-                // For sticker messages, verify sticker exists
                 if (stickerId > 0) {
                     auto dbS = drogon::app().getDbClient();
                     dbS->execSqlAsync(
                         "SELECT id FROM stickers WHERE id = $1",
-                        [=, cb = std::move(cb), doInsert = std::move(doInsert)](const drogon::orm::Result& sr) mutable {
-                            if (sr.empty()) return cb(jsonErr("Sticker not found", drogon::k404NotFound));
+                        [=, cbPtr, doInsert = std::move(doInsert)](const drogon::orm::Result& sr) mutable {
+                            if (sr.empty()) return (*cbPtr)(jsonErr("Sticker not found", drogon::k404NotFound));
                             doInsert(stickerId, 0);
                         },
-                        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                        [cbPtr](const drogon::orm::DrogonDbException& e) mutable {
                             LOG_ERROR << "sticker lookup: " << e.base().what();
-                            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                            (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
                         }, stickerId);
                 } else {
                     doInsert(0, fileId);
                 }
             },
-            [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+            [cbPtr](const drogon::orm::DrogonDbException& e) mutable {
                 LOG_ERROR << "channel permission check: " << e.base().what();
-                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
             },
             chatId, me);
     });
