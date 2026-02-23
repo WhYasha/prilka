@@ -77,6 +77,58 @@ const userProfileUsername = document.getElementById("userProfileUsername");
 
 const toast           = document.getElementById("toast");
 
+// ── New chat creation modal refs ────────────────────────────────────────────
+const newChatTypeSelect   = document.getElementById("newChatTypeSelect");
+const chatTypeDirect      = document.getElementById("chatTypeDirect");
+const chatTypeGroup       = document.getElementById("chatTypeGroup");
+const chatTypeChannel     = document.getElementById("chatTypeChannel");
+const newChatDirectForm   = document.getElementById("newChatDirectForm");
+const newChatDirectBack   = document.getElementById("newChatDirectBack");
+const newChatGroupForm    = document.getElementById("newChatGroupForm");
+const newChatGroupBack    = document.getElementById("newChatGroupBack");
+const groupNameInput      = document.getElementById("groupNameInput");
+const groupDescInput      = document.getElementById("groupDescInput");
+const groupMemberSearch   = document.getElementById("groupMemberSearch");
+const groupMemberList     = document.getElementById("groupMemberList");
+const createGroupBtn      = document.getElementById("createGroupBtn");
+const newChatChannelForm  = document.getElementById("newChatChannelForm");
+const newChatChannelBack  = document.getElementById("newChatChannelBack");
+const channelNameInput    = document.getElementById("channelNameInput");
+const channelDescInput    = document.getElementById("channelDescInput");
+const createChannelBtn    = document.getElementById("createChannelBtn");
+
+// ── Invite management refs ──────────────────────────────────────────────────
+const inviteManage        = document.getElementById("inviteManage");
+const inviteLinkInput     = document.getElementById("inviteLinkInput");
+const copyInviteLinkBtn   = document.getElementById("copyInviteLinkBtn");
+const revokeInviteLinkBtn = document.getElementById("revokeInviteLinkBtn");
+
+// ── Channel read-only bar ───────────────────────────────────────────────────
+const channelReadonlyBar  = document.getElementById("channelReadonlyBar");
+
+// ── Join preview modal refs ─────────────────────────────────────────────────
+const joinPreviewModal     = document.getElementById("joinPreviewModal");
+const joinPreviewCloseBtn  = document.getElementById("joinPreviewCloseBtn");
+const joinPreviewAvatar    = document.getElementById("joinPreviewAvatar");
+const joinPreviewName      = document.getElementById("joinPreviewName");
+const joinPreviewDesc      = document.getElementById("joinPreviewDesc");
+const joinPreviewMembers   = document.getElementById("joinPreviewMembers");
+const joinPreviewJoinBtn   = document.getElementById("joinPreviewJoinBtn");
+const joinPreviewCancelBtn = document.getElementById("joinPreviewCancelBtn");
+
+// ── C++ API ─────────────────────────────────────────────────────────────────
+const CPP_API = document.body.dataset.cppApi || "http://localhost:8080";
+
+async function cppApiFetch(path, opts = {}) {
+  const token = localStorage.getItem("cpp_token");
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  if (!(opts.body instanceof FormData)) headers["Content-Type"] = "application/json";
+  const res = await fetch(CPP_API + path, { ...opts, headers });
+  if (res.status === 401) localStorage.removeItem("cpp_token");
+  return res;
+}
+
 // ── Utilities ───────────────────────────────────────────────────────────────
 function escHtml(str) {
   return String(str || "")
@@ -168,6 +220,11 @@ async function bootstrap() {
   await refreshChats();
   startPolling();
   handleHashRouting();
+
+  // Handle deep link if set by Flask route
+  const deeplink = document.body.dataset.deeplink;
+  if (deeplink) handleDeepLink(deeplink);
+
   if (!S.activeChatId) setChatUIState(false);
 }
 
@@ -229,12 +286,25 @@ async function refreshChats() {
   } catch (e) { console.error("Failed to load chats", e); }
 }
 
+function chatDisplayName(c) {
+  if (c.type === "channel" || c.type === "group") return c.title || c.name || "Untitled";
+  return c.other_display_name || c.other_username || c.title || c.name || "Chat";
+}
+
+function chatTypeIcon(c) {
+  if (c.type === "channel") return "\uD83D\uDCE2 ";
+  if (c.type === "group") return "\uD83D\uDC65 ";
+  return "";
+}
+
 function renderChatList() {
   const filter = (searchInput.value || "").toLowerCase();
   const filtered = filter
-    ? S.chats.filter(c =>
-        (c.other_display_name || c.other_username).toLowerCase().includes(filter) ||
-        c.other_username.toLowerCase().includes(filter))
+    ? S.chats.filter(c => {
+        const name = chatDisplayName(c).toLowerCase();
+        const uname = (c.other_username || "").toLowerCase();
+        return name.includes(filter) || uname.includes(filter);
+      })
     : S.chats;
 
   if (filtered.length === 0) {
@@ -248,15 +318,16 @@ function renderChatList() {
     div.className = "chat-item" + (c.id === S.activeChatId ? " active" : "");
     div.dataset.cid = c.id;
 
+    const displayName = chatDisplayName(c);
     const avatarHtml = c.other_avatar_url
       ? `<div class="avatar avatar-sm"><img src="${escHtml(c.other_avatar_url)}" alt="" /></div>`
-      : `<div class="avatar avatar-sm">${initial(c.other_display_name || c.other_username)}</div>`;
+      : `<div class="avatar avatar-sm">${initial(displayName)}</div>`;
 
     div.innerHTML = `
       ${avatarHtml}
       <div class="chat-item-info">
         <div class="chat-item-top">
-          <span class="chat-item-name">${escHtml(c.other_display_name || c.other_username)}</span>
+          <span class="chat-item-name">${chatTypeIcon(c)}${escHtml(displayName)}</span>
           <span class="chat-item-time">${formatTime(c.last_at)}</span>
         </div>
         <div class="chat-item-preview">${escHtml(c.last_preview || "")}</div>
@@ -277,10 +348,16 @@ function openChat(chatId) {
   const chat = S.chats.find(c => c.id === chatId);
   if (!chat) return;
 
+  const displayName = chatDisplayName(chat);
+
   // Update header
-  setAvatar(chatHeaderAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_url);
-  chatHeaderName.textContent = chat.other_display_name || chat.other_username;
-  chatHeaderSub.textContent  = "@" + chat.other_username;
+  setAvatar(chatHeaderAvatar, displayName, chat.other_avatar_url);
+  chatHeaderName.textContent = displayName;
+  if (chat.type === "channel" || chat.type === "group") {
+    chatHeaderSub.textContent = chat.type === "channel" ? "Channel" : "Group";
+  } else {
+    chatHeaderSub.textContent = chat.other_username ? "@" + chat.other_username : "";
+  }
 
   // Show chat view
   setChatUIState(true);
@@ -302,6 +379,31 @@ function openChat(chatId) {
     el.classList.toggle("active", Number(el.dataset.cid) === chatId);
   });
 
+  // Channel/group specific UI
+  if (channelReadonlyBar) channelReadonlyBar.classList.add("hidden");
+  if (inviteManage) inviteManage.classList.add("hidden");
+  composer.style.display = "";
+
+  if (chat.type === "channel" || chat.type === "group") {
+    // Fetch role info from C++ API
+    cppApiFetch(`/chats/${chatId}`).then(async (res) => {
+      if (!res.ok) return;
+      const data = await res.json();
+      const myRole = data.my_role || "member";
+
+      if (chat.type === "channel" && myRole === "member") {
+        // Read-only for non-admin channel members
+        if (channelReadonlyBar) channelReadonlyBar.classList.remove("hidden");
+        composer.style.display = "none";
+      }
+
+      if (myRole === "owner" || myRole === "admin") {
+        // Show invite management for owner/admin
+        loadInviteSection(chatId);
+      }
+    }).catch(() => {});
+  }
+
   // Load messages immediately
   loadMessages(true);
   composerInput.focus();
@@ -309,6 +411,33 @@ function openChat(chatId) {
   // Restart message polling
   stopMsgPolling();
   startMsgPolling();
+}
+
+async function loadInviteSection(chatId) {
+  if (!inviteManage) return;
+  inviteManage.classList.remove("hidden");
+  inviteLinkInput.value = "Loading...";
+
+  try {
+    const res = await cppApiFetch(`/chats/${chatId}/invites`);
+    if (!res.ok) { inviteManage.classList.add("hidden"); return; }
+    const invites = await res.json();
+    if (invites.length > 0) {
+      const token = invites[0].token;
+      inviteLinkInput.value = `${window.location.origin}/join/${token}`;
+      inviteLinkInput.dataset.token = token;
+    } else {
+      // Auto-generate an invite
+      const genRes = await cppApiFetch(`/chats/${chatId}/invites`, { method: "POST" });
+      if (genRes.ok) {
+        const inv = await genRes.json();
+        inviteLinkInput.value = `${window.location.origin}/join/${inv.token}`;
+        inviteLinkInput.dataset.token = inv.token;
+      } else {
+        inviteLinkInput.value = "Failed to generate invite";
+      }
+    }
+  } catch { inviteManage.classList.add("hidden"); }
 }
 
 function closeChat() {
@@ -622,8 +751,31 @@ newChatBtn.addEventListener("click", openNewChatModal);
 newChatCloseBtn.addEventListener("click", () => newChatModal.classList.add("hidden"));
 newChatModal.addEventListener("click", (e) => { if (e.target === newChatModal) newChatModal.classList.add("hidden"); });
 
-async function openNewChatModal() {
+function showNewChatStep(stepEl) {
+  [newChatTypeSelect, newChatDirectForm, newChatGroupForm, newChatChannelForm].forEach(el => {
+    if (el) el.classList.add("hidden");
+  });
+  if (stepEl) stepEl.classList.remove("hidden");
+}
+
+function openNewChatModal() {
   newChatModal.classList.remove("hidden");
+  showNewChatStep(newChatTypeSelect);
+}
+
+// Type selection handlers
+if (chatTypeDirect) chatTypeDirect.addEventListener("click", openDirectChatForm);
+if (chatTypeGroup) chatTypeGroup.addEventListener("click", openGroupChatForm);
+if (chatTypeChannel) chatTypeChannel.addEventListener("click", openChannelChatForm);
+
+// Back buttons
+if (newChatDirectBack) newChatDirectBack.addEventListener("click", () => showNewChatStep(newChatTypeSelect));
+if (newChatGroupBack) newChatGroupBack.addEventListener("click", () => showNewChatStep(newChatTypeSelect));
+if (newChatChannelBack) newChatChannelBack.addEventListener("click", () => showNewChatStep(newChatTypeSelect));
+
+// ── Direct chat form ──────────────────────────────────────────────────────────
+async function openDirectChatForm() {
+  showNewChatStep(newChatDirectForm);
   userSearchInput.value = "";
   userList.innerHTML = `<div class="empty-state-small">Loading…</div>`;
 
@@ -631,20 +783,138 @@ async function openNewChatModal() {
     const res = await apiFetch("/web-api/users");
     const users = await res.json();
     renderUserPickList(users);
-    userSearchInput.addEventListener("input", () => renderUserPickList(
-      users.filter(u =>
-        (u.display_name || u.username).toLowerCase().includes(userSearchInput.value.toLowerCase()) ||
-        u.username.toLowerCase().includes(userSearchInput.value.toLowerCase())
-      )
-    ), { once: false });
-    userSearchInput._renderFn = (v) => renderUserPickList(
-      users.filter(u =>
+    userSearchInput.oninput = () => {
+      const v = userSearchInput.value.toLowerCase();
+      renderUserPickList(users.filter(u =>
         (u.display_name || u.username).toLowerCase().includes(v) ||
         u.username.toLowerCase().includes(v)
-      )
-    );
-    userSearchInput.oninput = () => userSearchInput._renderFn(userSearchInput.value.toLowerCase());
+      ));
+    };
   } catch { userList.innerHTML = `<div class="empty-state-small">Failed to load users.</div>`; }
+}
+
+// ── Group chat creation ───────────────────────────────────────────────────────
+let _groupUsers = [];
+let _groupSelectedIds = new Set();
+
+async function openGroupChatForm() {
+  showNewChatStep(newChatGroupForm);
+  groupNameInput.value = "";
+  groupDescInput.value = "";
+  groupMemberSearch.value = "";
+  _groupSelectedIds = new Set();
+  groupMemberList.innerHTML = `<div class="empty-state-small">Loading…</div>`;
+
+  try {
+    const res = await apiFetch("/web-api/users");
+    _groupUsers = await res.json();
+    renderGroupMemberList(_groupUsers);
+    groupMemberSearch.oninput = () => {
+      const v = groupMemberSearch.value.toLowerCase();
+      renderGroupMemberList(_groupUsers.filter(u =>
+        (u.display_name || u.username).toLowerCase().includes(v) ||
+        u.username.toLowerCase().includes(v)
+      ));
+    };
+  } catch { groupMemberList.innerHTML = `<div class="empty-state-small">Failed to load users.</div>`; }
+}
+
+function renderGroupMemberList(users) {
+  if (!users.length) {
+    groupMemberList.innerHTML = `<div class="empty-state-small">No users found.</div>`;
+    return;
+  }
+  groupMemberList.innerHTML = "";
+  users.forEach(u => {
+    const div = document.createElement("div");
+    div.className = "user-pick-item" + (_groupSelectedIds.has(u.id) ? " selected" : "");
+    const avatarHtml = u.avatar_url
+      ? `<div class="avatar avatar-sm"><img src="${escHtml(u.avatar_url)}" alt="" /></div>`
+      : `<div class="avatar avatar-sm">${initial(u.display_name || u.username)}</div>`;
+    const check = _groupSelectedIds.has(u.id) ? "&#10003; " : "";
+    div.innerHTML = `
+      ${avatarHtml}
+      <div>
+        <div class="user-pick-name">${check}${escHtml(u.display_name || u.username)}</div>
+        <div class="user-pick-handle">@${escHtml(u.username)}</div>
+      </div>
+    `;
+    div.addEventListener("click", () => {
+      if (_groupSelectedIds.has(u.id)) _groupSelectedIds.delete(u.id);
+      else _groupSelectedIds.add(u.id);
+      renderGroupMemberList(users);
+    });
+    groupMemberList.appendChild(div);
+  });
+}
+
+if (createGroupBtn) createGroupBtn.addEventListener("click", createGroupChat);
+
+async function createGroupChat() {
+  const title = groupNameInput.value.trim();
+  if (!title) { showToast("Group name is required"); return; }
+
+  createGroupBtn.disabled = true;
+  try {
+    const res = await cppApiFetch("/chats", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "group",
+        title: title,
+        description: groupDescInput.value.trim(),
+        member_ids: Array.from(_groupSelectedIds),
+      }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      showToast(d.error || "Failed to create group");
+      return;
+    }
+    const data = await res.json();
+    newChatModal.classList.add("hidden");
+    showToast("Group created!");
+    await refreshChats();
+    openChat(data.id);
+  } catch { showToast("Failed to create group"); }
+  finally { createGroupBtn.disabled = false; }
+}
+
+// ── Channel creation ──────────────────────────────────────────────────────────
+function openChannelChatForm() {
+  showNewChatStep(newChatChannelForm);
+  channelNameInput.value = "";
+  channelDescInput.value = "";
+}
+
+if (createChannelBtn) createChannelBtn.addEventListener("click", createChannel);
+
+async function createChannel() {
+  const title = channelNameInput.value.trim();
+  if (!title) { showToast("Channel name is required"); return; }
+
+  createChannelBtn.disabled = true;
+  try {
+    const res = await cppApiFetch("/chats", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "channel",
+        title: title,
+        description: channelDescInput.value.trim(),
+        member_ids: [],
+      }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      showToast(d.error || "Failed to create channel");
+      return;
+    }
+    const data = await res.json();
+    newChatModal.classList.add("hidden");
+    showToast("Channel created!");
+    await refreshChats();
+    openChat(data.id);
+  } catch { showToast("Failed to create channel"); }
+  finally { createChannelBtn.disabled = false; }
 }
 
 function renderUserPickList(users) {
@@ -789,6 +1059,55 @@ chatHeaderName.addEventListener("click", openUserProfile);
 chatHeaderSub.addEventListener("click", openUserProfile);
 userProfileCloseBtn.addEventListener("click", closeUserProfile);
 userProfileModal.addEventListener("click", (e) => { if (e.target === userProfileModal) closeUserProfile(); });
+
+// ── Invite actions ────────────────────────────────────────────────────────────
+if (copyInviteLinkBtn) {
+  copyInviteLinkBtn.addEventListener("click", () => {
+    const link = inviteLinkInput.value;
+    if (link && navigator.clipboard) {
+      navigator.clipboard.writeText(link).then(() => showToast("Link copied!"));
+    }
+  });
+}
+
+if (revokeInviteLinkBtn) {
+  revokeInviteLinkBtn.addEventListener("click", async () => {
+    const token = inviteLinkInput.dataset.token;
+    if (!token) return;
+    try {
+      const res = await cppApiFetch(`/invites/${token}`, { method: "DELETE" });
+      if (res.ok) {
+        showToast("Invite revoked");
+        if (S.activeChatId) loadInviteSection(S.activeChatId);
+      } else {
+        showToast("Failed to revoke invite");
+      }
+    } catch { showToast("Failed to revoke invite"); }
+  });
+}
+
+// ── Deep link handler (stub – Part 2 adds full implementation) ───────────────
+function handleDeepLink(deeplink) {
+  if (!deeplink) return;
+  const idx = deeplink.indexOf(":");
+  if (idx === -1) return;
+  const type = deeplink.substring(0, idx);
+  const value = deeplink.substring(idx + 1);
+
+  switch (type) {
+    case "profile":
+      // Will be implemented in Part 2 (subtask-4-5)
+      break;
+    case "profile-id":
+      break;
+    case "dm":
+      break;
+    case "join":
+      break;
+    case "channel":
+      break;
+  }
+}
 
 // ── Polling ───────────────────────────────────────────────────────────────────
 function startPolling() {
