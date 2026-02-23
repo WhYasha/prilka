@@ -451,6 +451,14 @@ body:has(.layout) { overflow: hidden; }
   display: flex; flex-direction: column; align-items: center;
   gap: .75rem; margin-bottom: 1.25rem;
 }
+/* User profile modal */
+.user-profile-body { text-align: center; }
+.user-profile-name { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-top: .5rem; }
+.user-profile-username { font-size: .9rem; color: var(--text-muted); margin-top: .15rem; }
+
+/* Chat header clickable elements */
+#chatHeaderAvatar, #chatHeaderName { cursor: pointer; }
+
 .settings-title { font-size: .95rem; font-weight: 700; color: var(--text); margin-bottom: .75rem; }
 .form-label { font-size: .875rem; font-weight: 600; color: var(--text); }
 .form-input {
