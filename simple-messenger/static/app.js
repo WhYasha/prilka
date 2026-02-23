@@ -823,5 +823,35 @@ document.addEventListener("keydown", function handleGlobalEsc(e) {
   if (S.activeChatId !== null) { closeChat(); return; }
 });
 
+// ── iOS keyboard handling (visualViewport) ────────────────────────────────────
+(function initIOSKeyboardHandling() {
+  if (!window.visualViewport) return;
+
+  let prevHeight = window.visualViewport.height;
+
+  window.visualViewport.addEventListener("resize", () => {
+    const curHeight = window.visualViewport.height;
+    const shrank = curHeight < prevHeight && (prevHeight - curHeight) > 100;
+    prevHeight = curHeight;
+
+    if (shrank && S.activeChatId !== null) {
+      // Keyboard opened – scroll messages to bottom
+      requestAnimationFrame(() => {
+        if (msgList) msgList.scrollTop = msgList.scrollHeight;
+      });
+    }
+  });
+
+  if (composerInput) {
+    composerInput.addEventListener("focus", () => {
+      // On mobile, ensure composer scrolls into view after keyboard appears
+      setTimeout(() => {
+        if (composerInput) composerInput.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        if (msgList) msgList.scrollTop = msgList.scrollHeight;
+      }, 300);
+    });
+  }
+})();
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 bootstrap();
