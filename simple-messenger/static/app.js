@@ -786,6 +786,7 @@ function closeUserProfile() {
 
 chatHeaderAvatar.addEventListener("click", openUserProfile);
 chatHeaderName.addEventListener("click", openUserProfile);
+chatHeaderSub.addEventListener("click", openUserProfile);
 userProfileCloseBtn.addEventListener("click", closeUserProfile);
 userProfileModal.addEventListener("click", (e) => { if (e.target === userProfileModal) closeUserProfile(); });
 
