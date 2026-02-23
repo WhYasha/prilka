@@ -2,6 +2,7 @@
 #include "../services/JwtService.h"
 #include "../services/MetricsService.h"
 #include <drogon/nosql/RedisClient.h>
+#include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
 #include <json/json.h>
 #include <sstream>
@@ -151,21 +152,36 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
         long long chatId = msg["chat_id"].asInt64();
         if (chatId <= 0) { sendError(conn, "Invalid chat_id"); return; }
 
-        // TODO: verify user is member of the chat (DB query)
-        {
-            std::lock_guard<std::mutex> lk(s_mu);
-            auto& vec = s_subs[chatId];
-            if (std::find(vec.begin(), vec.end(), conn) == vec.end()) {
-                vec.push_back(conn);
-                ctx->subscriptions.push_back(chatId);
-            }
-        }
-        subscribeToRedis(chatId);
-
-        Json::Value ok;
-        ok["type"]    = "subscribed";
-        ok["chat_id"] = Json::Int64(chatId);
-        sendJson(conn, ok);
+        long long userId = ctx->userId;
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+            [this, conn, ctx, chatId](const drogon::orm::Result& r) {
+                if (conn->disconnected()) return;
+                if (r.empty()) {
+                    sendError(conn, "Not a member of this chat");
+                    return;
+                }
+                {
+                    std::lock_guard<std::mutex> lk(s_mu);
+                    auto& vec = s_subs[chatId];
+                    if (std::find(vec.begin(), vec.end(), conn) == vec.end()) {
+                        vec.push_back(conn);
+                        ctx->subscriptions.push_back(chatId);
+                    }
+                }
+                subscribeToRedis(chatId);
+                Json::Value ok;
+                ok["type"]    = "subscribed";
+                ok["chat_id"] = Json::Int64(chatId);
+                sendJson(conn, ok);
+            },
+            [conn](const drogon::orm::DrogonDbException& e) {
+                if (conn->disconnected()) return;
+                LOG_ERROR << "WS subscribe membership check: " << e.base().what();
+                sendError(conn, "Internal error");
+            },
+            chatId, userId);
         return;
     }
 
