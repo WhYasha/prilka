@@ -1086,7 +1086,7 @@ if (revokeInviteLinkBtn) {
   });
 }
 
-// ── Deep link handler (stub – Part 2 adds full implementation) ───────────────
+// ── Deep link handler ─────────────────────────────────────────────────────────
 function handleDeepLink(deeplink) {
   if (!deeplink) return;
   const idx = deeplink.indexOf(":");
@@ -1096,17 +1096,173 @@ function handleDeepLink(deeplink) {
 
   switch (type) {
     case "profile":
-      // Will be implemented in Part 2 (subtask-4-5)
+      showUserProfile(value);
       break;
     case "profile-id":
+      showUserProfileById(value);
       break;
     case "dm":
+      openDMDeepLink(value);
       break;
     case "join":
+      showJoinPreview(value);
       break;
     case "channel":
+      showChannelByName(value);
       break;
   }
+}
+
+// ── Show user profile by username (deep link /@username) ─────────────────────
+async function showUserProfile(username) {
+  if (!username) return;
+  try {
+    const res = await cppApiFetch(`/users/by-username/${encodeURIComponent(username)}`);
+    if (!res.ok) { showToast("User not found"); return; }
+    const user = await res.json();
+    setAvatar(userProfileAvatar, user.display_name || user.username, user.avatar_url);
+    userProfileDisplayName.textContent = user.display_name || user.username;
+    userProfileUsername.textContent = "@" + user.username;
+    userProfileModal.classList.remove("hidden");
+    S.userProfileOpen = true;
+
+    // Add or update "Message" button
+    let msgBtn = userProfileModal.querySelector(".deeplink-message-btn");
+    if (!msgBtn) {
+      msgBtn = document.createElement("button");
+      msgBtn.className = "btn btn-primary deeplink-message-btn";
+      msgBtn.textContent = "Message";
+      const content = userProfileModal.querySelector(".modal-body") || userProfileModal.querySelector(".modal-content");
+      if (content) content.appendChild(msgBtn);
+    }
+    msgBtn.onclick = () => {
+      closeUserProfile();
+      openDMDeepLink("@" + user.username);
+    };
+  } catch { showToast("Failed to load user profile"); }
+}
+
+// ── Show user profile by ID (deep link /u/<id>) ─────────────────────────────
+async function showUserProfileById(userId) {
+  if (!userId) return;
+  try {
+    const res = await apiFetch(`/web-api/users`);
+    if (!res.ok) return;
+    const users = await res.json();
+    const user = users.find(u => u.id === parseInt(userId));
+    if (!user) { showToast("User not found"); return; }
+    showUserProfile(user.username);
+  } catch { showToast("Failed to load user profile"); }
+}
+
+// ── Open DM deep link (/dm/@username or /dm/<id>) ───────────────────────────
+async function openDMDeepLink(target) {
+  if (!target) return;
+  try {
+    let userId;
+    if (target.startsWith("@")) {
+      const username = target.substring(1);
+      // Check if it's our own username
+      if (S.me && S.me.username === username) {
+        showUserProfile(username);
+        return;
+      }
+      const res = await cppApiFetch(`/users/by-username/${encodeURIComponent(username)}`);
+      if (!res.ok) { showToast("User not found"); return; }
+      const user = await res.json();
+      userId = user.id;
+    } else {
+      userId = parseInt(target);
+      if (S.me && S.me.id === userId) {
+        showToast("Cannot open DM with yourself");
+        return;
+      }
+    }
+
+    // Create or open direct chat
+    const res = await apiFetch("/web-api/chats", {
+      method: "POST",
+      body: JSON.stringify({ with_user_id: userId }),
+    });
+    const data = await res.json();
+    await refreshChats();
+    openChat(data.id);
+  } catch { showToast("Failed to open conversation"); }
+}
+
+// ── Show join preview (deep link /join/<token>) ──────────────────────────────
+async function showJoinPreview(token) {
+  if (!token || !joinPreviewModal) return;
+  joinPreviewModal.classList.remove("hidden");
+  joinPreviewName.textContent = "Loading...";
+  joinPreviewDesc.textContent = "";
+  joinPreviewMembers.textContent = "";
+  if (joinPreviewJoinBtn) joinPreviewJoinBtn.disabled = true;
+
+  try {
+    const res = await cppApiFetch(`/invites/${encodeURIComponent(token)}/preview`);
+    if (res.status === 410) {
+      joinPreviewName.textContent = "Invite Revoked";
+      joinPreviewDesc.textContent = "This invite link has been revoked.";
+      return;
+    }
+    if (!res.ok) {
+      joinPreviewName.textContent = "Invite Not Found";
+      joinPreviewDesc.textContent = "This invite link is invalid or has expired.";
+      return;
+    }
+    const data = await res.json();
+    setAvatar(joinPreviewAvatar, data.title || "Chat", null);
+    joinPreviewName.textContent = data.title || data.type || "Chat";
+    joinPreviewDesc.textContent = data.description || "";
+    joinPreviewMembers.textContent = data.member_count ? `${data.member_count} members` : "";
+
+    if (joinPreviewJoinBtn) {
+      joinPreviewJoinBtn.disabled = false;
+      joinPreviewJoinBtn.onclick = async () => {
+        joinPreviewJoinBtn.disabled = true;
+        try {
+          const joinRes = await cppApiFetch(`/invites/${encodeURIComponent(token)}/join`, { method: "POST" });
+          if (!joinRes.ok) {
+            const d = await joinRes.json().catch(() => ({}));
+            showToast(d.error || "Failed to join");
+            return;
+          }
+          const joinData = await joinRes.json();
+          joinPreviewModal.classList.add("hidden");
+          showToast(joinData.already_member ? "You are already a member" : "Joined successfully!");
+          await refreshChats();
+          if (joinData.chat_id) openChat(joinData.chat_id);
+        } catch { showToast("Failed to join"); }
+        finally { joinPreviewJoinBtn.disabled = false; }
+      };
+    }
+  } catch {
+    joinPreviewName.textContent = "Error";
+    joinPreviewDesc.textContent = "Failed to load invite preview.";
+  }
+}
+
+// ── Close join preview ──────────────────────────────────────────────────────
+if (joinPreviewCloseBtn) joinPreviewCloseBtn.addEventListener("click", () => joinPreviewModal.classList.add("hidden"));
+if (joinPreviewCancelBtn) joinPreviewCancelBtn.addEventListener("click", () => joinPreviewModal.classList.add("hidden"));
+if (joinPreviewModal) joinPreviewModal.addEventListener("click", (e) => { if (e.target === joinPreviewModal) joinPreviewModal.classList.add("hidden"); });
+
+// ── Show channel by public name (deep link /c/<name>) ───────────────────────
+async function showChannelByName(publicName) {
+  if (!publicName) return;
+  try {
+    const res = await cppApiFetch(`/chats/by-name/${encodeURIComponent(publicName)}`);
+    if (!res.ok) { showToast("Channel not found"); return; }
+    const data = await res.json();
+    // Check if we're already a member
+    const existing = S.chats.find(c => c.id === data.id);
+    if (existing) {
+      openChat(data.id);
+    } else {
+      showToast("You are not a member of this channel");
+    }
+  } catch { showToast("Failed to load channel"); }
 }
 
 // ── Polling ───────────────────────────────────────────────────────────────────
@@ -1133,6 +1289,7 @@ document.addEventListener("keydown", function handleGlobalEsc(e) {
   if (S.recorder && S.recorder.state === "recording") return;
 
   // Close layers in priority order
+  if (joinPreviewModal && !joinPreviewModal.classList.contains("hidden")) { joinPreviewModal.classList.add("hidden"); return; }
   if (S.userProfileOpen) { closeUserProfile(); return; }
   if (!stickerPicker.classList.contains("hidden")) { stickerPicker.classList.add("hidden"); return; }
   if (!newChatModal.classList.contains("hidden")) { newChatModal.classList.add("hidden"); return; }
