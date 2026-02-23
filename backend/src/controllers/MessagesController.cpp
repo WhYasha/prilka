@@ -40,6 +40,21 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
     requireMember(chatId, me, [=, cb = std::move(cb)](bool isMember) mutable {
         if (!isMember) return cb(jsonErr("Not a member of this chat", drogon::k403Forbidden));
 
+        // Check channel write permission
+        auto db0 = drogon::app().getDbClient();
+        db0->execSqlAsync(
+            "SELECT c.type, cm.role FROM chats c "
+            "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $2 "
+            "WHERE c.id = $1",
+            [=, cb = std::move(cb)](const drogon::orm::Result& pr) mutable {
+                if (!pr.empty()) {
+                    std::string chatType = pr[0]["type"].as<std::string>();
+                    std::string role = pr[0]["role"].as<std::string>();
+                    if (chatType == "channel" && role != "owner" && role != "admin") {
+                        return cb(jsonErr("Only admins can post in channels", drogon::k403Forbidden));
+                    }
+                }
+
         auto db = drogon::app().getDbClient();
         std::string sql = fileId > 0
             ? "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id) "
@@ -93,6 +108,12 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
         else
             db->execSqlAsync(sql, std::move(insert), std::move(onErr),
                              chatId, me, content, msgType);
+            },
+            [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                LOG_ERROR << "channel permission check: " << e.base().what();
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            },
+            chatId, me);
     });
 }
 
