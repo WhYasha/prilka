@@ -38,6 +38,26 @@ void UsersController::getUser(const drogon::HttpRequestPtr& req,
         }, userId);
 }
 
+// GET /users/by-username/{username}
+void UsersController::getUserByUsername(const drogon::HttpRequestPtr& req,
+                                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                        const std::string& username) {
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT id, username, display_name, bio FROM users WHERE username = $1 AND is_active = TRUE",
+        [cb](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(notFound());
+            cb(userJson(r[0]));
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "getUserByUsername: " << e.base().what();
+            Json::Value b; b["error"] = "Internal error";
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(b);
+            resp->setStatusCode(drogon::k500InternalServerError);
+            cb(resp);
+        }, username);
+}
+
 // GET /users/search?q=alice
 void UsersController::searchUsers(const drogon::HttpRequestPtr& req,
                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
