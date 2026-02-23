@@ -40,7 +40,7 @@ services:
     ports: []
     restart: always
     environment:
-      GF_SERVER_ROOT_URL: "http://%(domain)s/grafana"
+      GF_SERVER_ROOT_URL: "https://behappy.rest/grafana"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
 
   # ── cAdvisor – enabled on Linux hosts ────────────────────────────────────────
@@ -65,10 +65,12 @@ services:
     restart: always
     ports:
       - "80:80"
-      # TODO: add 443:443 and mount TLS certs when a domain is available
+      - "443:443"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./infra/nginx/downloads:/usr/share/nginx/html/downloads:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /opt/messenger/certbot-webroot:/var/www/certbot:ro
     networks:
       - messenger_net
     depends_on:
