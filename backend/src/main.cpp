@@ -27,6 +27,7 @@
 #include <csignal>
 #include <iostream>
 #include <chrono>
+#include <regex>
 #include <netdb.h>
 #include <arpa/inet.h>
 
@@ -120,10 +121,47 @@ int main(int argc, char* argv[]) {
         },
         {drogon::Get});
 
-    // ── Metrics middleware (wraps all /api/* routes) ───────────────────────────
-    // For MVP: metrics are recorded per-controller. A global middleware approach
-    // can be added via drogon::app().registerPreHandlingAdvice() in Drogon 1.9+.
-    // TODO: add a global advice that records latency + status for every request.
+    // ── Global metrics middleware ─────────────────────────────────────────────
+    // Records latency + request count for every route automatically.
+    // Skips /health and /metrics to avoid noise in Prometheus output.
+    // Normalises paths: numeric segments → {id}  (e.g. /users/42 → /users/{id})
+    drogon::app().registerPreHandlingAdvice(
+        [](const drogon::HttpRequestPtr& req) {
+            const auto& path = req->getPath();
+            if (path == "/health" || path == "/metrics") return;
+            req->getAttributes()->insert(
+                "req_start_tp",
+                std::chrono::steady_clock::now()
+            );
+        }
+    );
+
+    drogon::app().registerPostHandlingAdvice(
+        [](const drogon::HttpRequestPtr& req,
+           const drogon::HttpResponsePtr& resp) {
+            const auto& path = req->getPath();
+            if (path == "/health" || path == "/metrics") return;
+
+            std::chrono::steady_clock::time_point start;
+            try {
+                start = req->getAttributes()
+                            ->get<std::chrono::steady_clock::time_point>("req_start_tp");
+            } catch (...) {
+                return;  // pre-advice didn't run for this request
+            }
+
+            double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - start
+            ).count();
+
+            static const std::regex numSeg(R"(/\d+)");
+            std::string normPath = std::regex_replace(path, numSeg, "/{id}");
+
+            auto status = static_cast<int>(resp->statusCode());
+            MetricsService::instance().incRequest(req->getMethodString(), normPath, status);
+            MetricsService::instance().observeLatency(req->getMethodString(), normPath, elapsed);
+        }
+    );
 
     // ── Server configuration ──────────────────────────────────────────────────
     drogon::app()

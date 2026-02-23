@@ -1,13 +1,11 @@
 #include "AuthController.h"
 #include "../services/JwtService.h"
-#include "../services/MetricsService.h"
 #include "../config/Config.h"
 #include <drogon/orm/DbClient.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <trantor/utils/Logger.h>
-#include <chrono>
 #include <sstream>
 #include <iomanip>
 
@@ -61,40 +59,30 @@ static drogon::HttpResponsePtr err(const std::string& msg, drogon::HttpStatusCod
 
 void AuthController::registerUser(const drogon::HttpRequestPtr& req,
                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-    auto startTp = std::chrono::steady_clock::now();
-    auto cbSh = std::make_shared<std::function<void(const drogon::HttpResponsePtr&)>>(std::move(cb));
-    auto done = [cbSh, startTp](auto resp) mutable {
-        auto end = std::chrono::steady_clock::now();
-        double ms = std::chrono::duration<double>(end - startTp).count();
-        MetricsService::instance().incRequest("POST", "/auth/register",
-            resp->statusCode());
-        MetricsService::instance().observeLatency("POST", "/auth/register", ms);
-        (*cbSh)(resp);
-    };
-
     auto body = req->getJsonObject();
-    if (!body) return done(err("Invalid JSON", drogon::k400BadRequest));
+    if (!body) return cb(err("Invalid JSON", drogon::k400BadRequest));
 
     std::string username = (*body)["username"].asString();
     std::string email    = (*body)["email"].asString();
     std::string password = (*body)["password"].asString();
 
     if (username.size() < 3 || username.size() > 32)
-        return done(err("Username must be 3–32 characters", drogon::k400BadRequest));
+        return cb(err("Username must be 3–32 characters", drogon::k400BadRequest));
     if (email.empty() || email.find('@') == std::string::npos)
-        return done(err("Invalid email", drogon::k400BadRequest));
+        return cb(err("Invalid email", drogon::k400BadRequest));
     if (password.size() < 6)
-        return done(err("Password must be at least 6 characters", drogon::k400BadRequest));
+        return cb(err("Password must be at least 6 characters", drogon::k400BadRequest));
 
     std::string salt = randomHex(16);
     std::string hash = hashPassword(password, salt);
     std::string displayName = (*body).get("display_name", username).asString();
 
+    auto cbSh = std::make_shared<decltype(cb)>(std::move(cb));
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "INSERT INTO users (username, email, password_hash, display_name) "
         "VALUES ($1, $2, $3, $4) RETURNING id",
-        [done, username](const drogon::orm::Result& r) mutable {
+        [cbSh, username](const drogon::orm::Result& r) mutable {
             long long uid = r[0]["id"].as<long long>();
             // Create default settings
             auto db2 = drogon::app().getDbClient();
@@ -108,16 +96,16 @@ void AuthController::registerUser(const drogon::HttpRequestPtr& req,
             Json::Value resp;
             resp["id"]       = Json::Int64(uid);
             resp["username"] = username;
-            done(jsonResp(resp, drogon::k201Created));
+            (*cbSh)(jsonResp(resp, drogon::k201Created));
         },
-        [done](const drogon::orm::DrogonDbException& e) mutable {
+        [cbSh](const drogon::orm::DrogonDbException& e) mutable {
             std::string what = e.base().what();
             if (what.find("unique") != std::string::npos ||
                 what.find("duplicate") != std::string::npos)
-                done(err("Username or email already taken", drogon::k409Conflict));
+                (*cbSh)(err("Username or email already taken", drogon::k409Conflict));
             else {
                 LOG_ERROR << "register DB error: " << what;
-                done(err("Internal error", drogon::k500InternalServerError));
+                (*cbSh)(err("Internal error", drogon::k500InternalServerError));
             }
         },
         username, email, hash, displayName);
