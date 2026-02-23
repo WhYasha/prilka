@@ -13,6 +13,7 @@ volumes:
   minio_data:
   prometheus_data:
   grafana_data:
+  flask_data:         # persists Flask's SQLite DB across container rebuilds
 
 services:
 
@@ -191,6 +192,9 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-changeme_minio}
       MINIO_BUCKET:     ${MINIO_BUCKET:-messenger-files}
+      DB_PATH:      /app/data/messenger.db   # persisted on flask_data volume
+    volumes:
+      - flask_data:/app/data
     ports:
       - "5000:5000"
     networks:
