@@ -14,6 +14,7 @@ const S = {
   recSeconds:    0,
   chatsPollTimer:  null,
   msgsPollTimer:   null,
+  userProfileOpen: false,
 };
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -67,6 +68,12 @@ const avatarFileInput   = document.getElementById("avatarFileInput");
 const saveProfileBtn    = document.getElementById("saveProfileBtn");
 const settingsTheme     = document.getElementById("settingsTheme");
 const settingsNotifications = document.getElementById("settingsNotifications");
+
+const userProfileModal    = document.getElementById("userProfileModal");
+const userProfileCloseBtn = document.getElementById("userProfileCloseBtn");
+const userProfileAvatar   = document.getElementById("userProfileAvatar");
+const userProfileDisplayName = document.getElementById("userProfileDisplayName");
+const userProfileUsername = document.getElementById("userProfileUsername");
 
 const toast           = document.getElementById("toast");
 
@@ -760,6 +767,27 @@ saveProfileBtn.addEventListener("click", async () => {
     refreshChats();
   } catch { showToast("Save failed"); }
 });
+
+// ── User profile modal ────────────────────────────────────────────────────
+function openUserProfile() {
+  const chat = S.chats.find(c => c.id === S.activeChatId);
+  if (!chat) return;
+  setAvatar(userProfileAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_path);
+  userProfileDisplayName.textContent = chat.other_display_name || chat.other_username;
+  userProfileUsername.textContent = "@" + chat.other_username;
+  S.userProfileOpen = true;
+  userProfileModal.classList.remove("hidden");
+}
+
+function closeUserProfile() {
+  userProfileModal.classList.add("hidden");
+  S.userProfileOpen = false;
+}
+
+chatHeaderAvatar.addEventListener("click", openUserProfile);
+chatHeaderName.addEventListener("click", openUserProfile);
+userProfileCloseBtn.addEventListener("click", closeUserProfile);
+userProfileModal.addEventListener("click", (e) => { if (e.target === userProfileModal) closeUserProfile(); });
 
 // ── Polling ───────────────────────────────────────────────────────────────────
 function startPolling() {
