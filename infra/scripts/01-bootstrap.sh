@@ -8,7 +8,7 @@ set -euo pipefail
 DEPLOY_USER="deploy"
 APP_NAME="messenger"
 APP_DIR="/opt/${APP_NAME}"
-REPO_URL="https://github.com/YOUR_ORG/YOUR_REPO.git"   # <-- set this
+REPO_URL="https://github.com/WhYasha/prilka.git"
 
 DEPLOY_PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINKjEHo5jBTaj77l16LJ7xLqUtP6mVxsDiTHYoDOJ3fB deploy@your_project_name"
 
