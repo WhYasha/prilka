@@ -14,6 +14,7 @@ const S = {
   recSeconds:    0,
   chatsPollTimer:  null,
   msgsPollTimer:   null,
+  userProfileOpen: false,
 };
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -67,6 +68,12 @@ const avatarFileInput   = document.getElementById("avatarFileInput");
 const saveProfileBtn    = document.getElementById("saveProfileBtn");
 const settingsTheme     = document.getElementById("settingsTheme");
 const settingsNotifications = document.getElementById("settingsNotifications");
+
+const userProfileModal    = document.getElementById("userProfileModal");
+const userProfileCloseBtn = document.getElementById("userProfileCloseBtn");
+const userProfileAvatar   = document.getElementById("userProfileAvatar");
+const userProfileDisplayName = document.getElementById("userProfileDisplayName");
+const userProfileUsername = document.getElementById("userProfileUsername");
 
 const toast           = document.getElementById("toast");
 
@@ -761,6 +768,28 @@ saveProfileBtn.addEventListener("click", async () => {
   } catch { showToast("Save failed"); }
 });
 
+// ── User profile modal ────────────────────────────────────────────────────
+function openUserProfile() {
+  const chat = S.chats.find(c => c.id === S.activeChatId);
+  if (!chat) return;
+  setAvatar(userProfileAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_path);
+  userProfileDisplayName.textContent = chat.other_display_name || chat.other_username;
+  userProfileUsername.textContent = "@" + chat.other_username;
+  S.userProfileOpen = true;
+  userProfileModal.classList.remove("hidden");
+}
+
+function closeUserProfile() {
+  userProfileModal.classList.add("hidden");
+  S.userProfileOpen = false;
+}
+
+chatHeaderAvatar.addEventListener("click", openUserProfile);
+chatHeaderName.addEventListener("click", openUserProfile);
+chatHeaderSub.addEventListener("click", openUserProfile);
+userProfileCloseBtn.addEventListener("click", closeUserProfile);
+userProfileModal.addEventListener("click", (e) => { if (e.target === userProfileModal) closeUserProfile(); });
+
 // ── Polling ───────────────────────────────────────────────────────────────────
 function startPolling() {
   S.chatsPollTimer = setInterval(refreshChats, 5000);
@@ -778,6 +807,52 @@ function stopPolling() {
   if (S.chatsPollTimer) { clearInterval(S.chatsPollTimer); S.chatsPollTimer = null; }
   stopMsgPolling();
 }
+
+// ── Global ESC key handler ────────────────────────────────────────────────────
+document.addEventListener("keydown", function handleGlobalEsc(e) {
+  if (e.key !== "Escape") return;
+  if (S.recorder && S.recorder.state === "recording") return;
+
+  // Close layers in priority order
+  if (S.userProfileOpen) { closeUserProfile(); return; }
+  if (!stickerPicker.classList.contains("hidden")) { stickerPicker.classList.add("hidden"); return; }
+  if (!newChatModal.classList.contains("hidden")) { newChatModal.classList.add("hidden"); return; }
+  if (!profileModal.classList.contains("hidden")) { profileModal.classList.add("hidden"); return; }
+  const dlOverlay = document.getElementById("downloadOverlay");
+  if (dlOverlay && !dlOverlay.classList.contains("hidden")) { dlOverlay.classList.add("hidden"); return; }
+  if (drawer.classList.contains("open")) { closeDrawer(); return; }
+  if (S.activeChatId !== null) { closeChat(); return; }
+});
+
+// ── iOS keyboard handling (visualViewport) ────────────────────────────────────
+(function initIOSKeyboardHandling() {
+  if (!window.visualViewport) return;
+
+  let prevHeight = window.visualViewport.height;
+
+  window.visualViewport.addEventListener("resize", () => {
+    const curHeight = window.visualViewport.height;
+    const shrank = curHeight < prevHeight && (prevHeight - curHeight) > 100;
+    prevHeight = curHeight;
+
+    if (shrank && S.activeChatId !== null) {
+      // Keyboard opened – scroll messages to bottom
+      requestAnimationFrame(() => {
+        if (msgList) msgList.scrollTop = msgList.scrollHeight;
+      });
+    }
+  });
+
+  if (composerInput) {
+    composerInput.addEventListener("focus", () => {
+      // On mobile, ensure composer scrolls into view after keyboard appears
+      setTimeout(() => {
+        if (composerInput) composerInput.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        if (msgList) msgList.scrollTop = msgList.scrollHeight;
+      }, 300);
+    });
+  }
+})();
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 bootstrap();

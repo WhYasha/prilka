@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Simple Messenger</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
@@ -171,6 +171,23 @@
         <button class="btn btn-primary" id="saveProfileBtn">Save</button>
         <button class="btn btn-ghost" id="profileCancelBtn">Cancel</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== USER PROFILE MODAL ===================== -->
+<div class="modal-backdrop hidden" id="userProfileModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">User Profile</h2>
+      <button class="icon-btn" id="userProfileCloseBtn">&#10005;</button>
+    </div>
+    <div class="modal-body user-profile-body">
+      <div class="profile-avatar-section">
+        <div class="avatar avatar-xl" id="userProfileAvatar">?</div>
+      </div>
+      <div class="user-profile-name" id="userProfileDisplayName">—</div>
+      <div class="user-profile-username" id="userProfileUsername">@—</div>
     </div>
   </div>
 </div>
