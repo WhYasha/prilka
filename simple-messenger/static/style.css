@@ -550,3 +550,142 @@ body:has(.layout) { overflow: hidden; }
 .composer-input::-webkit-scrollbar-track-piece:end {
   background: transparent;
 }
+
+/* ── Tri-option creation cards ──────────────────────────────── */
+.create-options { display: flex; flex-direction: column; gap: .75rem; }
+.create-option-card {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1rem 1.25rem; border-radius: var(--radius);
+  background: var(--input-bg); border: 1.5px solid var(--border);
+  cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.create-option-card:hover {
+  border-color: var(--accent); background: var(--surface);
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.create-option-icon {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.25rem; flex-shrink: 0;
+}
+.create-option-text { flex: 1; min-width: 0; }
+.create-option-title { font-weight: 700; font-size: .95rem; color: var(--text); }
+.create-option-desc { font-size: .8rem; color: var(--text-muted); margin-top: .15rem; line-height: 1.4; }
+
+/* ── Channel / Group creation form ──────────────────────────── */
+.creation-form { display: flex; flex-direction: column; gap: .75rem; }
+.creation-form .form-group { margin-bottom: .5rem; }
+.creation-form .avatar-upload {
+  display: flex; align-items: center; gap: 1rem; margin-bottom: .5rem;
+}
+.creation-form .avatar-upload .avatar { cursor: pointer; position: relative; }
+.creation-form .avatar-upload .avatar:hover::after {
+  content: '📷'; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.4); border-radius: 50%; font-size: 1.2rem;
+}
+
+/* ── Channel badge / indicator ──────────────────────────────── */
+.channel-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: .6rem; flex-shrink: 0; margin-right: .25rem;
+  vertical-align: middle;
+}
+.chat-item-name .channel-badge { margin-right: .35rem; }
+
+/* ── Invite management section ──────────────────────────────── */
+.invite-section { margin-top: 1rem; }
+.invite-section-title {
+  font-size: .85rem; font-weight: 700; color: var(--text);
+  margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .03em;
+}
+.invite-link-row {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .6rem .85rem; border-radius: 8px;
+  background: var(--input-bg); margin-bottom: .5rem;
+}
+.invite-link-text {
+  flex: 1; font-size: .85rem; color: var(--accent);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: monospace;
+}
+.invite-link-actions { display: flex; gap: .35rem; flex-shrink: 0; }
+.invite-link-actions .btn-sm { padding: .3rem .65rem; font-size: .78rem; }
+.invite-expires { font-size: .72rem; color: var(--text-muted); margin-top: .25rem; }
+
+/* ── Join preview modal ─────────────────────────────────────── */
+.join-preview {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; padding: 1.5rem 1rem;
+}
+.join-preview .avatar { margin-bottom: 1rem; }
+.join-preview-name { font-size: 1.25rem; font-weight: 700; color: var(--text); }
+.join-preview-type { font-size: .85rem; color: var(--text-muted); margin-top: .25rem; }
+.join-preview-members { font-size: .85rem; color: var(--text-muted); margin-top: .15rem; }
+.join-preview-desc {
+  font-size: .9rem; color: var(--text); margin-top: .75rem;
+  line-height: 1.5; max-width: 320px;
+}
+.join-preview-actions { margin-top: 1.25rem; display: flex; gap: .75rem; }
+
+/* ── Enhanced profile view (deep link) ──────────────────────── */
+.profile-deep-link {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; padding: 2rem 1.5rem;
+}
+.profile-deep-link .avatar { margin-bottom: 1rem; }
+.profile-deep-link-name { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+.profile-deep-link-username { font-size: .9rem; color: var(--text-muted); margin-top: .25rem; }
+.profile-deep-link-bio {
+  font-size: .9rem; color: var(--text); margin-top: .75rem;
+  line-height: 1.5; max-width: 300px;
+}
+.profile-deep-link-action { margin-top: 1.5rem; }
+.profile-deep-link-action .btn { padding: .75rem 2rem; font-size: 1rem; }
+
+/* ── Read-only channel notice ───────────────────────────────── */
+.read-only-notice {
+  display: flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: .55rem 1rem; background: var(--input-bg);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted); font-size: .85rem;
+  flex-shrink: 0;
+}
+.read-only-notice-icon { font-size: .95rem; }
+
+/* ── Member multi-select chips ──────────────────────────────── */
+.member-chips {
+  display: flex; flex-wrap: wrap; gap: .4rem;
+  padding: .5rem 0; min-height: 36px;
+}
+.member-chip {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .25rem .65rem .25rem .45rem;
+  background: var(--accent); color: #fff;
+  border-radius: 16px; font-size: .8rem; font-weight: 600;
+  animation: chipIn .15s ease;
+}
+.member-chip-avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(255,255,255,.2); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .6rem; font-weight: 700; overflow: hidden;
+}
+.member-chip-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.member-chip-remove {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(255,255,255,.25); border: none; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .7rem; cursor: pointer; margin-left: .15rem;
+  transition: background .12s;
+}
+.member-chip-remove:hover { background: rgba(255,255,255,.4); }
+
+@keyframes chipIn { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* ── Button danger variant ──────────────────────────────────── */
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #dc2626; }
