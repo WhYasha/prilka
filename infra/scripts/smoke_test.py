@@ -2,7 +2,7 @@
 """End-to-end smoke test for the Messenger API."""
 import json, sys, subprocess, urllib.request, urllib.error
 
-BASE  = "http://localhost/api"
+BASE  = "https://behappy.rest/api"
 PASS  = "SmokeTest@2026"
 USER  = "smoketest_e2e"
 EMAIL = "smoketest@example.com"
@@ -152,7 +152,7 @@ ws_code = "\n".join([
     "except ImportError:",
     "    sys.exit(2)",
     "async def test():",
-    "    uri = 'ws://localhost/ws?token=" + token + "'",
+    "    uri = 'wss://behappy.rest/ws?token=" + token + "'",
     "    try:",
     "        async with websockets.connect(uri, open_timeout=5) as ws:",
     "            print('CONNECTED')",
