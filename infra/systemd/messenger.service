@@ -1,0 +1,46 @@
+[Unit]
+Description=Messenger Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/messenger/repo
+
+EnvironmentFile=/opt/messenger/env/.env
+
+ExecStartPre=/usr/bin/docker compose \
+    -f docker-compose.yml \
+    -f docker-compose.prod.yml \
+    pull --quiet
+
+ExecStart=/usr/bin/docker compose \
+    -f docker-compose.yml \
+    -f docker-compose.prod.yml \
+    up -d --remove-orphans
+
+ExecStop=/usr/bin/docker compose \
+    -f docker-compose.yml \
+    -f docker-compose.prod.yml \
+    down
+
+ExecReload=/usr/bin/docker compose \
+    -f docker-compose.yml \
+    -f docker-compose.prod.yml \
+    up -d --remove-orphans
+
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=300
+TimeoutStopSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=messenger
+
+[Install]
+WantedBy=multi-user.target

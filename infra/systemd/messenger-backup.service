@@ -1,0 +1,14 @@
+[Unit]
+Description=Messenger – Postgres backup (one-shot)
+Requires=docker.service messenger.service
+After=docker.service messenger.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+ExecStart=/opt/messenger/scripts/backup-postgres.sh
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=messenger-backup

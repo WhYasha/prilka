@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  # ── Linux build + test ─────────────────────────────────────────────────────
+  build-linux:
+    name: Build & Test (Linux / GCC)
+    runs-on: ubuntu-latest
+    container:
+      image: drogonframework/drogon:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install extra dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            uuid-dev libgtest-dev ninja-build
+
+      - name: Configure
+        working-directory: backend
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON
+
+      - name: Build
+        working-directory: backend
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Test
+        working-directory: backend/build
+        env:
+          JWT_SECRET: "ci-test-secret-at-least-16-chars"
+          JWT_ACCESS_TTL: "3600"
+          JWT_REFRESH_TTL: "604800"
+        run: ctest --output-on-failure
+
+  # ── Windows build ──────────────────────────────────────────────────────────
+  build-windows:
+    name: Build (Windows / MSVC)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
+          C:/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: C:/vcpkg/installed
+          key: vcpkg-windows-${{ hashFiles('**/CMakeLists.txt') }}
+
+      - name: Install deps via vcpkg
+        run: |
+          C:/vcpkg/vcpkg install drogon openssl gtest --triplet x64-windows
+
+      - name: Configure
+        working-directory: backend
+        run: |
+          cmake -B build ^
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake ^
+            -DVCPKG_TARGET_TRIPLET=x64-windows ^
+            -DBUILD_TESTS=ON
+
+      - name: Build
+        working-directory: backend
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: backend/build
+        env:
+          JWT_SECRET: "ci-test-secret-at-least-16-chars"
+          JWT_ACCESS_TTL: "3600"
+          JWT_REFRESH_TTL: "604800"
+        run: ctest --output-on-failure -C Release
+
+  # ── macOS build ────────────────────────────────────────────────────────────
+  build-macos:
+    name: Build (macOS / Clang)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies via Homebrew
+        run: |
+          brew install drogon openssl googletest ninja
+
+      - name: Configure
+        working-directory: backend
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+            -DBUILD_TESTS=ON
+
+      - name: Build
+        working-directory: backend
+        run: cmake --build build --parallel
+
+      - name: Test
+        working-directory: backend/build
+        env:
+          JWT_SECRET: "ci-test-secret-at-least-16-chars"
+          JWT_ACCESS_TTL: "3600"
+          JWT_REFRESH_TTL: "604800"
+        run: ctest --output-on-failure
+
+  # ── Docker Compose smoke test ──────────────────────────────────────────────
+  compose-smoke:
+    name: Docker Compose Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy env file
+        run: cp .env.example .env
+
+      - name: Set safe JWT secret in .env
+        run: |
+          sed -i 's|JWT_SECRET=.*|JWT_SECRET=ci-smoke-test-secret-32-chars-ab|' .env
+
+      - name: Build images
+        run: docker compose build api_cpp
+
+      - name: Start infrastructure
+        run: docker compose up -d postgres redis minio flyway
+
+      - name: Wait for flyway
+        run: |
+          for i in $(seq 1 30); do
+            docker compose ps flyway | grep -q "exited (0)" && break
+            sleep 5
+          done
+
+      - name: Start API
+        run: docker compose up -d api_cpp
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:8080/health && break
+            sleep 5
+          done
+
+      - name: Smoke test register
+        run: |
+          curl -sf -X POST http://localhost:8080/auth/register \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"ci_user","email":"ci@test.com","password":"password123"}' \
+            | jq .
+
+      - name: Smoke test login
+        run: |
+          curl -sf -X POST http://localhost:8080/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"ci_user","password":"password123"}' \
+            | jq .access_token
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

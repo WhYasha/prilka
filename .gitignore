@@ -4,6 +4,31 @@ simple-messenger/__pycache__/
 simple-messenger/*.db
 simple-messenger/server.log
 simple-messenger/jar_*.txt
+simple-messenger/uploads/
+
+# Environment secrets — NEVER commit
+.env
+!.env.example
+
+# C++ build output
+backend/build/
+backend/build-*/
+cmake-build-*/
+CMakeUserPresets.json
+compile_commands.json
+
+# IDE
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# Docker Compose local overrides
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Auto Claude data directory
 .auto-claude/

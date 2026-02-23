@@ -30,6 +30,9 @@
       <button class="drawer-nav-item" id="drawerLogoutBtn">
         <span class="nav-icon">&#128682;</span> Log out
       </button>
+      <button class="drawer-nav-item" id="openDownloadBtn">
+        <span class="nav-icon">&#128229;</span> Download App
+      </button>
     </nav>
     <div class="drawer-footer">Simple Messenger v2</div>
   </div>
@@ -175,6 +178,64 @@
 <!-- ===================== TOAST ===================== -->
 <div class="toast hidden" id="toast"></div>
 
+<!-- ===================== DOWNLOAD MODAL ===================== -->
+<div class="modal-overlay hidden" id="downloadOverlay">
+  <div class="modal" id="downloadModal" style="max-width:420px">
+    <div class="modal-header">
+      <h2 class="modal-title">Download Simple Messenger</h2>
+      <button class="icon-btn" id="downloadCloseBtn" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <button class="btn btn-primary btn-full" id="dlPrimaryBtn" style="display:none"></button>
+      <div id="dlOtherWrap">
+        <details>
+          <summary style="cursor:pointer;color:var(--color-accent)">Other platforms</summary>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+            <a id="dlWindows" href="/downloads/windows/MessengerSetup.exe"
+               class="btn btn-ghost btn-full" download>Windows installer (.exe)</a>
+            <a id="dlMacos" href="/downloads/macos/Messenger.dmg"
+               class="btn btn-ghost btn-full" download>macOS installer (.dmg)</a>
+          </div>
+        </details>
+      </div>
+      <p style="font-size:0.8rem;color:var(--color-text-secondary);margin:0">
+        Files not available yet? Check back soon or
+        <a href="https://github.com/YOUR_ORG/YOUR_REPO" target="_blank">build from source</a>.
+      </p>
+    </div>
+  </div>
+</div>
+
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+<script>
+  // ── Download modal ──────────────────────────────────────────────────────────
+  (function () {
+    const overlay   = document.getElementById("downloadOverlay");
+    const openBtn   = document.getElementById("openDownloadBtn");
+    const closeBtn  = document.getElementById("downloadCloseBtn");
+    const primary   = document.getElementById("dlPrimaryBtn");
+    const dlWindows = document.getElementById("dlWindows");
+    const dlMacos   = document.getElementById("dlMacos");
+
+    // OS detection
+    const ua = navigator.userAgent.toLowerCase();
+    const isWindows = ua.includes("win");
+    const isMac     = ua.includes("mac") && !ua.includes("iphone") && !ua.includes("ipad");
+
+    if (isWindows) {
+      primary.textContent = "Download for Windows";
+      primary.style.display = "";
+      primary.addEventListener("click", () => { window.location.href = dlWindows.href; });
+    } else if (isMac) {
+      primary.textContent = "Download for macOS";
+      primary.style.display = "";
+      primary.addEventListener("click", () => { window.location.href = dlMacos.href; });
+    }
+
+    openBtn.addEventListener("click",  () => overlay.classList.remove("hidden"));
+    closeBtn.addEventListener("click", () => overlay.classList.add("hidden"));
+    overlay.addEventListener("click",  (e) => { if (e.target === overlay) overlay.classList.add("hidden"); });
+  }());
+</script>
 </body>
 </html>

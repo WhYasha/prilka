@@ -1,0 +1,248 @@
+#include "FilesController.h"
+#include "../config/Config.h"
+#include <drogon/orm/DbClient.h>
+#include <drogon/HttpClient.h>
+#include <trantor/utils/Logger.h>
+#include <openssl/hmac.h>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <json/json.h>
+#include <uuid/uuid.h>
+#include <chrono>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+static drogon::HttpResponsePtr jsonErr(const std::string& msg, drogon::HttpStatusCode code) {
+    Json::Value b; b["error"] = msg;
+    auto r = drogon::HttpResponse::newHttpJsonResponse(b);
+    r->setStatusCode(code);
+    return r;
+}
+
+static std::string toHex(const unsigned char* d, size_t len) {
+    std::ostringstream ss;
+    for (size_t i = 0; i < len; i++)
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)d[i];
+    return ss.str();
+}
+
+static std::string sha256Hex(const std::string& s) {
+    unsigned char h[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(s.data()), s.size(), h);
+    return toHex(h, SHA256_DIGEST_LENGTH);
+}
+
+static std::string hmacSha256Hex(const std::string& key, const std::string& msg) {
+    unsigned char h[32]; unsigned int hlen = 0;
+    HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
+         reinterpret_cast<const unsigned char*>(msg.data()), msg.size(),
+         h, &hlen);
+    return toHex(h, hlen);
+}
+
+static std::vector<unsigned char> hmacSha256Raw(const std::string& key, const std::string& msg) {
+    std::vector<unsigned char> h(32); unsigned int hlen = 0;
+    HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
+         reinterpret_cast<const unsigned char*>(msg.data()), msg.size(),
+         h.data(), &hlen);
+    h.resize(hlen);
+    return h;
+}
+
+static std::vector<unsigned char> hmacSha256Raw(const std::vector<unsigned char>& key,
+                                                 const std::string& msg) {
+    std::vector<unsigned char> h(32); unsigned int hlen = 0;
+    HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
+         reinterpret_cast<const unsigned char*>(msg.data()), msg.size(),
+         h.data(), &hlen);
+    h.resize(hlen);
+    return h;
+}
+
+// ── AWS Signature V4 Presigned URL ─────────────────────────────────────────
+// Generates a presigned GET URL for MinIO (S3-compatible).
+
+static std::string generatePresignedUrl(const std::string& endpoint,
+                                         const std::string& bucket,
+                                         const std::string& key,
+                                         const std::string& accessKey,
+                                         const std::string& secretKey,
+                                         int ttlSeconds = 3600) {
+    const std::string region  = "us-east-1";
+    const std::string service = "s3";
+
+    // Date/time
+    std::time_t now = std::time(nullptr);
+    char dateBuf[9], timeBuf[17];
+    std::tm* utc = std::gmtime(&now);
+    std::strftime(dateBuf, sizeof(dateBuf), "%Y%m%d", utc);
+    std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%dT%H%M%SZ", utc);
+
+    std::string date(dateBuf);
+    std::string datetime(timeBuf);
+
+    // Canonical URI
+    std::string uri = "/" + bucket + "/" + key;
+
+    // Credential scope
+    std::string credScope = date + "/" + region + "/" + service + "/aws4_request";
+    std::string credential = accessKey + "/" + credScope;
+
+    // Query string (sorted)
+    std::ostringstream qs;
+    qs << "X-Amz-Algorithm=AWS4-HMAC-SHA256"
+       << "&X-Amz-Credential=" << credential
+       << "&X-Amz-Date=" << datetime
+       << "&X-Amz-Expires=" << ttlSeconds
+       << "&X-Amz-SignedHeaders=host";
+
+    // Parse host from endpoint
+    std::string host = endpoint;
+    if (host.find("://") != std::string::npos)
+        host = host.substr(host.find("://") + 3);
+
+    std::string canonicalRequest =
+        "GET\n" + uri + "\n" + qs.str() + "\nhost:" + host + "\n\nhost\nUNSIGNED-PAYLOAD";
+
+    std::string stringToSign =
+        "AWS4-HMAC-SHA256\n" + datetime + "\n" + credScope + "\n" +
+        sha256Hex(canonicalRequest);
+
+    // Signing key
+    auto kDate    = hmacSha256Raw("AWS4" + secretKey, date);
+    auto kRegion  = hmacSha256Raw(kDate, region);
+    auto kService = hmacSha256Raw(kRegion, service);
+    auto kSigning = hmacSha256Raw(kService, "aws4_request");
+    std::string signature = toHex(kSigning.data(), kSigning.size());
+    // Actually need hex of HMAC with kSigning
+    {
+        unsigned char h[32]; unsigned int hlen = 0;
+        HMAC(EVP_sha256(), kSigning.data(), static_cast<int>(kSigning.size()),
+             reinterpret_cast<const unsigned char*>(stringToSign.data()),
+             stringToSign.size(), h, &hlen);
+        signature = toHex(h, hlen);
+    }
+
+    std::string scheme = "http://";
+    return scheme + host + uri + "?" + qs.str() + "&X-Amz-Signature=" + signature;
+}
+
+// ── UUID generator ─────────────────────────────────────────────────────────
+
+static std::string newUuid() {
+    uuid_t u;
+    uuid_generate_random(u);
+    char s[37]; uuid_unparse_lower(u, s);
+    return std::string(s);
+}
+
+// ── POST /files ────────────────────────────────────────────────────────────
+// Multipart upload. Stores object in MinIO, metadata in PostgreSQL.
+
+void FilesController::uploadFile(const drogon::HttpRequestPtr& req,
+                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    const auto& cfg = Config::get();
+
+    // Validate size
+    long long maxBytes = cfg.maxFileSizeMb * 1024 * 1024;
+    if (static_cast<long long>(req->body().size()) > maxBytes)
+        return cb(jsonErr("File too large (max " + std::to_string(cfg.maxFileSizeMb) + " MB)",
+                          drogon::k413RequestEntityTooLarge));
+
+    auto& files = req->getUploadFiles();
+    if (files.empty())
+        return cb(jsonErr("No file uploaded (use multipart/form-data field 'file')",
+                          drogon::k400BadRequest));
+
+    auto& f         = files[0];
+    std::string orig     = f.getFileName();
+    std::string mime     = f.getContentType();
+    std::string objectKey= newUuid() + "_" + orig;
+    std::string bucket   = cfg.minioBucket;
+
+    // Upload to MinIO via HTTP PUT (S3 API)
+    // TODO: Replace with AWS SDK or minio-cpp for production robustness.
+    std::string minioHost = cfg.minioEndpoint;
+    auto client = drogon::HttpClient::newHttpClient("http://" + minioHost);
+
+    auto putReq = drogon::HttpRequest::newHttpRequest();
+    putReq->setMethod(drogon::Put);
+    putReq->setPath("/" + bucket + "/" + objectKey);
+    putReq->setContentTypeString(mime);
+    putReq->setBody(std::string(f.fileData(), f.fileLength()));
+
+    // Simple auth header for MinIO with root credentials (not production-safe)
+    // For production: use proper AWS SigV4 signed PUT
+    putReq->addHeader("Authorization",
+        "AWS " + cfg.minioAccessKey + ":" +
+        hmacSha256Hex(cfg.minioSecretKey, "PUT\n\n" + mime + "\n\n/" + bucket + "/" + objectKey));
+
+    client->sendRequest(putReq, [=, cb = std::move(cb)](
+            drogon::ReqResult result,
+            const drogon::HttpResponsePtr& minioResp) mutable {
+
+        if (result != drogon::ReqResult::Ok || !minioResp ||
+            minioResp->statusCode() >= 300) {
+            LOG_ERROR << "MinIO PUT failed: "
+                      << (minioResp ? std::to_string(minioResp->statusCode()) : "no response");
+            return cb(jsonErr("Object storage upload failed", drogon::k502BadGateway));
+        }
+
+        // Persist metadata
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "INSERT INTO files (uploader_id, bucket, object_key, filename, mime_type, size_bytes) "
+            "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            [cb = std::move(cb), objectKey, bucket, orig, mime](const drogon::orm::Result& r) mutable {
+                long long fileId = r[0]["id"].as<long long>();
+                Json::Value resp;
+                resp["id"]         = Json::Int64(fileId);
+                resp["filename"]   = orig;
+                resp["mime_type"]  = mime;
+                resp["object_key"] = objectKey;
+                auto httpResp = drogon::HttpResponse::newHttpJsonResponse(resp);
+                httpResp->setStatusCode(drogon::k201Created);
+                cb(httpResp);
+            },
+            [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                LOG_ERROR << "file metadata insert: " << e.base().what();
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            },
+            me, bucket, objectKey, orig, mime, static_cast<long long>(0));
+    });
+}
+
+// ── GET /files/{id}/download ───────────────────────────────────────────────
+// Returns a presigned URL redirect to MinIO.
+
+void FilesController::downloadFile(const drogon::HttpRequestPtr& req,
+                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                    long long fileId) {
+    const auto& cfg = Config::get();
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT bucket, object_key, filename, mime_type FROM files WHERE id = $1",
+        [cb = std::move(cb), &cfg](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("File not found", drogon::k404NotFound));
+
+            std::string bucket    = r[0]["bucket"].as<std::string>();
+            std::string objectKey = r[0]["object_key"].as<std::string>();
+
+            std::string presignedUrl = generatePresignedUrl(
+                "http://" + cfg.minioEndpoint,
+                bucket, objectKey,
+                cfg.minioAccessKey, cfg.minioSecretKey,
+                3600);
+
+            auto resp = drogon::HttpResponse::newRedirectionResponse(presignedUrl);
+            cb(resp);
+        },
+        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "downloadFile: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, fileId);
+}

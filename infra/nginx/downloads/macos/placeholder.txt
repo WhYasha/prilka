@@ -1,0 +1,4 @@
+macOS installer not yet available.
+Upload Messenger.dmg to this directory to make it downloadable.
+
+scp Messenger.dmg deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/macos/

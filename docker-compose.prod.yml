@@ -1,0 +1,83 @@
+# ============================================================
+# Messenger – Docker Compose PRODUCTION override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ============================================================
+# All secrets must live in /opt/messenger/env/.env (chmod 600).
+# This file is safe to commit – it contains no secrets.
+# ============================================================
+
+networks:
+  messenger_net:
+    driver: bridge
+
+services:
+
+  # ── Close dev ports; traffic enters only through nginx ──────────────────────
+  postgres:
+    ports: []                     # not exposed externally
+
+  redis:
+    ports: []
+
+  minio:
+    ports: []                     # nginx proxies /minio-console -> :9001
+
+  api_cpp:
+    ports: []
+    restart: always
+    environment:
+      API_THREADS: "0"            # auto = nproc
+
+  api_legacy:
+    ports: []
+    restart: always
+
+  prometheus:
+    ports: []
+    restart: always
+
+  grafana:
+    ports: []
+    restart: always
+    environment:
+      GF_SERVER_ROOT_URL: "http://%(domain)s/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+
+  # ── cAdvisor – enabled on Linux hosts ────────────────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: always
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks:
+      - messenger_net
+    command:
+      - "--housekeeping_interval=15s"
+      - "--docker_only=true"
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    ports:
+      - "80:80"
+      # TODO: add 443:443 and mount TLS certs when a domain is available
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/downloads:/usr/share/nginx/html/downloads:ro
+    networks:
+      - messenger_net
+    depends_on:
+      - api_cpp
+      - api_legacy
+      - grafana
+      - minio
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

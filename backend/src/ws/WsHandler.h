@@ -1,0 +1,58 @@
+#pragma once
+#include <drogon/WebSocketController.h>
+#include <drogon/PubSubService.h>
+#include <unordered_map>
+#include <mutex>
+#include <string>
+
+/// WebSocket endpoint: /ws
+/// Protocol:
+///   Client → Server:
+///     { "type": "auth",      "token": "<access-jwt>" }
+///     { "type": "subscribe", "chat_id": 42 }
+///     { "type": "ping" }
+///
+///   Server → Client:
+///     { "type": "pong" }
+///     { "type": "error", "message": "..." }
+///     { "type": "message", "chat_id": 42, "sender_id": 7, "content": "hi", "id": 99, "created_at": "..." }
+///     { "type": "presence", "user_id": 7, "status": "online" }
+///
+/// Fan-out uses Redis Pub/Sub channel "chat:<chat_id>"
+class WsHandler : public drogon::WebSocketController<WsHandler> {
+public:
+    WS_PATH_LIST_BEGIN
+    WS_PATH_ADD("/ws");
+    WS_PATH_LIST_END
+
+    void handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
+                          std::string&&                         message,
+                          const drogon::WebSocketMessageType&   type) override;
+
+    void handleNewConnection(const drogon::HttpRequestPtr&       req,
+                             const drogon::WebSocketConnectionPtr& conn) override;
+
+    void handleConnectionClosed(const drogon::WebSocketConnectionPtr& conn) override;
+
+private:
+    // Per-connection state stored in conn->getContext()
+    struct ConnCtx {
+        long long userId   = 0;
+        bool      authed   = false;
+        std::vector<long long> subscriptions;
+    };
+
+    // Push a JSON message to all connections subscribed to a chat (local fan-out).
+    // Redis subscriber fan-out happens via subscribeToRedis().
+    static void broadcast(long long chatId, const Json::Value& payload);
+
+    // Subscribe this process to Redis channel "chat:<chatId>" if not already done.
+    void subscribeToRedis(long long chatId);
+
+    // Map: chatId → list of local connections subscribed
+    static std::mutex                                              s_mu;
+    static std::unordered_map<long long,
+           std::vector<drogon::WebSocketConnectionPtr>>           s_subs;
+    // Set of Redis channels already subscribed
+    static std::unordered_map<long long, bool>                    s_redisSubs;
+};

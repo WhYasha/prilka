@@ -1,0 +1,90 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "linux-release",
+      "displayName": "Linux Release (GCC)",
+      "description": "Build for Linux with GCC in Release mode",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER":   "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug (GCC)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER":   "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows (MSVC)",
+      "description": "Build for Windows with MSVC — requires vcpkg toolchain",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build/windows-msvc",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":  "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "macos-clang",
+      "displayName": "macOS (Clang)",
+      "description": "Build for macOS with Clang — requires brew-installed deps",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/macos-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":   "Release",
+        "CMAKE_C_COMPILER":   "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_PREFIX_PATH":  "/opt/homebrew",
+        "BUILD_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "jobs": 4
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug"
+    },
+    {
+      "name": "windows-msvc",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release"
+    },
+    {
+      "name": "macos-clang",
+      "configurePreset": "macos-clang",
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

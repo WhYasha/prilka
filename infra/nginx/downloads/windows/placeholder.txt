@@ -1,0 +1,4 @@
+Windows installer not yet available.
+Upload MessengerSetup.exe to this directory to make it downloadable.
+
+scp MessengerSetup.exe deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/windows/
