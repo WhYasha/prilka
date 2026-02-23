@@ -15,7 +15,7 @@ ALTER TABLE chats
 CREATE TABLE invites (
     id          BIGSERIAL    PRIMARY KEY,
     chat_id     BIGINT       NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    token       UUID         NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    token       TEXT         NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
     created_by  BIGINT       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     revoked_at  TIMESTAMPTZ

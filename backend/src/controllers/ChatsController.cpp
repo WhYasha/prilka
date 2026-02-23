@@ -129,7 +129,7 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
         "FROM chats c "
         "JOIN chat_members cm ON cm.chat_id = c.id "
         "WHERE c.id = $1 AND cm.user_id = $2",
-        [cb, chatId](const drogon::orm::Result& r) mutable {
+        [cb, chatId, me](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
             const auto row = r[0];
             Json::Value chat;
@@ -148,7 +148,7 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
                 "SELECT u.id, u.username, u.display_name, cm.role "
                 "FROM chat_members cm JOIN users u ON u.id = cm.user_id "
                 "WHERE cm.chat_id = $1",
-                [cb, chat = std::move(chat)](const drogon::orm::Result& mr) mutable {
+                [cb, chat = std::move(chat), me](const drogon::orm::Result& mr) mutable {
                     Json::Value members(Json::arrayValue);
                     for (auto& m : mr) {
                         Json::Value mem;
@@ -157,8 +157,13 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
                         mem["display_name"] = m["display_name"].as<std::string>();
                         mem["role"]         = m["role"].as<std::string>();
                         members.append(mem);
+                        // Set my_role for the requesting user
+                        if (m["id"].as<long long>() == me) {
+                            chat["my_role"] = m["role"].as<std::string>();
+                        }
                     }
                     chat["members"] = members;
+                    if (chat["my_role"].isNull()) chat["my_role"] = "member";
                     cb(drogon::HttpResponse::newHttpJsonResponse(chat));
                 },
                 [cb](const drogon::orm::DrogonDbException& e) mutable {

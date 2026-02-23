@@ -188,6 +188,11 @@
           <input class="form-input" id="channelNameInput" type="text" maxlength="64" placeholder="My Channel" />
         </div>
         <div class="form-group">
+          <label class="form-label">Public link name (optional)</label>
+          <input class="form-input" id="channelPublicNameInput" type="text" maxlength="64" placeholder="my-channel" pattern="[a-zA-Z0-9_-]+" />
+          <small class="form-hint">Letters, numbers, hyphens, underscores. Used for /c/your-name links.</small>
+        </div>
+        <div class="form-group">
           <label class="form-label">Description (optional)</label>
           <textarea class="form-input" id="channelDescInput" maxlength="200" rows="2" placeholder="What is this channel about?"></textarea>
         </div>

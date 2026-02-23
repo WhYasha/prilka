@@ -94,6 +94,7 @@ const createGroupBtn      = document.getElementById("createGroupBtn");
 const newChatChannelForm  = document.getElementById("newChatChannelForm");
 const newChatChannelBack  = document.getElementById("newChatChannelBack");
 const channelNameInput    = document.getElementById("channelNameInput");
+const channelPublicNameInput = document.getElementById("channelPublicNameInput");
 const channelDescInput    = document.getElementById("channelDescInput");
 const createChannelBtn    = document.getElementById("createChannelBtn");
 
@@ -280,8 +281,27 @@ openProfileBtn.addEventListener("click", () => {
 // ── Chats ────────────────────────────────────────────────────────────────────
 async function refreshChats() {
   try {
-    const res = await apiFetch("/web-api/chats");
-    S.chats = await res.json();
+    // Fetch direct chats from Flask (SQLite) and channels/groups from C++ API (PostgreSQL)
+    const [flaskRes, cppRes] = await Promise.allSettled([
+      apiFetch("/web-api/chats"),
+      cppApiFetch("/chats"),
+    ]);
+
+    let flaskChats = [];
+    if (flaskRes.status === "fulfilled" && flaskRes.value.ok) {
+      flaskChats = await flaskRes.value.json();
+    }
+
+    let cppChats = [];
+    if (cppRes.status === "fulfilled" && cppRes.value.ok) {
+      cppChats = await cppRes.value.json();
+    }
+
+    // Flask provides direct chats; C++ provides channels/groups.
+    // Merge: use Flask for direct, C++ for channel/group to avoid duplicates.
+    const directChats = flaskChats.filter(c => !c.type || c.type === "direct");
+    const cppNonDirect = cppChats.filter(c => c.type === "channel" || c.type === "group");
+    S.chats = [...directChats, ...cppNonDirect];
     renderChatList();
   } catch (e) { console.error("Failed to load chats", e); }
 }
@@ -883,6 +903,7 @@ async function createGroupChat() {
 function openChannelChatForm() {
   showNewChatStep(newChatChannelForm);
   channelNameInput.value = "";
+  channelPublicNameInput.value = "";
   channelDescInput.value = "";
 }
 
@@ -900,6 +921,7 @@ async function createChannel() {
         type: "channel",
         title: title,
         description: channelDescInput.value.trim(),
+        public_name: channelPublicNameInput.value.trim() || undefined,
         member_ids: [],
       }),
     });

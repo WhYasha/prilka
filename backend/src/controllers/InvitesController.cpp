@@ -48,7 +48,7 @@ void InvitesController::createInvite(const drogon::HttpRequestPtr& req,
                     resp["chat_id"]    = Json::Int64(row["chat_id"].as<long long>());
                     resp["created_by"] = Json::Int64(row["created_by"].as<long long>());
                     resp["created_at"] = row["created_at"].as<std::string>();
-                    resp["link"]       = "/invite/" + token;
+                    resp["link"]       = "/join/" + token;
 
                     auto httpResp = drogon::HttpResponse::newHttpJsonResponse(resp);
                     httpResp->setStatusCode(drogon::k201Created);
@@ -97,7 +97,7 @@ void InvitesController::listInvites(const drogon::HttpRequestPtr& req,
                         inv["chat_id"]    = Json::Int64(row["chat_id"].as<long long>());
                         inv["created_by"] = Json::Int64(row["created_by"].as<long long>());
                         inv["created_at"] = row["created_at"].as<std::string>();
-                        inv["link"]       = "/invite/" + token;
+                        inv["link"]       = "/join/" + token;
                         arr.append(inv);
                     }
                     cb(drogon::HttpResponse::newHttpJsonResponse(arr));
