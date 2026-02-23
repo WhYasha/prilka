@@ -503,7 +503,33 @@ body:has(.layout) { overflow: hidden; }
 
 /* ── Desktop (>768px) ───────────────────────────────────────── */
 @media (min-width: 769px) {
-  .empty-chat, .chat-view { display: flex !important; }
   .chat-panel { position: relative; transform: none !important; }
   .sidebar { display: flex !important; }
+}
+
+/* Keep scrolling, but remove scrollbar buttons/arrows (WebKit/Blink) */
+.composer-input {
+  overflow-y: auto;              /* keep scroll */
+  scrollbar-width: thin;         /* Firefox */
+}
+
+/* Chrome/Edge/WebView2 */
+.composer-input::-webkit-scrollbar {
+  width: 6px;                    /* thin scrollbar */
+}
+
+.composer-input::-webkit-scrollbar-button {
+  display: none;                 /* removes the arrow buttons */
+  width: 0;
+  height: 0;
+}
+
+.composer-input::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Extra: some WebView variants */
+.composer-input::-webkit-scrollbar-track-piece:start,
+.composer-input::-webkit-scrollbar-track-piece:end {
+  background: transparent;
 }

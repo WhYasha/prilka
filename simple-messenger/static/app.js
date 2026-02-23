@@ -161,6 +161,7 @@ async function bootstrap() {
   await refreshChats();
   startPolling();
   handleHashRouting();
+  if (!S.activeChatId) setChatUIState(false);
 }
 
 function applyTheme(theme) {
@@ -185,7 +186,7 @@ function handleHashRouting() {
   }
 }
 
-window.addEventListener("popstate", handleHashRouting);
+window.addEventListener("hashchange", handleHashRouting);
 
 // ── Drawer ───────────────────────────────────────────────────────────────────
 function openDrawer() {
@@ -275,8 +276,7 @@ function openChat(chatId) {
   chatHeaderSub.textContent  = "@" + chat.other_username;
 
   // Show chat view
-  emptyChat.classList.add("hidden");
-  chatView.classList.remove("hidden");
+  setChatUIState(true);
   msgList.innerHTML = "";
   msgsLoading.classList.remove("hidden");
   msgList.appendChild(msgsLoading);
@@ -308,7 +308,11 @@ function closeChat() {
   layout.classList.remove("chat-open");
   window.history.pushState(null, "", window.location.pathname);
   S.activeChatId = null;
+  S.lastMsgId = 0;
   stopMsgPolling();
+
+  // <-- вот этого не хватало:
+  setChatUIState(false);
 }
 
 backBtn.addEventListener("click", closeChat);
@@ -649,6 +653,19 @@ function renderUserPickList(users) {
     });
     userList.appendChild(div);
   });
+}
+
+function setChatUIState(hasActiveChat) {
+  if (hasActiveChat) {
+    emptyChat.classList.add("hidden");
+    chatView.classList.remove("hidden");
+  } else {
+    emptyChat.classList.remove("hidden");
+    chatView.classList.add("hidden");
+    // важное: никакого лоадинга и старых сообщений в "пустом" режиме
+    msgsLoading.classList.add("hidden");
+    msgList.innerHTML = "";
+  }
 }
 
 // ── Profile & Settings modal ──────────────────────────────────────────────────
