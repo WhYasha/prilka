@@ -1,3 +1,4 @@
 flask>=3.0
 werkzeug>=3.0
 minio>=7.2
+requests>=2.31

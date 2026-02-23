@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker run:*)",
+      "Bash(tail:*)",
+      "Bash(sleep 3:*)",
+      "Bash(grep:*)",
+      "Bash(ssh-add:*)",
+      "Bash(ssh:*)",
+      "Bash(cd:*)"
+    ]
+  }
+}

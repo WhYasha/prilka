@@ -6,6 +6,7 @@ Run:  python app.py
 
 import os
 import uuid
+import requests as http_requests
 from flask import (
     Flask, request, session, jsonify,
     render_template, redirect, url_for, send_from_directory, abort
@@ -23,6 +24,8 @@ app.secret_key = os.environ.get(
     "SECRET_KEY",
     "change-me-in-production-use-a-long-random-string"
 )
+
+CPP_API_URL = os.environ.get("CPP_API_URL", "http://localhost:8080")
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 AVATAR_FOLDER = os.path.join(UPLOAD_FOLDER, "avatars")
@@ -71,6 +74,34 @@ def avatar_url_for(user_id, avatar_path):
     which Flask serves at /api/users/<id>/avatar.
     """
     return f"/web-api/users/{user_id}/avatar" if avatar_path else None
+
+
+def _cpp_auth_bridge(username, password):
+    """Authenticate with C++ backend; auto-register if user doesn't exist.
+
+    Returns the access_token string on success, or None on failure.
+    """
+    payload = {"username": username, "password": password}
+    try:
+        resp = http_requests.post(
+            f"{CPP_API_URL}/auth/login", json=payload, timeout=5
+        )
+        if resp.status_code == 200:
+            return resp.json().get("access_token")
+        if resp.status_code == 401:
+            # User not yet registered in C++ backend – auto-register then retry
+            reg = http_requests.post(
+                f"{CPP_API_URL}/auth/register", json=payload, timeout=5
+            )
+            if reg.status_code in (200, 201):
+                retry = http_requests.post(
+                    f"{CPP_API_URL}/auth/login", json=payload, timeout=5
+                )
+                if retry.status_code == 200:
+                    return retry.json().get("access_token")
+    except http_requests.RequestException:
+        pass
+    return None
 
 
 def get_or_create_conversation(conn, uid, other_id):
@@ -123,7 +154,56 @@ def register_page():
 def messenger_app():
     if not current_user_id():
         return redirect(url_for("login_page"))
-    return render_template("app.html")
+    return render_template("app.html", cpp_api_url=CPP_API_URL)
+
+
+# ---------------------------------------------------------------------------
+# Deep link routes
+# ---------------------------------------------------------------------------
+@app.route("/@<username>")
+def deeplink_profile(username):
+    return render_template(
+        "app.html", deeplink=f"profile:{username}", cpp_api_url=CPP_API_URL
+    )
+
+
+@app.route("/u/<int:user_id>")
+def deeplink_profile_id(user_id):
+    return render_template(
+        "app.html", deeplink=f"profile-id:{user_id}", cpp_api_url=CPP_API_URL
+    )
+
+
+@app.route("/dm/<int:user_id>")
+def deeplink_dm_id(user_id):
+    if not current_user_id():
+        return redirect(url_for("login_page", next=request.url))
+    return render_template(
+        "app.html", deeplink=f"dm:{user_id}", cpp_api_url=CPP_API_URL
+    )
+
+
+@app.route("/dm/@<username>")
+def deeplink_dm_username(username):
+    if not current_user_id():
+        return redirect(url_for("login_page", next=request.url))
+    return render_template(
+        "app.html", deeplink=f"dm:@{username}", cpp_api_url=CPP_API_URL
+    )
+
+
+@app.route("/join/<token>")
+def deeplink_join(token):
+    return render_template(
+        "app.html", deeplink=f"join:{token}", cpp_api_url=CPP_API_URL
+    )
+
+
+@app.route("/c/<public_name>")
+def deeplink_channel(public_name):
+    return render_template(
+        "app.html", deeplink=f"channel:{public_name}", cpp_api_url=CPP_API_URL
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -209,10 +289,18 @@ def api_register():
     except Exception:
         return jsonify({"error": "Username already taken."}), 409
 
+    cpp_token = _cpp_auth_bridge(username, password)
+
     session.clear()
     session["user_id"] = user_id
     session["username"] = username
-    return jsonify({"id": user_id, "username": username}), 201
+    if cpp_token:
+        session["cpp_token"] = cpp_token
+    return jsonify({
+        "id": user_id,
+        "username": username,
+        "cpp_token": cpp_token,
+    }), 201
 
 
 @app.route("/api/login", methods=["POST"])
@@ -233,10 +321,26 @@ def api_login():
     if not row or not check_password_hash(row["password_hash"], password):
         return jsonify({"error": "Invalid credentials."}), 401
 
+    cpp_token = _cpp_auth_bridge(username, password)
+
     session.clear()
     session["user_id"] = row["id"]
     session["username"] = row["username"]
-    return jsonify({"id": row["id"], "username": row["username"]})
+    if cpp_token:
+        session["cpp_token"] = cpp_token
+    return jsonify({
+        "id": row["id"],
+        "username": row["username"],
+        "cpp_token": cpp_token,
+    })
+
+
+@app.route("/web-api/token")
+def web_api_token():
+    uid, err = require_auth()
+    if err:
+        return err
+    return jsonify({"cpp_token": session.get("cpp_token")})
 
 
 @app.route("/api/logout", methods=["POST"])

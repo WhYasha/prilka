@@ -21,6 +21,7 @@
 #include "controllers/ChatsController.h"
 #include "controllers/MessagesController.h"
 #include "controllers/FilesController.h"
+#include "controllers/InvitesController.h"
 #include "filters/AuthFilter.h"
 #include "ws/WsHandler.h"
 #include <trantor/utils/Logger.h>
@@ -162,6 +163,30 @@ int main(int argc, char* argv[]) {
             MetricsService::instance().observeLatency(req->getMethodString(), normPath, elapsed);
         }
     );
+
+    // ── CORS support for SPA cross-origin requests ─────────────────────────
+    drogon::app().registerPostHandlingAdvice(
+        [](const drogon::HttpRequestPtr& req,
+           const drogon::HttpResponsePtr& resp) {
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            resp->addHeader("Access-Control-Allow-Methods",
+                            "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Headers",
+                            "Content-Type, Authorization, X-Requested-With");
+            resp->addHeader("Access-Control-Max-Age", "86400");
+        }
+    );
+
+    // Handle OPTIONS preflight requests with 204
+    drogon::app().registerHandlerViaRegex(
+        ".*",
+        [](const drogon::HttpRequestPtr& req,
+           std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k204NoContent);
+            cb(resp);
+        },
+        {drogon::Options});
 
     // ── Server configuration ──────────────────────────────────────────────────
     drogon::app()

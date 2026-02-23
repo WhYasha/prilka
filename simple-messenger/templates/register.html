@@ -62,6 +62,7 @@
       const data = await res.json();
 
       if (res.ok) {
+        if (data.cpp_token) localStorage.setItem("cpp_token", data.cpp_token);
         window.location.href = "/app";
       } else {
         errorEl.textContent = data.error || "Registration failed.";
