@@ -21,6 +21,7 @@
 #include "controllers/ChatsController.h"
 #include "controllers/MessagesController.h"
 #include "controllers/FilesController.h"
+#include "controllers/InvitesController.h"
 #include "filters/AuthFilter.h"
 #include "ws/WsHandler.h"
 #include <trantor/utils/Logger.h>
