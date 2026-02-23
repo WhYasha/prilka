@@ -106,6 +106,7 @@ body:has(.layout) { overflow: hidden; }
 .btn-outline:hover { background: var(--accent); color: #fff; }
 .btn-ghost    { background: transparent; color: var(--text-muted); border: none; }
 .btn-ghost:hover { background: var(--input-bg); }
+.btn-ghost.btn-danger { background: transparent; color: var(--danger); }
 .btn-sm       { padding: .35rem .85rem; font-size: .85rem; }
 
 /* Icon button */

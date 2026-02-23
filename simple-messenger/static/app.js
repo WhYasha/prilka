@@ -74,6 +74,7 @@ const userProfileCloseBtn = document.getElementById("userProfileCloseBtn");
 const userProfileAvatar   = document.getElementById("userProfileAvatar");
 const userProfileDisplayName = document.getElementById("userProfileDisplayName");
 const userProfileUsername = document.getElementById("userProfileUsername");
+const userProfileMessageBtn = document.getElementById("userProfileMessageBtn");
 
 const toast           = document.getElementById("toast");
 
@@ -1081,6 +1082,13 @@ chatHeaderName.addEventListener("click", openUserProfile);
 chatHeaderSub.addEventListener("click", openUserProfile);
 userProfileCloseBtn.addEventListener("click", closeUserProfile);
 userProfileModal.addEventListener("click", (e) => { if (e.target === userProfileModal) closeUserProfile(); });
+userProfileMessageBtn.addEventListener("click", () => {
+  const username = userProfileModal.dataset.username;
+  if (username) {
+    closeUserProfile();
+    openDMDeepLink("@" + username);
+  }
+});
 
 // ── Invite actions ────────────────────────────────────────────────────────────
 if (copyInviteLinkBtn) {
@@ -1146,21 +1154,8 @@ async function showUserProfile(username) {
     userProfileDisplayName.textContent = user.display_name || user.username;
     userProfileUsername.textContent = "@" + user.username;
     userProfileModal.classList.remove("hidden");
+    userProfileModal.dataset.username = user.username;
     S.userProfileOpen = true;
-
-    // Add or update "Message" button
-    let msgBtn = userProfileModal.querySelector(".deeplink-message-btn");
-    if (!msgBtn) {
-      msgBtn = document.createElement("button");
-      msgBtn.className = "btn btn-primary deeplink-message-btn";
-      msgBtn.textContent = "Message";
-      const content = userProfileModal.querySelector(".modal-body") || userProfileModal.querySelector(".modal-content");
-      if (content) content.appendChild(msgBtn);
-    }
-    msgBtn.onclick = () => {
-      closeUserProfile();
-      openDMDeepLink("@" + user.username);
-    };
   } catch { showToast("Failed to load user profile"); }
 }
 
@@ -1189,10 +1184,13 @@ async function openDMDeepLink(target) {
         showUserProfile(username);
         return;
       }
-      const res = await cppApiFetch(`/users/by-username/${encodeURIComponent(username)}`);
-      if (!res.ok) { showToast("User not found"); return; }
-      const user = await res.json();
-      userId = user.id;
+      // Resolve username via Flask API to get correct Flask user ID
+      const usersRes = await apiFetch("/web-api/users");
+      if (!usersRes.ok) { showToast("User not found"); return; }
+      const users = await usersRes.json();
+      const flaskUser = users.find(u => u.username === username);
+      if (!flaskUser) { showToast("User not found"); return; }
+      userId = flaskUser.id;
     } else {
       userId = parseInt(target);
       if (S.me && S.me.id === userId) {
