@@ -807,5 +807,21 @@ function stopPolling() {
   stopMsgPolling();
 }
 
+// ── Global ESC key handler ────────────────────────────────────────────────────
+document.addEventListener("keydown", function handleGlobalEsc(e) {
+  if (e.key !== "Escape") return;
+  if (S.recorder && S.recorder.state === "recording") return;
+
+  // Close layers in priority order
+  if (S.userProfileOpen) { closeUserProfile(); return; }
+  if (!stickerPicker.classList.contains("hidden")) { stickerPicker.classList.add("hidden"); return; }
+  if (!newChatModal.classList.contains("hidden")) { newChatModal.classList.add("hidden"); return; }
+  if (!profileModal.classList.contains("hidden")) { profileModal.classList.add("hidden"); return; }
+  const dlOverlay = document.getElementById("downloadOverlay");
+  if (dlOverlay && !dlOverlay.classList.contains("hidden")) { dlOverlay.classList.add("hidden"); return; }
+  if (drawer.classList.contains("open")) { closeDrawer(); return; }
+  if (S.activeChatId !== null) { closeChat(); return; }
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 bootstrap();
