@@ -29,6 +29,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"   # dev only – overridden to [] in docker-compose.prod.yml
     networks:
       - messenger_net
     healthcheck:

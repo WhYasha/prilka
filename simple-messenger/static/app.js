@@ -3,7 +3,7 @@
 
 // ── State ───────────────────────────────────────────────────────────────────
 const S = {
-  me:            null,   // { id, username, display_name, bio, avatar_path }
+  me:            null,   // { id, username, display_name, bio, avatar_url }
   chats:         [],     // array of chat objects from /api/chats
   activeChatId:  null,
   lastMsgId:     0,
@@ -134,9 +134,9 @@ function showToast(msg, duration = 3000) {
   }, duration);
 }
 
-function setAvatar(el, name, path) {
-  if (path) {
-    el.innerHTML = `<img src="/uploads/${escHtml(path)}" alt="${escHtml(name)}" />`;
+function setAvatar(el, name, url) {
+  if (url) {
+    el.innerHTML = `<img src="${escHtml(url)}" alt="${escHtml(name)}" />`;
   } else {
     el.textContent = initial(name);
   }
@@ -177,7 +177,7 @@ function applyTheme(theme) {
 
 function updateDrawerUser() {
   if (!S.me) return;
-  setAvatar(drawerAvatar, S.me.display_name || S.me.username, S.me.avatar_path);
+  setAvatar(drawerAvatar, S.me.display_name || S.me.username, S.me.avatar_url);
   drawerDisplayName.textContent = S.me.display_name || S.me.username;
   drawerUsername.textContent = "@" + S.me.username;
 }
@@ -248,8 +248,8 @@ function renderChatList() {
     div.className = "chat-item" + (c.id === S.activeChatId ? " active" : "");
     div.dataset.cid = c.id;
 
-    const avatarHtml = c.other_avatar_path
-      ? `<div class="avatar avatar-sm"><img src="/uploads/${escHtml(c.other_avatar_path)}" alt="" /></div>`
+    const avatarHtml = c.other_avatar_url
+      ? `<div class="avatar avatar-sm"><img src="${escHtml(c.other_avatar_url)}" alt="" /></div>`
       : `<div class="avatar avatar-sm">${initial(c.other_display_name || c.other_username)}</div>`;
 
     div.innerHTML = `
@@ -278,7 +278,7 @@ function openChat(chatId) {
   if (!chat) return;
 
   // Update header
-  setAvatar(chatHeaderAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_path);
+  setAvatar(chatHeaderAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_url);
   chatHeaderName.textContent = chat.other_display_name || chat.other_username;
   chatHeaderSub.textContent  = "@" + chat.other_username;
 
@@ -386,8 +386,8 @@ function buildBubble(msg) {
 
   let bubbleContent = "";
   if (msg.message_type === "sticker") {
-    const path = msg.sticker_path || "";
-    bubbleContent = `<img class="sticker-img" src="/static/${escHtml(path)}" alt="${escHtml(msg.sticker_label || "sticker")}" />`;
+    const stickerSrc = msg.sticker_url || "";
+    bubbleContent = `<img class="sticker-img" src="${escHtml(stickerSrc)}" alt="${escHtml(msg.sticker_label || "sticker")}" />`;
     row.innerHTML = `
       <div class="msg-bubble sticker-bubble">${bubbleContent}</div>
       <div class="msg-time">${escHtml(formatTime(msg.created_at))}</div>
@@ -499,7 +499,7 @@ function renderStickerGrid() {
     const btn = document.createElement("button");
     btn.className = "sticker-btn";
     btn.title = s.label;
-    btn.innerHTML = `<img src="/static/${escHtml(s.file_path)}" alt="${escHtml(s.label)}" />`;
+    btn.innerHTML = `<img src="${escHtml(s.url || '')}" alt="${escHtml(s.label)}" />`;
     btn.addEventListener("click", () => sendSticker(s.id));
     stickerGrid.appendChild(btn);
   });
@@ -656,8 +656,8 @@ function renderUserPickList(users) {
   users.forEach(u => {
     const div = document.createElement("div");
     div.className = "user-pick-item";
-    const avatarHtml = u.avatar_path
-      ? `<div class="avatar avatar-sm"><img src="/uploads/${escHtml(u.avatar_path)}" alt="" /></div>`
+    const avatarHtml = u.avatar_url
+      ? `<div class="avatar avatar-sm"><img src="${escHtml(u.avatar_url)}" alt="" /></div>`
       : `<div class="avatar avatar-sm">${initial(u.display_name || u.username)}</div>`;
     div.innerHTML = `
       ${avatarHtml}
@@ -711,7 +711,7 @@ async function openProfileModal() {
     const prof = await profRes.json();
     const sett = await settRes.json();
 
-    setAvatar(profileAvatar, prof.display_name || prof.username, prof.avatar_path);
+    setAvatar(profileAvatar, prof.display_name || prof.username, prof.avatar_url);
     profileDisplayName.value = prof.display_name || "";
     profileBio.value         = prof.bio || "";
     profileUsername.value    = prof.username;
@@ -730,8 +730,8 @@ avatarFileInput.addEventListener("change", async () => {
     const res = await apiFetch("/web-api/upload/avatar", { method: "POST", body: fd });
     if (!res.ok) { const d = await res.json(); showToast(d.error || "Upload failed"); return; }
     const data = await res.json();
-    S.me.avatar_path = data.avatar_path;
-    setAvatar(profileAvatar, profileDisplayName.value || S.me.username, data.avatar_path);
+    S.me.avatar_url = data.avatar_url;
+    setAvatar(profileAvatar, profileDisplayName.value || S.me.username, data.avatar_url);
     updateDrawerUser();
     showToast("Avatar updated!");
   } catch { showToast("Upload failed"); }
@@ -772,7 +772,7 @@ saveProfileBtn.addEventListener("click", async () => {
 function openUserProfile() {
   const chat = S.chats.find(c => c.id === S.activeChatId);
   if (!chat) return;
-  setAvatar(userProfileAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_path);
+  setAvatar(userProfileAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_url);
   userProfileDisplayName.textContent = chat.other_display_name || chat.other_username;
   userProfileUsername.textContent = "@" + chat.other_username;
   S.userProfileOpen = true;

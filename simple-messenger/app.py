@@ -64,9 +64,9 @@ def allowed_ext(filename, allowed):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
 
 
-def resolve_avatar(path):
-    """Return a presigned MinIO URL for an avatar object key, or None."""
-    return _storage.get_avatar_url(path) if path else None
+def avatar_url_for(user_id, avatar_path):
+    """Return a stable Flask avatar endpoint URL if user has an avatar, else None."""
+    return f"/api/users/{user_id}/avatar" if avatar_path else None
 
 
 def get_or_create_conversation(conn, uid, other_id):
@@ -137,6 +137,40 @@ def serve_upload(filepath):
     directory = os.path.dirname(full)
     filename  = os.path.basename(full)
     return send_from_directory(directory, filename)
+
+
+# ---------------------------------------------------------------------------
+# API – Stable avatar / sticker-image redirect endpoints
+# These never expire: each request generates a fresh presigned URL on the fly.
+# ---------------------------------------------------------------------------
+@app.route("/api/users/<int:user_id>/avatar")
+def api_user_avatar(user_id):
+    uid, err = require_auth()
+    if err:
+        return err
+    with get_db() as conn:
+        row = conn.execute("SELECT avatar_path FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row or not row["avatar_path"]:
+        abort(404)
+    url = _storage.get_avatar_url(row["avatar_path"])
+    if not url:
+        abort(404)
+    return redirect(url)
+
+
+@app.route("/api/stickers/<int:sticker_id>/image")
+def api_sticker_image(sticker_id):
+    uid, err = require_auth()
+    if err:
+        return err
+    with get_db() as conn:
+        row = conn.execute("SELECT file_path FROM stickers WHERE id=?", (sticker_id,)).fetchone()
+    if not row or not row["file_path"]:
+        abort(404)
+    url = _storage.get_sticker_url(row["file_path"])
+    if not url:
+        abort(404)
+    return redirect(url)
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +260,7 @@ def api_me():
         "username": row["username"],
         "display_name": row["display_name"] or row["username"],
         "bio": row["bio"] or "",
-        "avatar_url": resolve_avatar(row["avatar_path"]),
+        "avatar_url": avatar_url_for(row["id"], row["avatar_path"]),
     })
 
 
@@ -249,7 +283,7 @@ def api_users():
         "id": r["id"],
         "username": r["username"],
         "display_name": r["display_name"] or r["username"],
-        "avatar_url": resolve_avatar(r["avatar_path"]),
+        "avatar_url": avatar_url_for(r["id"], r["avatar_path"]),
     } for r in rows])
 
 
@@ -303,7 +337,7 @@ def api_get_chats():
             "other_id": r["other_id"],
             "other_username": r["other_username"],
             "other_display_name": r["other_display_name"] or r["other_username"],
-            "other_avatar_url": resolve_avatar(r["other_avatar_path"]),
+            "other_avatar_url": avatar_url_for(r["other_id"], r["other_avatar_path"]),
             "last_preview": last_preview,
             "last_at": r["last_at"] or r["updated_at"],
         })
@@ -368,7 +402,7 @@ def api_get_messages():
                    u.username AS from_username,
                    u.display_name AS from_display_name,
                    u.avatar_path AS from_avatar_path,
-                   s.file_path AS sticker_path, s.label AS sticker_label
+                   s.id AS sticker_id, s.label AS sticker_label
             FROM   messages m
             JOIN   users u ON u.id = m.from_user_id
             LEFT JOIN stickers s ON s.id = CAST(m.content AS INTEGER)
@@ -386,12 +420,12 @@ def api_get_messages():
         "from_user_id": r["from_user_id"],
         "from_username": r["from_username"],
         "from_display_name": r["from_display_name"] or r["from_username"],
-        "from_avatar_url": resolve_avatar(r["from_avatar_path"]),
+        "from_avatar_url": avatar_url_for(r["from_user_id"], r["from_avatar_path"]),
         "content": r["content"],
         "message_type": r["message_type"],
         "attachment_path": r["attachment_path"],
         "duration_seconds": r["duration_seconds"],
-        "sticker_url": _storage.get_sticker_url(r["sticker_path"]) if r["sticker_path"] else None,
+        "sticker_url": f"/api/stickers/{r['sticker_id']}/image" if r["sticker_id"] else None,
         "sticker_label": r["sticker_label"],
         "created_at": r["created_at"],
     } for r in rows])
@@ -451,7 +485,7 @@ def api_send_message():
                    m.message_type, m.attachment_path, m.duration_seconds, m.created_at,
                    u.username AS from_username, u.display_name AS from_display_name,
                    u.avatar_path AS from_avatar_path,
-                   s.file_path AS sticker_path, s.label AS sticker_label
+                   s.id AS sticker_id, s.label AS sticker_label
             FROM   messages m
             JOIN   users u ON u.id = m.from_user_id
             LEFT JOIN stickers s ON s.id = CAST(m.content AS INTEGER)
@@ -467,12 +501,12 @@ def api_send_message():
         "from_user_id": row["from_user_id"],
         "from_username": row["from_username"],
         "from_display_name": row["from_display_name"] or row["from_username"],
-        "from_avatar_url": resolve_avatar(row["from_avatar_path"]),
+        "from_avatar_url": avatar_url_for(row["from_user_id"], row["from_avatar_path"]),
         "content": row["content"],
         "message_type": row["message_type"],
         "attachment_path": row["attachment_path"],
         "duration_seconds": row["duration_seconds"],
-        "sticker_url": _storage.get_sticker_url(row["sticker_path"]) if row["sticker_path"] else None,
+        "sticker_url": f"/api/stickers/{row['sticker_id']}/image" if row["sticker_id"] else None,
         "sticker_label": row["sticker_label"],
         "created_at": row["created_at"],
     }), 201
@@ -510,7 +544,7 @@ def api_upload_avatar():
     with get_db() as conn:
         conn.execute("UPDATE users SET avatar_path=? WHERE id=?", (object_key, uid))
 
-    return jsonify({"avatar_path": object_key, "url": resolve_avatar(object_key)})
+    return jsonify({"avatar_url": f"/api/users/{uid}/avatar"})
 
 
 # ---------------------------------------------------------------------------
@@ -585,7 +619,7 @@ def api_upload_voice():
         "from_user_id": row["from_user_id"],
         "from_username": row["from_username"],
         "from_display_name": row["from_display_name"] or row["from_username"],
-        "from_avatar_url": resolve_avatar(row["from_avatar_path"]),
+        "from_avatar_url": avatar_url_for(row["from_user_id"], row["from_avatar_path"]),
         "content": "",
         "message_type": "voice",
         "attachment_path": row["attachment_path"],
@@ -615,7 +649,7 @@ def api_get_profile():
         "username": row["username"],
         "display_name": row["display_name"] or row["username"],
         "bio": row["bio"] or "",
-        "avatar_url": resolve_avatar(row["avatar_path"]),
+        "avatar_url": avatar_url_for(uid, row["avatar_path"]),
     })
 
 
@@ -641,7 +675,7 @@ def api_update_profile():
         "username": row["username"],
         "display_name": row["display_name"] or row["username"],
         "bio": row["bio"] or "",
-        "avatar_url": resolve_avatar(row["avatar_path"]),
+        "avatar_url": avatar_url_for(uid, row["avatar_path"]),
     })
 
 
@@ -706,7 +740,7 @@ def api_stickers():
         "id": r["id"],
         "pack_name": r["pack_name"],
         "label": r["label"],
-        "url": _storage.get_sticker_url(r["file_path"]),
+        "url": f"/api/stickers/{r['id']}/image",
     } for r in rows])
 
 

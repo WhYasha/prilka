@@ -14,7 +14,7 @@ services:
 
   # ── Close dev ports; traffic enters only through nginx ──────────────────────
   postgres:
-    ports: []                     # not exposed externally
+    ports: []                     # not exposed externally (dev port closed in prod)
 
   redis:
     ports: []
