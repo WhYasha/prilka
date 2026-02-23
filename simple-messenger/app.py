@@ -27,6 +27,10 @@ app.secret_key = os.environ.get(
 
 CPP_API_URL = os.environ.get("CPP_API_URL", "http://localhost:8080")
 
+# Register admin panel Blueprint
+from admin_routes import admin_bp
+app.register_blueprint(admin_bp)
+
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
 AVATAR_FOLDER = os.path.join(UPLOAD_FOLDER, "avatars")
 VOICE_FOLDER  = os.path.join(UPLOAD_FOLDER, "voice")
@@ -320,6 +324,17 @@ def api_login():
 
     if not row or not check_password_hash(row["password_hash"], password):
         return jsonify({"error": "Invalid credentials."}), 401
+
+    # Check if user is blocked in PostgreSQL
+    try:
+        from pg import pg_cursor
+        with pg_cursor() as cur:
+            cur.execute("SELECT is_blocked FROM users WHERE username = %s", (username,))
+            pg_row = cur.fetchone()
+            if pg_row and pg_row["is_blocked"]:
+                return jsonify({"error": "Account blocked. Contact support."}), 403
+    except Exception:
+        pass  # If PG is unavailable, allow SQLite-only login
 
     cpp_token = _cpp_auth_bridge(username, password)
 

@@ -1,0 +1,125 @@
+{% extends "admin_base.html" %}
+{% block title %}User: {{ user.username }}{% endblock %}
+
+{% block content %}
+<h1 class="admin-page-title">User: {{ user.username }}</h1>
+
+<!-- Profile card -->
+<div class="admin-detail-card">
+  <h2>Profile</h2>
+  <dl class="detail-grid">
+    <dt>ID</dt>          <dd>{{ user.id }}</dd>
+    <dt>Username</dt>    <dd>{{ user.username }}</dd>
+    <dt>Display Name</dt><dd>{{ user.display_name or '-' }}</dd>
+    <dt>Email</dt>       <dd>{{ user.email or '-' }}</dd>
+    <dt>Bio</dt>         <dd>{{ user.bio or '-' }}</dd>
+    <dt>Status</dt>
+    <dd>
+      {% if user.is_blocked %}<span class="badge badge-blocked">Blocked</span> {% endif %}
+      {% if not user.is_active %}<span class="badge badge-inactive">Inactive</span> {% endif %}
+      {% if user.is_admin %}<span class="badge badge-admin">Admin</span> {% endif %}
+      {% if user.is_active and not user.is_blocked %}<span class="badge badge-active">Active</span>{% endif %}
+    </dd>
+    <dt>Created</dt>     <dd>{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if user.created_at else '-' }}</dd>
+    <dt>Last Active</dt> <dd>{{ user.last_activity.strftime('%Y-%m-%d %H:%M:%S UTC') if user.last_activity else 'Never' }}</dd>
+    <dt>Updated</dt>     <dd>{{ user.updated_at.strftime('%Y-%m-%d %H:%M:%S UTC') if user.updated_at else '-' }}</dd>
+    <dt>Messages Sent</dt><dd>{{ message_count }}</dd>
+    <dt>Chats</dt>       <dd>{{ chats | length }}</dd>
+  </dl>
+</div>
+
+<!-- Actions -->
+<div class="admin-actions">
+  {% if user.is_blocked %}
+  <form method="POST" action="{{ url_for('admin.unblock_user', user_id=user.id) }}">
+    <button class="btn btn-success btn-sm">Unblock</button>
+  </form>
+  {% else %}
+  <form method="POST" action="{{ url_for('admin.block_user', user_id=user.id) }}"
+        onsubmit="return confirm('Block user {{ user.username }}?')">
+    <button class="btn btn-danger btn-sm">Block</button>
+  </form>
+  {% endif %}
+
+  {% if user.is_active %}
+  <form method="POST" action="{{ url_for('admin.soft_delete_user', user_id=user.id) }}"
+        onsubmit="return confirm('Soft-delete user {{ user.username }}? This will deactivate and block the account.')">
+    <button class="btn btn-danger btn-sm">Soft Delete</button>
+  </form>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('admin.toggle_admin', user_id=user.id) }}"
+        onsubmit="return confirm('Toggle admin status for {{ user.username }}?')">
+    <button class="btn btn-warning btn-sm">
+      {% if user.is_admin %}Remove Admin{% else %}Make Admin{% endif %}
+    </button>
+  </form>
+
+  <a href="{{ url_for('admin.message_list', user_id=user.id) }}" class="btn btn-muted btn-sm">View Messages</a>
+</div>
+
+<!-- Quick support message -->
+<div class="admin-support-form">
+  <h2>Send Support Message to {{ user.username }}</h2>
+  <form method="POST" action="{{ url_for('admin.support_send') }}">
+    <input type="hidden" name="target_user_id" value="{{ user.id }}" />
+    <label for="content">Message</label>
+    <textarea id="content" name="content" placeholder="Type support message..." required></textarea>
+    <br />
+    <button type="submit" class="btn btn-primary btn-sm">Send as BH Support</button>
+  </form>
+</div>
+
+<!-- User's chats -->
+{% if chats %}
+<h2 class="section-title">Chats ({{ chats | length }})</h2>
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr><th>Chat ID</th><th>Type</th><th>Name</th><th>Role</th><th>Members</th><th>Joined</th></tr>
+    </thead>
+    <tbody>
+      {% for c in chats %}
+      <tr>
+        <td><a href="{{ url_for('admin.message_list', chat_id=c.id) }}">{{ c.id }}</a></td>
+        <td><span class="badge badge-{{ c.type }}">{{ c.type }}</span></td>
+        <td>{{ c.name or c.title or 'DM' }}</td>
+        <td>{{ c.role }}</td>
+        <td>{{ c.member_count }}</td>
+        <td>{{ c.joined_at.strftime('%Y-%m-%d') if c.joined_at else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Recent messages -->
+{% if messages %}
+<h2 class="section-title">Recent Messages (last 50)</h2>
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr><th>ID</th><th>Chat</th><th>Type</th><th>Content</th><th>Sent</th></tr>
+    </thead>
+    <tbody>
+      {% for m in messages %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td>
+          <a href="{{ url_for('admin.message_list', chat_id=m.chat_id) }}">
+            {{ m.chat_name or 'Chat #' ~ m.chat_id }}
+          </a>
+          <span class="badge badge-{{ m.chat_type }}">{{ m.chat_type }}</span>
+        </td>
+        <td>{{ m.message_type }}</td>
+        <td class="msg-content">{{ (m.content or '')[:120] }}</td>
+        <td>{{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

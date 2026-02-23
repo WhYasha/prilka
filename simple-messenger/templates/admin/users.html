@@ -1,0 +1,80 @@
+{% extends "admin_base.html" %}
+{% block title %}Users{% endblock %}
+
+{% block content %}
+<h1 class="admin-page-title">Users ({{ total }})</h1>
+
+<form class="admin-filter-bar" method="GET" action="{{ url_for('admin.user_list') }}">
+  <input type="text" name="q" value="{{ search }}" placeholder="Search username..." />
+  <select name="status">
+    <option value="" {% if not filter_status %}selected{% endif %}>All</option>
+    <option value="active" {% if filter_status == 'active' %}selected{% endif %}>Active</option>
+    <option value="blocked" {% if filter_status == 'blocked' %}selected{% endif %}>Blocked</option>
+    <option value="admin" {% if filter_status == 'admin' %}selected{% endif %}>Admins</option>
+    <option value="inactive" {% if filter_status == 'inactive' %}selected{% endif %}>Inactive</option>
+  </select>
+  <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+  {% if search or filter_status %}
+  <a href="{{ url_for('admin.user_list') }}" class="btn btn-muted btn-sm">Clear</a>
+  {% endif %}
+</form>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Display Name</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Last Active</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.id }}</td>
+        <td><a href="{{ url_for('admin.user_detail', user_id=u.id) }}">{{ u.username }}</a></td>
+        <td>{{ u.display_name or '-' }}</td>
+        <td>
+          {% if u.is_blocked %}<span class="badge badge-blocked">Blocked</span>{% endif %}
+          {% if not u.is_active %}<span class="badge badge-inactive">Inactive</span>{% endif %}
+          {% if u.is_admin %}<span class="badge badge-admin">Admin</span>{% endif %}
+          {% if u.is_active and not u.is_blocked and not u.is_admin %}<span class="badge badge-active">Active</span>{% endif %}
+        </td>
+        <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+        <td>{{ u.last_activity.strftime('%Y-%m-%d %H:%M') if u.last_activity else 'Never' }}</td>
+        <td><a href="{{ url_for('admin.user_detail', user_id=u.id) }}">View</a></td>
+      </tr>
+      {% endfor %}
+      {% if not users %}
+      <tr><td colspan="7" style="text-align:center; color: var(--admin-text-light); padding: 20px;">No users found.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="admin-pagination">
+  {% if page > 1 %}
+  <a href="{{ url_for('admin.user_list', page=page-1, q=search, status=filter_status) }}">Prev</a>
+  {% endif %}
+  {% for p in range(1, total_pages + 1) %}
+    {% if p == page %}
+    <span class="current">{{ p }}</span>
+    {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+    <a href="{{ url_for('admin.user_list', page=p, q=search, status=filter_status) }}">{{ p }}</a>
+    {% elif p == 4 or p == total_pages - 3 %}
+    <span>...</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="{{ url_for('admin.user_list', page=page+1, q=search, status=filter_status) }}">Next</a>
+  {% endif %}
+  <span class="info">Page {{ page }} of {{ total_pages }}</span>
+</div>
+{% endif %}
+
+{% endblock %}

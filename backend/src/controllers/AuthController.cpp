@@ -1,6 +1,7 @@
 #include "AuthController.h"
 #include "../services/JwtService.h"
 #include "../config/Config.h"
+#include "../utils/MinioPresign.h"
 #include <drogon/orm/DbClient.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -129,13 +130,17 @@ void AuthController::loginUser(const drogon::HttpRequestPtr& req,
 
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT id, password_hash FROM users WHERE username = $1 AND is_active = TRUE",
+        "SELECT id, password_hash, is_blocked FROM users WHERE username = $1 AND is_active = TRUE",
         [cbSh, password](const drogon::orm::Result& r) mutable {
             auto& cb = *cbSh;
             if (r.empty()) return cb(err("Invalid credentials", drogon::k401Unauthorized));
 
             long long uid  = r[0]["id"].as<long long>();
             std::string stored = r[0]["password_hash"].as<std::string>();
+            bool isBlocked = r[0]["is_blocked"].as<bool>();
+
+            if (isBlocked)
+                return cb(err("Account blocked. Contact support.", drogon::k403Forbidden));
 
             if (!verifyPassword(password, stored))
                 return cb(err("Invalid credentials", drogon::k401Unauthorized));
@@ -166,6 +171,13 @@ void AuthController::loginUser(const drogon::HttpRequestPtr& req,
                 [](const drogon::orm::DrogonDbException& e) {
                     LOG_WARN << "refresh token persist error: " << e.base().what();
                 }, uid, tokenHash);
+
+            // Update last_activity for admin dashboard metrics
+            db2->execSqlAsync(
+                "UPDATE users SET last_activity = NOW() WHERE id = $1",
+                [](const drogon::orm::Result&) {},
+                [](const drogon::orm::DrogonDbException&) {},
+                uid);
 
             Json::Value resp;
             resp["access_token"]  = accessToken;
@@ -213,17 +225,34 @@ void AuthController::getMe(const drogon::HttpRequestPtr& req,
 
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT id, username, email, display_name, bio, created_at "
-        "FROM users WHERE id = $1",
+        "SELECT u.id, u.username, u.email, u.display_name, u.bio, u.created_at, "
+        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
+        "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "WHERE u.id = $1",
         [cb](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(err("User not found", drogon::k404NotFound));
             Json::Value resp;
             resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
             resp["username"]     = r[0]["username"].as<std::string>();
             resp["email"]        = r[0]["email"].as<std::string>();
-            resp["display_name"] = r[0]["display_name"].as<std::string>();
+            resp["display_name"] = r[0]["display_name"].isNull()
+                                       ? Json::Value(r[0]["username"].as<std::string>())
+                                       : Json::Value(r[0]["display_name"].as<std::string>());
             resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
             resp["created_at"]   = r[0]["created_at"].as<std::string>();
+
+            std::string avBucket = r[0]["avatar_bucket"].isNull() ? "" : r[0]["avatar_bucket"].as<std::string>();
+            std::string avKey    = r[0]["avatar_key"].isNull()    ? "" : r[0]["avatar_key"].as<std::string>();
+            if (!avKey.empty()) {
+                const auto& cfg = Config::get();
+                std::string url = minio_presign::generatePresignedUrl(
+                    cfg.minioEndpoint, cfg.minioPublicUrl,
+                    avBucket, avKey,
+                    cfg.minioAccessKey, cfg.minioSecretKey, cfg.presignTtl);
+                resp["avatar_url"] = url;
+            } else {
+                resp["avatar_url"] = Json::Value();
+            }
             cb(jsonResp(resp, drogon::k200OK));
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {

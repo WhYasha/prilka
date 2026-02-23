@@ -131,6 +131,15 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
         }
         ctx->userId = claims->userId;
         ctx->authed = true;
+
+        // Update last_activity for admin dashboard metrics
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "UPDATE users SET last_activity = NOW() WHERE id = $1",
+            [](const drogon::orm::Result&) {},
+            [](const drogon::orm::DrogonDbException&) {},
+            ctx->userId);
+
         Json::Value ok;
         ok["type"]    = "auth_ok";
         ok["user_id"] = Json::Int64(ctx->userId);

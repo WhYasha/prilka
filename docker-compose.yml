@@ -207,6 +207,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       flyway:
         condition: service_completed_successfully
       minio_init:
@@ -221,6 +223,10 @@ services:
       MINIO_STICKERS_BUCKET:  ${MINIO_STICKERS_BUCKET:-bh-stickers}
       MINIO_PRESIGN_TTL:      ${MINIO_PRESIGN_TTL:-900}
       MINIO_PUBLIC_URL:       ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      REDIS_HOST:             redis
+      REDIS_PORT:             6379
+      REDIS_PASSWORD:         ${REDIS_PASSWORD:-changeme_redis}
+      CPP_API_URL:            "http://api_cpp:8080"
       DB_PATH:                /app/data/messenger.db
     volumes:
       - flask_data:/app/data

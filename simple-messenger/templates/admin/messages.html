@@ -1,0 +1,77 @@
+{% extends "admin_base.html" %}
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<h1 class="admin-page-title">Messages ({{ total }})</h1>
+
+<form class="admin-filter-bar" method="GET" action="{{ url_for('admin.message_list') }}">
+  <input type="text" name="user_id" value="{{ filter_user }}" placeholder="User ID" style="width:100px;" />
+  <input type="text" name="chat_id" value="{{ filter_chat }}" placeholder="Chat ID" style="width:100px;" />
+  <input type="text" name="q" value="{{ filter_text }}" placeholder="Search text..." />
+  <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+  {% if filter_user or filter_chat or filter_text %}
+  <a href="{{ url_for('admin.message_list') }}" class="btn btn-muted btn-sm">Clear</a>
+  {% endif %}
+</form>
+
+<div class="admin-table-wrap">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Chat</th>
+        <th>Sender</th>
+        <th>Type</th>
+        <th>Content</th>
+        <th>Sent</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in messages %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td>
+          <a href="{{ url_for('admin.message_list', chat_id=m.chat_id) }}">
+            {{ m.chat_name or 'Chat #' ~ m.chat_id }}
+          </a>
+          <span class="badge badge-{{ m.chat_type }}">{{ m.chat_type }}</span>
+        </td>
+        <td>
+          <a href="{{ url_for('admin.user_detail', user_id=m.sender_id) }}">
+            {{ m.sender_username }}
+          </a>
+        </td>
+        <td>{{ m.message_type }}</td>
+        <td class="msg-content">{{ (m.content or '')[:120] }}</td>
+        <td style="white-space:nowrap;">{{ m.created_at.strftime('%Y-%m-%d %H:%M:%S') if m.created_at else '-' }}</td>
+      </tr>
+      {% endfor %}
+      {% if not messages %}
+      <tr><td colspan="6" style="text-align:center; color: var(--admin-text-light); padding: 20px;">No messages found.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if total_pages > 1 %}
+<div class="admin-pagination">
+  {% if page > 1 %}
+  <a href="{{ url_for('admin.message_list', page=page-1, user_id=filter_user, chat_id=filter_chat, q=filter_text) }}">Prev</a>
+  {% endif %}
+  {% for p in range(1, total_pages + 1) %}
+    {% if p == page %}
+    <span class="current">{{ p }}</span>
+    {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+    <a href="{{ url_for('admin.message_list', page=p, user_id=filter_user, chat_id=filter_chat, q=filter_text) }}">{{ p }}</a>
+    {% elif p == 4 or p == total_pages - 3 %}
+    <span>...</span>
+    {% endif %}
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="{{ url_for('admin.message_list', page=page+1, user_id=filter_user, chat_id=filter_chat, q=filter_text) }}">Next</a>
+  {% endif %}
+  <span class="info">Page {{ page }} of {{ total_pages }}</span>
+</div>
+{% endif %}
+
+{% endblock %}
