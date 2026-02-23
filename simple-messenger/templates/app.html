@@ -70,7 +70,21 @@
           <div class="chat-header-name" id="chatHeaderName">—</div>
           <div class="chat-header-sub" id="chatHeaderSub">@—</div>
         </div>
+        <!-- Invite management (channel/group owner/admin only) -->
+        <div class="invite-manage hidden" id="inviteManage">
+          <div class="invite-link-wrap">
+            <input class="form-input invite-link-input" id="inviteLinkInput" type="text" readonly />
+            <button class="btn btn-sm btn-outline" id="copyInviteLinkBtn" title="Copy link">&#128203;</button>
+          </div>
+          <button class="btn btn-sm btn-ghost btn-danger" id="revokeInviteLinkBtn">Revoke link</button>
+        </div>
       </header>
+
+      <!-- Channel read-only notice bar -->
+      <div class="channel-readonly-bar hidden" id="channelReadonlyBar">
+        <span class="readonly-icon">&#128274;</span>
+        <span class="readonly-text">Only admins can send messages in this channel.</span>
+      </div>
 
       <div class="msg-list" id="msgList">
         <div class="msgs-loading" id="msgsLoading">Loading…</div>
@@ -113,9 +127,73 @@
       <button class="icon-btn" id="newChatCloseBtn">&#10005;</button>
     </div>
     <div class="modal-body">
-      <input class="search-input" id="userSearchInput" type="search" placeholder="Search users…" />
-      <div class="user-pick-list" id="userList">
-        <div class="empty-state-small">Loading users…</div>
+      <!-- Step 1: Chat type selection -->
+      <div class="new-chat-type-select" id="newChatTypeSelect">
+        <div class="chat-type-cards">
+          <button class="chat-type-card" data-chat-type="direct" id="chatTypeDirect">
+            <span class="chat-type-icon">&#128100;</span>
+            <span class="chat-type-label">Direct Chat</span>
+            <span class="chat-type-desc">Private 1-on-1 conversation</span>
+          </button>
+          <button class="chat-type-card" data-chat-type="group" id="chatTypeGroup">
+            <span class="chat-type-icon">&#128101;</span>
+            <span class="chat-type-label">Group Chat</span>
+            <span class="chat-type-desc">Chat with multiple people</span>
+          </button>
+          <button class="chat-type-card" data-chat-type="channel" id="chatTypeChannel">
+            <span class="chat-type-icon">&#128226;</span>
+            <span class="chat-type-label">Channel</span>
+            <span class="chat-type-desc">Broadcast to subscribers</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2a: Direct chat – user search -->
+      <div class="new-chat-form hidden" id="newChatDirectForm">
+        <button class="btn btn-ghost btn-sm new-chat-back-btn" id="newChatDirectBack">&#8592; Back</button>
+        <input class="search-input" id="userSearchInput" type="search" placeholder="Search users…" />
+        <div class="user-pick-list" id="userList">
+          <div class="empty-state-small">Loading users…</div>
+        </div>
+      </div>
+
+      <!-- Step 2b: Group chat – name + members -->
+      <div class="new-chat-form hidden" id="newChatGroupForm">
+        <button class="btn btn-ghost btn-sm new-chat-back-btn" id="newChatGroupBack">&#8592; Back</button>
+        <div class="form-group">
+          <label class="form-label">Group name</label>
+          <input class="form-input" id="groupNameInput" type="text" maxlength="64" placeholder="My Group" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description (optional)</label>
+          <textarea class="form-input" id="groupDescInput" maxlength="200" rows="2" placeholder="What is this group about?"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Add members</label>
+          <input class="search-input" id="groupMemberSearch" type="search" placeholder="Search users…" />
+          <div class="user-pick-list" id="groupMemberList">
+            <div class="empty-state-small">Loading users…</div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="createGroupBtn">Create Group</button>
+        </div>
+      </div>
+
+      <!-- Step 2c: Channel – name + description -->
+      <div class="new-chat-form hidden" id="newChatChannelForm">
+        <button class="btn btn-ghost btn-sm new-chat-back-btn" id="newChatChannelBack">&#8592; Back</button>
+        <div class="form-group">
+          <label class="form-label">Channel name</label>
+          <input class="form-input" id="channelNameInput" type="text" maxlength="64" placeholder="My Channel" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description (optional)</label>
+          <textarea class="form-input" id="channelDescInput" maxlength="200" rows="2" placeholder="What is this channel about?"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="createChannelBtn">Create Channel</button>
+        </div>
       </div>
     </div>
   </div>
@@ -188,6 +266,34 @@
       </div>
       <div class="user-profile-name" id="userProfileDisplayName">—</div>
       <div class="user-profile-username" id="userProfileUsername">@—</div>
+      <div class="user-profile-bio" id="userProfileBio"></div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="userProfileMessageBtn">&#9998; Message</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== JOIN PREVIEW MODAL ===================== -->
+<div class="modal-backdrop hidden" id="joinPreviewModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Join Chat</h2>
+      <button class="icon-btn" id="joinPreviewCloseBtn">&#10005;</button>
+    </div>
+    <div class="modal-body join-preview-body">
+      <div class="profile-avatar-section">
+        <div class="avatar avatar-xl" id="joinPreviewAvatar">?</div>
+      </div>
+      <div class="join-preview-name" id="joinPreviewName">—</div>
+      <div class="join-preview-desc" id="joinPreviewDesc"></div>
+      <div class="join-preview-meta" id="joinPreviewMeta">
+        <span class="join-preview-members" id="joinPreviewMembers">0 members</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="joinPreviewJoinBtn">Join</button>
+        <button class="btn btn-ghost" id="joinPreviewCancelBtn">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
