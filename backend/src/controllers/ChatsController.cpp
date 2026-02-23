@@ -1,4 +1,6 @@
 #include "ChatsController.h"
+#include "../config/Config.h"
+#include "../utils/MinioPresign.h"
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
 
@@ -7,6 +9,15 @@ static drogon::HttpResponsePtr jsonErr(const std::string& msg, drogon::HttpStatu
     auto r = drogon::HttpResponse::newHttpJsonResponse(b);
     r->setStatusCode(code);
     return r;
+}
+
+static std::string avatarUrl(const std::string& bucket, const std::string& key) {
+    if (bucket.empty() || key.empty()) return "";
+    const auto& cfg = Config::get();
+    return minio_presign::generatePresignedUrl(
+        cfg.minioEndpoint, cfg.minioPublicUrl,
+        bucket, key,
+        cfg.minioAccessKey, cfg.minioSecretKey, cfg.presignTtl);
 }
 
 // POST /chats
@@ -27,7 +38,6 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
     std::string description = (*body).get("description", "").asString();
     std::string publicName = (*body).get("public_name", "").asString();
 
-    // For channels, set name=title for backward compatibility
     if (type == "channel") {
         if (title.empty())
             return cb(jsonErr("title is required for channel type", drogon::k400BadRequest));
@@ -35,7 +45,6 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
     }
 
     auto memberIds = (*body)["member_ids"];
-
     std::vector<long long> members;
     members.push_back(me);
     for (auto& id : memberIds) {
@@ -46,6 +55,63 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
     if (type == "direct" && members.size() != 2)
         return cb(jsonErr("direct chat requires exactly one other member_id", drogon::k400BadRequest));
 
+    // For direct chats: check if DM already exists to avoid duplicates
+    if (type == "direct") {
+        long long otherId = members[1];
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "SELECT c.id FROM chats c "
+            "JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = $1 "
+            "JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = $2 "
+            "WHERE c.type = 'direct' LIMIT 1",
+            [cb, type, title, otherId, members, me, name, description, publicName]
+            (const drogon::orm::Result& r) mutable {
+                if (!r.empty()) {
+                    // Return existing DM
+                    long long chatId = r[0]["id"].as<long long>();
+                    Json::Value resp;
+                    resp["id"]   = Json::Int64(chatId);
+                    resp["type"] = type;
+                    cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                    return;
+                }
+                // Create new DM
+                auto db2 = drogon::app().getDbClient();
+                db2->execSqlAsync(
+                    "INSERT INTO chats (type, name, title, description, public_name, owner_id) "
+                    "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+                    [cb, members, me, type, title](const drogon::orm::Result& r2) mutable {
+                        long long chatId = r2[0]["id"].as<long long>();
+                        auto db3 = drogon::app().getDbClient();
+                        for (auto uid : members) {
+                            std::string role = (uid == me) ? "owner" : "member";
+                            db3->execSqlAsync(
+                                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                                [](const drogon::orm::Result&) {},
+                                [](const drogon::orm::DrogonDbException& e) {
+                                    LOG_WARN << "member insert: " << e.base().what();
+                                }, chatId, uid, role);
+                        }
+                        Json::Value resp;
+                        resp["id"]   = Json::Int64(chatId);
+                        resp["type"] = type;
+                        auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
+                        respObj->setStatusCode(drogon::k201Created);
+                        cb(respObj);
+                    },
+                    [cb](const drogon::orm::DrogonDbException& e) mutable {
+                        LOG_ERROR << "createChat direct: " << e.base().what();
+                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                    }, type, name, title, description, publicName, me);
+            },
+            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                LOG_ERROR << "DM lookup: " << e.base().what();
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }, me, otherId);
+        return;
+    }
+
+    // Group / Channel creation
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "INSERT INTO chats (type, name, title, description, public_name, owner_id) "
@@ -53,8 +119,6 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
         [cb, members, me, type, title](const drogon::orm::Result& r) mutable {
             long long chatId = r[0]["id"].as<long long>();
             auto db2 = drogon::app().getDbClient();
-
-            // Insert all members
             for (auto uid : members) {
                 std::string role = (uid == me) ? "owner" : "member";
                 db2->execSqlAsync(
@@ -64,7 +128,6 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                         LOG_WARN << "member insert: " << e.base().what();
                     }, chatId, uid, role);
             }
-
             Json::Value resp;
             resp["id"]   = Json::Int64(chatId);
             resp["type"] = type;
@@ -83,31 +146,60 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
         }, type, name, title, description, publicName, me);
 }
 
-// GET /chats
+// GET /chats — with DM enrichment (other user info + avatar)
 void ChatsController::listChats(const drogon::HttpRequestPtr& req,
                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
     long long me = req->getAttributes()->get<long long>("user_id");
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "SELECT c.id, c.type, c.name, c.title, c.description, c.public_name, c.updated_at, "
-        "       (SELECT content FROM messages m WHERE m.chat_id = c.id "
-        "        ORDER BY m.created_at DESC LIMIT 1) AS last_msg "
+        "    (SELECT m.content FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_msg, "
+        "    (SELECT m.created_at FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_msg_at, "
+        "    ou.id           AS other_user_id, "
+        "    ou.username     AS other_username, "
+        "    COALESCE(ou.display_name, ou.username) AS other_display_name, "
+        "    ouf.bucket      AS other_avatar_bucket, "
+        "    ouf.object_key  AS other_avatar_key "
         "FROM chats c "
-        "JOIN chat_members cm ON cm.chat_id = c.id "
-        "WHERE cm.user_id = $1 "
+        "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1 "
+        "LEFT JOIN LATERAL ( "
+        "    SELECT u2.id, u2.username, u2.display_name, u2.avatar_file_id "
+        "    FROM chat_members cm2 JOIN users u2 ON u2.id = cm2.user_id "
+        "    WHERE cm2.chat_id = c.id AND cm2.user_id != $1 AND c.type = 'direct' LIMIT 1 "
+        ") ou ON c.type = 'direct' "
+        "LEFT JOIN files ouf ON ouf.id = ou.avatar_file_id "
         "ORDER BY c.updated_at DESC",
         [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
             for (auto& row : r) {
                 Json::Value chat;
-                chat["id"]         = Json::Int64(row["id"].as<long long>());
-                chat["type"]       = row["type"].as<std::string>();
-                chat["name"]       = row["name"].isNull() ? Json::Value() : Json::Value(row["name"].as<std::string>());
-                chat["title"]      = row["title"].isNull() ? Json::Value() : Json::Value(row["title"].as<std::string>());
+                chat["id"]          = Json::Int64(row["id"].as<long long>());
+                chat["type"]        = row["type"].as<std::string>();
+                chat["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
+                chat["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
                 chat["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
                 chat["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
-                chat["updated_at"] = row["updated_at"].as<std::string>();
+                chat["updated_at"]  = row["updated_at"].as<std::string>();
                 chat["last_message"] = row["last_msg"].isNull() ? Json::Value() : Json::Value(row["last_msg"].as<std::string>());
+                chat["last_at"]      = row["last_msg_at"].isNull() ? Json::Value() : Json::Value(row["last_msg_at"].as<std::string>());
+
+                // DM-specific fields
+                if (!row["other_user_id"].isNull()) {
+                    chat["other_user_id"]      = Json::Int64(row["other_user_id"].as<long long>());
+                    chat["other_username"]     = row["other_username"].isNull() ? Json::Value() : Json::Value(row["other_username"].as<std::string>());
+                    chat["other_display_name"] = row["other_display_name"].isNull() ? Json::Value() : Json::Value(row["other_display_name"].as<std::string>());
+
+                    std::string avBucket = row["other_avatar_bucket"].isNull() ? "" : row["other_avatar_bucket"].as<std::string>();
+                    std::string avKey    = row["other_avatar_key"].isNull()    ? "" : row["other_avatar_key"].as<std::string>();
+                    std::string url = avatarUrl(avBucket, avKey);
+                    chat["other_avatar_url"] = url.empty() ? Json::Value() : Json::Value(url);
+                } else {
+                    chat["other_user_id"]      = Json::Value();
+                    chat["other_username"]     = Json::Value();
+                    chat["other_display_name"] = Json::Value();
+                    chat["other_avatar_url"]   = Json::Value();
+                }
+
                 arr.append(chat);
             }
             cb(drogon::HttpResponse::newHttpJsonResponse(arr));
@@ -135,14 +227,13 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
             Json::Value chat;
             chat["id"]          = Json::Int64(row["id"].as<long long>());
             chat["type"]        = row["type"].as<std::string>();
-            chat["name"]        = row["name"].isNull() ? Json::Value() : Json::Value(row["name"].as<std::string>());
-            chat["title"]       = row["title"].isNull() ? Json::Value() : Json::Value(row["title"].as<std::string>());
+            chat["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
+            chat["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
             chat["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
             chat["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
             chat["owner_id"]    = Json::Int64(row["owner_id"].as<long long>());
             chat["created_at"]  = row["created_at"].as<std::string>();
 
-            // Fetch members
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(
                 "SELECT u.id, u.username, u.display_name, cm.role "
@@ -154,13 +245,11 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
                         Json::Value mem;
                         mem["id"]           = Json::Int64(m["id"].as<long long>());
                         mem["username"]     = m["username"].as<std::string>();
-                        mem["display_name"] = m["display_name"].as<std::string>();
+                        mem["display_name"] = m["display_name"].isNull() ? Json::Value() : Json::Value(m["display_name"].as<std::string>());
                         mem["role"]         = m["role"].as<std::string>();
                         members.append(mem);
-                        // Set my_role for the requesting user
-                        if (m["id"].as<long long>() == me) {
+                        if (m["id"].as<long long>() == me)
                             chat["my_role"] = m["role"].as<std::string>();
-                        }
                     }
                     chat["members"] = members;
                     if (chat["my_role"].isNull()) chat["my_role"] = "member";
@@ -196,8 +285,8 @@ void ChatsController::getChatByPublicName(const drogon::HttpRequestPtr& req,
             Json::Value chat;
             chat["id"]           = Json::Int64(row["id"].as<long long>());
             chat["type"]         = row["type"].as<std::string>();
-            chat["name"]         = row["name"].isNull() ? Json::Value() : Json::Value(row["name"].as<std::string>());
-            chat["title"]        = row["title"].isNull() ? Json::Value() : Json::Value(row["title"].as<std::string>());
+            chat["name"]         = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
+            chat["title"]        = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
             chat["description"]  = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
             chat["public_name"]  = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
             chat["created_at"]   = row["created_at"].as<std::string>();

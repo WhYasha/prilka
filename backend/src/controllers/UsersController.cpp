@@ -1,21 +1,45 @@
 #include "UsersController.h"
+#include "../config/Config.h"
+#include "../utils/MinioPresign.h"
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
 
-static drogon::HttpResponsePtr userJson(const drogon::orm::Row& r) {
-    Json::Value u;
-    u["id"]           = Json::Int64(r["id"].as<long long>());
-    u["username"]     = r["username"].as<std::string>();
-    u["display_name"] = r["display_name"].as<std::string>();
-    u["bio"]          = r["bio"].isNull() ? Json::Value() : Json::Value(r["bio"].as<std::string>());
-    return drogon::HttpResponse::newHttpJsonResponse(u);
+static drogon::HttpResponsePtr jsonErr(const std::string& msg, drogon::HttpStatusCode code) {
+    Json::Value b; b["error"] = msg;
+    auto r = drogon::HttpResponse::newHttpJsonResponse(b);
+    r->setStatusCode(code);
+    return r;
 }
 
 static drogon::HttpResponsePtr notFound() {
-    Json::Value b; b["error"] = "User not found";
-    auto r = drogon::HttpResponse::newHttpJsonResponse(b);
-    r->setStatusCode(drogon::k404NotFound);
-    return r;
+    return jsonErr("User not found", drogon::k404NotFound);
+}
+
+// Build avatar_url from bucket + object_key using config
+static std::string avatarUrl(const std::string& bucket, const std::string& key) {
+    if (key.empty()) return "";
+    const auto& cfg = Config::get();
+    return minio_presign::generatePresignedUrl(
+        cfg.minioEndpoint, cfg.minioPublicUrl,
+        bucket, key,
+        cfg.minioAccessKey, cfg.minioSecretKey,
+        cfg.presignTtl);
+}
+
+static Json::Value buildUserJson(const drogon::orm::Row& r) {
+    Json::Value u;
+    u["id"]           = Json::Int64(r["id"].as<long long>());
+    u["username"]     = r["username"].as<std::string>();
+    u["display_name"] = r["display_name"].isNull()
+                            ? Json::Value(r["username"].as<std::string>())
+                            : Json::Value(r["display_name"].as<std::string>());
+    u["bio"]          = r["bio"].isNull() ? Json::Value() : Json::Value(r["bio"].as<std::string>());
+
+    std::string avBucket = r["avatar_bucket"].isNull() ? "" : r["avatar_bucket"].as<std::string>();
+    std::string avKey    = r["avatar_key"].isNull()    ? "" : r["avatar_key"].as<std::string>();
+    std::string url = avatarUrl(avBucket, avKey);
+    u["avatar_url"] = url.empty() ? Json::Value() : Json::Value(url);
+    return u;
 }
 
 // GET /users/{id}
@@ -24,17 +48,17 @@ void UsersController::getUser(const drogon::HttpRequestPtr& req,
                                long long userId) {
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT id, username, display_name, bio FROM users WHERE id = $1 AND is_active = TRUE",
+        "SELECT u.id, u.username, u.display_name, u.bio, "
+        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
+        "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "WHERE u.id = $1 AND u.is_active = TRUE",
         [cb](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(notFound());
-            cb(userJson(r[0]));
+            cb(drogon::HttpResponse::newHttpJsonResponse(buildUserJson(r[0])));
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "getUser: " << e.base().what();
-            Json::Value b; b["error"] = "Internal error";
-            auto resp = drogon::HttpResponse::newHttpJsonResponse(b);
-            resp->setStatusCode(drogon::k500InternalServerError);
-            cb(resp);
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, userId);
 }
 
@@ -44,17 +68,17 @@ void UsersController::getUserByUsername(const drogon::HttpRequestPtr& req,
                                         const std::string& username) {
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT id, username, display_name, bio FROM users WHERE username = $1 AND is_active = TRUE",
+        "SELECT u.id, u.username, u.display_name, u.bio, "
+        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
+        "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "WHERE u.username = $1 AND u.is_active = TRUE",
         [cb](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(notFound());
-            cb(userJson(r[0]));
+            cb(drogon::HttpResponse::newHttpJsonResponse(buildUserJson(r[0])));
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "getUserByUsername: " << e.base().what();
-            Json::Value b; b["error"] = "Internal error";
-            auto resp = drogon::HttpResponse::newHttpJsonResponse(b);
-            resp->setStatusCode(drogon::k500InternalServerError);
-            cb(resp);
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, username);
 }
 
@@ -62,35 +86,117 @@ void UsersController::getUserByUsername(const drogon::HttpRequestPtr& req,
 void UsersController::searchUsers(const drogon::HttpRequestPtr& req,
                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
     std::string q = req->getParameter("q");
-    if (q.empty()) {
-        Json::Value b; b["error"] = "q parameter required";
-        auto resp = drogon::HttpResponse::newHttpJsonResponse(b);
-        resp->setStatusCode(drogon::k400BadRequest);
-        return cb(resp);
-    }
-
+    // Allow empty q — returns all users (useful for DM user picker)
     std::string pattern = "%" + q + "%";
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT id, username, display_name, bio FROM users "
-        "WHERE (username ILIKE $1 OR display_name ILIKE $1) AND is_active = TRUE "
-        "ORDER BY username LIMIT 20",
+        "SELECT u.id, u.username, u.display_name, u.bio, "
+        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
+        "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "WHERE (u.username ILIKE $1 OR u.display_name ILIKE $1) AND u.is_active = TRUE "
+        "ORDER BY u.username LIMIT 50",
         [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
-            for (auto& row : r) {
-                Json::Value u;
-                u["id"]           = Json::Int64(row["id"].as<long long>());
-                u["username"]     = row["username"].as<std::string>();
-                u["display_name"] = row["display_name"].as<std::string>();
-                arr.append(u);
-            }
+            for (auto& row : r)
+                arr.append(buildUserJson(row));
             cb(drogon::HttpResponse::newHttpJsonResponse(arr));
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "searchUsers: " << e.base().what();
-            Json::Value b; b["error"] = "Internal error";
-            auto resp = drogon::HttpResponse::newHttpJsonResponse(b);
-            resp->setStatusCode(drogon::k500InternalServerError);
-            cb(resp);
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, pattern);
+}
+
+// GET /users/{id}/avatar  → 302 to presigned MinIO URL
+void UsersController::getUserAvatar(const drogon::HttpRequestPtr& req,
+                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                    long long userId) {
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT f.bucket, f.object_key "
+        "FROM users u JOIN files f ON f.id = u.avatar_file_id "
+        "WHERE u.id = $1",
+        [cb](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("No avatar", drogon::k404NotFound));
+            std::string url = avatarUrl(
+                r[0]["bucket"].as<std::string>(),
+                r[0]["object_key"].as<std::string>());
+            cb(drogon::HttpResponse::newRedirectionResponse(url));
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "getUserAvatar: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, userId);
+}
+
+// PUT /users/{id}  — update display_name, bio (own profile only)
+void UsersController::updateUser(const drogon::HttpRequestPtr& req,
+                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                  long long userId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    if (me != userId)
+        return cb(jsonErr("Forbidden", drogon::k403Forbidden));
+
+    auto body = req->getJsonObject();
+    if (!body) return cb(jsonErr("Invalid JSON", drogon::k400BadRequest));
+
+    std::string displayName = (*body).get("display_name", "").asString();
+    std::string bio         = (*body).get("bio", "").asString();
+
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "UPDATE users SET display_name = $1, bio = $2, updated_at = NOW() WHERE id = $3 "
+        "RETURNING id, username, display_name, bio",
+        [cb](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("User not found", drogon::k404NotFound));
+            Json::Value resp;
+            resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
+            resp["username"]     = r[0]["username"].as<std::string>();
+            resp["display_name"] = r[0]["display_name"].isNull() ? Json::Value() : Json::Value(r[0]["display_name"].as<std::string>());
+            resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
+            cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "updateUser: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, displayName, bio, userId);
+}
+
+// PUT /users/me/avatar  — body: { "file_id": <int> }
+void UsersController::updateMyAvatar(const drogon::HttpRequestPtr& req,
+                                      std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto body = req->getJsonObject();
+    if (!body || !(*body)["file_id"].isIntegral())
+        return cb(jsonErr("file_id required", drogon::k400BadRequest));
+
+    long long fileId = (*body)["file_id"].asInt64();
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "UPDATE users SET avatar_file_id = $1, updated_at = NOW() WHERE id = $2",
+        [cb, me, fileId](const drogon::orm::Result&) mutable {
+            // Fetch updated avatar_url for response
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "SELECT f.bucket, f.object_key FROM files f WHERE f.id = $1",
+                [cb](const drogon::orm::Result& fr) mutable {
+                    Json::Value resp;
+                    if (!fr.empty()) {
+                        std::string url = avatarUrl(
+                            fr[0]["bucket"].as<std::string>(),
+                            fr[0]["object_key"].as<std::string>());
+                        resp["avatar_url"] = url;
+                    }
+                    cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_WARN << "updateMyAvatar lookup: " << e.base().what();
+                    Json::Value resp; resp["avatar_url"] = Json::Value();
+                    cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                }, fileId);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "updateMyAvatar: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, fileId, me);
 }

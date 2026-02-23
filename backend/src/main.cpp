@@ -22,6 +22,9 @@
 #include "controllers/MessagesController.h"
 #include "controllers/FilesController.h"
 #include "controllers/InvitesController.h"
+#include "controllers/StickersController.h"
+#include "controllers/SettingsController.h"
+#include "controllers/WebController.h"
 #include "filters/AuthFilter.h"
 #include "ws/WsHandler.h"
 #include <trantor/utils/Logger.h>
@@ -191,6 +194,7 @@ int main(int argc, char* argv[]) {
     // ── Server configuration ──────────────────────────────────────────────────
     drogon::app()
         .addListener("0.0.0.0", cfg.apiPort)
+        .setDocumentRoot("./www")          // serve static SPA assets
         .setThreadNum(cfg.apiThreads)      // 0 = std::thread::hardware_concurrency()
         .setMaxConnectionNum(100000)
         .setMaxConnectionNumPerIP(1000)

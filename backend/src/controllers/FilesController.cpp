@@ -1,5 +1,6 @@
 #include "FilesController.h"
 #include "../config/Config.h"
+#include "../utils/MinioPresign.h"
 #include <drogon/orm/DbClient.h>
 #include <drogon/HttpClient.h>
 #include <drogon/MultiPart.h>
@@ -41,14 +42,6 @@ static std::string sha256Hex(const std::string& s) {
     return toHex(h, SHA256_DIGEST_LENGTH);
 }
 
-static std::string hmacSha256Hex(const std::string& key, const std::string& msg) {
-    unsigned char h[32]; unsigned int hlen = 0;
-    HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
-         reinterpret_cast<const unsigned char*>(msg.data()), msg.size(),
-         h, &hlen);
-    return toHex(h, hlen);
-}
-
 static std::vector<unsigned char> hmacSha256Raw(const std::string& key, const std::string& msg) {
     std::vector<unsigned char> h(32); unsigned int hlen = 0;
     HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
@@ -68,9 +61,8 @@ static std::vector<unsigned char> hmacSha256Raw(const std::vector<unsigned char>
     return h;
 }
 
-// ── AWS Signature V4 helpers ────────────────────────────────────────────────
+// ── AWS Signature V4 helpers (PUT signing) ─────────────────────────────────
 
-// Build the four-stage signing key and return as raw bytes.
 static std::vector<unsigned char> sigV4SigningKey(const std::string& secretKey,
                                                    const std::string& date,
                                                    const std::string& region,
@@ -137,79 +129,8 @@ static void sigV4PutHeaders(const std::string& host,
               ", Signature=" + signature;
 }
 
-// ── AWS Signature V4 Presigned URL ─────────────────────────────────────────
-// Generates a presigned GET URL for MinIO (S3-compatible).
-
-// publicUrl: if non-empty, the returned URL's "http://<endpoint>" prefix is
-// replaced with this value (e.g. "https://behappy.rest/minio").
-// nginx must forward the /minio/ location with Host: minio:9000 so MinIO
-// validates the signature against the internal host used during signing.
-static std::string generatePresignedUrl(const std::string& endpoint,
-                                         const std::string& publicUrl,
-                                         const std::string& bucket,
-                                         const std::string& key,
-                                         const std::string& accessKey,
-                                         const std::string& secretKey,
-                                         int ttlSeconds = 900) {
-    const std::string region  = "us-east-1";
-    const std::string service = "s3";
-
-    // Date/time
-    std::time_t now = std::time(nullptr);
-    char dateBuf[9], timeBuf[17];
-    std::tm* utc = std::gmtime(&now);
-    std::strftime(dateBuf, sizeof(dateBuf), "%Y%m%d", utc);
-    std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%dT%H%M%SZ", utc);
-
-    std::string date(dateBuf);
-    std::string datetime(timeBuf);
-
-    // Canonical URI
-    std::string uri = "/" + bucket + "/" + key;
-
-    // Credential scope
-    std::string credScope = date + "/" + region + "/" + service + "/aws4_request";
-    std::string credential = accessKey + "/" + credScope;
-
-    // Query string (sorted)
-    std::ostringstream qs;
-    qs << "X-Amz-Algorithm=AWS4-HMAC-SHA256"
-       << "&X-Amz-Credential=" << credential
-       << "&X-Amz-Date=" << datetime
-       << "&X-Amz-Expires=" << ttlSeconds
-       << "&X-Amz-SignedHeaders=host";
-
-    // Parse host from endpoint
-    std::string host = endpoint;
-    if (host.find("://") != std::string::npos)
-        host = host.substr(host.find("://") + 3);
-
-    std::string canonicalRequest =
-        "GET\n" + uri + "\n" + qs.str() + "\nhost:" + host + "\n\nhost\nUNSIGNED-PAYLOAD";
-
-    std::string stringToSign =
-        "AWS4-HMAC-SHA256\n" + datetime + "\n" + credScope + "\n" +
-        sha256Hex(canonicalRequest);
-
-    // Signing key
-    auto kSigning = sigV4SigningKey(secretKey, date, region, service);
-    unsigned char h[32]; unsigned int hlen = 0;
-    HMAC(EVP_sha256(), kSigning.data(), static_cast<int>(kSigning.size()),
-         reinterpret_cast<const unsigned char*>(stringToSign.data()),
-         stringToSign.size(), h, &hlen);
-    std::string signature = toHex(h, hlen);
-
-    std::string scheme = "http://";
-    std::string url = scheme + host + uri + "?" + qs.str() + "&X-Amz-Signature=" + signature;
-
-    // Rewrite internal endpoint to public URL if configured.
-    if (!publicUrl.empty()) {
-        std::string internalBase = scheme + host;
-        if (url.rfind(internalBase, 0) == 0)
-            url = publicUrl + url.substr(internalBase.size());
-    }
-    return url;
-}
+// Use shared MinioPresign utility — generatePresignedUrl is in minio_presign namespace
+using minio_presign::generatePresignedUrl;
 
 // ── UUID generator ─────────────────────────────────────────────────────────
 

@@ -31,12 +31,6 @@ services:
       API_THREADS:     "0"        # auto = nproc
       MINIO_PUBLIC_URL: "https://behappy.rest/minio"
 
-  api_legacy:
-    ports: []
-    restart: always
-    environment:
-      MINIO_PUBLIC_URL: "https://behappy.rest/minio"
-
   prometheus:
     ports: []
     restart: always
@@ -80,7 +74,6 @@ services:
       - messenger_net
     depends_on:
       - api_cpp
-      - api_legacy
       - grafana
       - minio
     healthcheck:

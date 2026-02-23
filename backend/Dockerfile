@@ -50,6 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /src/build/messenger_api .
+COPY --from=builder /src/www ./www
 
 # Non-root user
 RUN useradd -r -u 1001 -g 0 messenger
