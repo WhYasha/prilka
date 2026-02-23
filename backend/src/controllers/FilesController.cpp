@@ -153,7 +153,7 @@ void FilesController::uploadFile(const drogon::HttpRequestPtr& req,
         return cb(jsonErr("File too large (max " + std::to_string(cfg.maxFileSizeMb) + " MB)",
                           drogon::k413RequestEntityTooLarge));
 
-    auto& files = req->getUploadFiles();
+    auto& files = req->getUploadedFiles();
     if (files.empty())
         return cb(jsonErr("No file uploaded (use multipart/form-data field 'file')",
                           drogon::k400BadRequest));

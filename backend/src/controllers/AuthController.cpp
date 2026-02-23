@@ -4,6 +4,7 @@
 #include "../config/Config.h"
 #include <drogon/orm/DbClient.h>
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <trantor/utils/Logger.h>
 #include <chrono>
