@@ -77,7 +77,7 @@ void AuthController::registerUser(const drogon::HttpRequestPtr& req,
     std::string hash = hashPassword(password, salt);
     std::string displayName = (*body).get("display_name", username).asString();
 
-    auto cbSh = std::make_shared<decltype(cb)>(std::move(cb));
+    auto cbSh = std::make_shared<std::function<void(const drogon::HttpResponsePtr&)>>(std::move(cb));
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "INSERT INTO users (username, email, password_hash, display_name) "
