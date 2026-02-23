@@ -8,6 +8,9 @@ MinIO, and a full monitoring stack — all running locally with a single command
                        │
               ┌────────┴────────┐
               │                 │
+        https://behappy.rest    │
+         nginx (TLS proxy)      │
+              │                 │
          :5000 (UI)        :8080 (API)
          Flask Legacy       Drogon C++
               │                 │
@@ -20,12 +23,48 @@ MinIO, and a full monitoring stack — all running locally with a single command
                           cAdvisor :8081
 ```
 
-## Quick Start
+## Production URLs
+
+| Resource | URL | Notes |
+|----------|-----|-------|
+| **Web app** | https://behappy.rest/ | Flask messenger UI |
+| **API base** | https://behappy.rest/api | C++ Drogon backend |
+| **API health** | https://behappy.rest/api/health | `{"status":"ok"}` |
+| **WebSocket** | `wss://behappy.rest/ws` | JWT via `?token=` query param |
+| **Grafana** | https://behappy.rest/grafana/ | admin / see `.env` |
+| **MinIO Console** | https://behappy.rest/minio-console/ | minioadmin / see `.env` |
+| **Downloads – Windows** | https://behappy.rest/downloads/windows/ | Desktop installer |
+| **Downloads – macOS** | https://behappy.rest/downloads/macos/ | Desktop installer |
+
+> Grafana and MinIO Console are not behind additional auth at the nginx level.
+> Restrict by IP (`allow`/`deny` in nginx) before publishing publicly.
+
+### Quick API test
+
+```bash
+# Health
+curl https://behappy.rest/api/health
+
+# Login (seed accounts: alice / bob / carol, password: testpass)
+TOKEN=$(curl -s -X POST https://behappy.rest/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"testpass"}' | jq -r .access_token)
+
+# Profile
+curl -H "Authorization: Bearer $TOKEN" https://behappy.rest/api/me
+
+# WebSocket
+wscat -c "wss://behappy.rest/ws?token=$TOKEN"
+```
+
+---
+
+## Quick Start (local dev)
 
 ```bash
 # 1. Clone
-git clone <repo-url>
-cd <repo>
+git clone https://github.com/WhYasha/prilka.git
+cd prilka
 
 # 2. Start everything (builds C++ image, runs migrations, starts all services)
 make up
@@ -40,7 +79,7 @@ make info
 - Builds the C++ backend Docker image
 - Starts PostgreSQL, Redis, MinIO
 - Creates the MinIO bucket
-- Runs Flyway migrations (V1–V3)
+- Runs Flyway migrations (V1–V4)
 - Starts the C++ API, legacy Flask UI, Prometheus, Grafana, cAdvisor
 
 ## Prerequisites
@@ -54,16 +93,66 @@ make info
 
 No compiler, Python, or database installation required on the host machine.
 
-## Service URLs
+## Local Service URLs
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | **C++ API** | http://localhost:8080 | JWT tokens |
-| **Legacy UI** | http://localhost:5000 | alice/password123 |
+| **Legacy UI** | http://localhost:5000 | alice/testpass |
 | **MinIO Console** | http://localhost:9001 | minioadmin/changeme_minio |
 | **Prometheus** | http://localhost:9090 | — |
 | **Grafana** | http://localhost:3000 | admin/admin |
 | **cAdvisor** | http://localhost:8081 | — |
+
+## Production Deployment
+
+### Server layout
+
+```
+/opt/messenger/
+├── repo/          git clone of this repository
+│   ├── docker-compose.yml
+│   ├── docker-compose.prod.yml
+│   └── infra/scripts/
+│       ├── 01-bootstrap.sh   initial server setup
+│       └── 02-deploy.sh      git pull + rebuild + restart
+└── env/
+    └── .env       secrets (chmod 600, never committed)
+```
+
+### Deploy / update
+
+```bash
+# SSH to server as deploy user, then:
+bash /opt/messenger/repo/infra/scripts/02-deploy.sh
+
+# Or manually:
+cd /opt/messenger/repo
+git pull
+sudo systemctl restart messenger
+```
+
+### Environment config
+
+Secrets live in `/opt/messenger/env/.env` (chmod 600). Never committed to git.
+See [docs/env-vars.md](docs/env-vars.md) for the full reference.
+
+**Minimum changes for security:**
+```bash
+JWT_SECRET=$(openssl rand -hex 32)
+POSTGRES_PASSWORD=<strong-password>
+REDIS_PASSWORD=<strong-password>
+MINIO_ROOT_PASSWORD=<strong-password>
+```
+
+### TLS / Let's Encrypt
+
+Certs are managed by certbot on the host:
+- **Cert path**: `/etc/letsencrypt/live/behappy.rest/`
+- **Renewal**: `systemctl status certbot.timer` (auto-renews 30 days before expiry)
+- **Renewal hook**: `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh` reloads nginx after renewal
+
+---
 
 ## Common Commands
 
@@ -81,54 +170,35 @@ make clean           # Remove containers + volumes (DESTRUCTIVE)
 make info            # Print all service URLs
 ```
 
-## Configuration
-
-All configuration is via environment variables. Copy `.env.example` to `.env`:
-
-```bash
-cp .env.example .env
-# Edit .env and set proper passwords
-```
-
-See [docs/env-vars.md](docs/env-vars.md) for the full reference.
-
-**Minimum changes for security:**
-```bash
-JWT_SECRET=$(openssl rand -hex 32)
-POSTGRES_PASSWORD=<strong-password>
-REDIS_PASSWORD=<strong-password>
-MINIO_ROOT_PASSWORD=<strong-password>
-```
-
 ## API Quick Reference
 
 ### Register + Login
 ```bash
 # Register
-curl -X POST http://localhost:8080/auth/register \
+curl -X POST https://behappy.rest/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","email":"alice@example.com","password":"secret123"}'
 
 # Login → get tokens
-TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+TOKEN=$(curl -s -X POST https://behappy.rest/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"secret123"}' \
+  -d '{"username":"alice","password":"testpass"}' \
   | jq -r .access_token)
 
 # Use token
-curl http://localhost:8080/me -H "Authorization: Bearer $TOKEN"
+curl https://behappy.rest/api/me -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Create chat + send message
 ```bash
 # Create direct chat with user 2
-CHAT=$(curl -s -X POST http://localhost:8080/chats \
+CHAT=$(curl -s -X POST https://behappy.rest/api/chats \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"type":"direct","member_ids":[2]}' | jq .id)
 
 # Send message
-curl -X POST http://localhost:8080/chats/$CHAT/messages \
+curl -X POST https://behappy.rest/api/chats/$CHAT/messages \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"Hello!","type":"text"}'
@@ -137,16 +207,12 @@ curl -X POST http://localhost:8080/chats/$CHAT/messages \
 ### WebSocket
 ```bash
 # Using wscat (npm install -g wscat)
-wscat -c ws://localhost:8080/ws
-
-# After connect:
-{"type":"auth","token":"<access_token>"}
-{"type":"subscribe","chat_id":1}
+wscat -c "wss://behappy.rest/ws?token=$TOKEN"
 ```
 
 ### Upload a file
 ```bash
-curl -X POST http://localhost:8080/files \
+curl -X POST https://behappy.rest/api/files \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@photo.jpg"
 ```
@@ -197,8 +263,8 @@ Migration files follow the naming convention `V{n}__{description}.sql`.
 ## Monitoring
 
 ### Grafana
-Open http://localhost:3000 (admin/admin). The **Messenger Overview** dashboard
-is pre-provisioned with:
+Open https://behappy.rest/grafana/ (admin / see `.env`). The **Messenger Overview**
+dashboard is pre-provisioned with:
 - API RPS and latency (p50/p95/p99)
 - HTTP 5xx error rate
 - Active WebSocket connections
@@ -228,16 +294,19 @@ messenger_ws_connections_total                         counter
 │   ├── CMakeLists.txt
 │   ├── CMakePresets.json
 │   └── Dockerfile
-├── migrations/               Flyway SQL migrations (V1–V3)
+├── migrations/               Flyway SQL migrations (V1–V4)
 ├── infra/
+│   ├── nginx/                nginx.conf (TLS reverse proxy)
 │   ├── prometheus/           Prometheus config
-│   └── grafana/              Grafana provisioning + dashboards
+│   ├── grafana/              Grafana provisioning + dashboards
+│   └── scripts/              Bootstrap, deploy, smoke test
 ├── simple-messenger/         Legacy Flask app (existing UI)
 ├── docs/
 │   ├── architecture.md       System design + scaling strategy
 │   ├── mobile.md             iOS/Swift API contract
 │   └── env-vars.md           Environment variable reference
 ├── docker-compose.yml        Main orchestration file
+├── docker-compose.prod.yml   Production overrides (TLS, no dev ports)
 ├── .env.example              Environment template
 ├── Makefile                  Convenience commands
 └── README.md                 This file
@@ -262,6 +331,12 @@ See [docs/mobile.md](docs/mobile.md) for:
 
 ## Troubleshooting
 
+**502 Bad Gateway at /**
+```bash
+docker logs repo-api_legacy-1
+# Flask must listen on 0.0.0.0:5000, not 127.0.0.1:5000
+```
+
 **Flyway fails on first start**
 ```bash
 make logs svc=flyway
@@ -280,6 +355,19 @@ make logs svc=minio_init
 # Manual fix:
 docker compose exec minio mc alias set local http://localhost:9000 minioadmin changeme_minio
 docker compose exec minio mc mb local/messenger-files
+```
+
+**Check all container health**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker logs repo-nginx-1 --tail 50
+docker logs repo-api_cpp-1 --tail 50
+```
+
+**TLS cert renewal**
+```bash
+sudo certbot renew --dry-run   # test renewal
+systemctl list-timers | grep certbot
 ```
 
 **Windows: cAdvisor fails to start**
