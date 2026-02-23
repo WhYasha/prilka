@@ -16,7 +16,7 @@ JwtService& JwtService::instance() {
 
 // ── Base64URL ──────────────────────────────────────────────────────────────
 
-std::string JwtService::b64url_encode(const unsigned char* data, size_t len) {
+static std::string b64url_encode(const unsigned char* data, size_t len) {
     // Standard base64 via OpenSSL BIO
     BIO* b64  = BIO_new(BIO_f_base64());
     BIO* bmem = BIO_new(BIO_s_mem());
@@ -42,11 +42,11 @@ std::string JwtService::b64url_encode(const unsigned char* data, size_t len) {
 }
 
 static std::string b64url_encode_str(const std::string& s) {
-    return JwtService::b64url_encode(
+    return b64url_encode(
         reinterpret_cast<const unsigned char*>(s.data()), s.size());
 }
 
-std::string JwtService::b64url_decode_str(const std::string& in) {
+static std::string b64url_decode_str(const std::string& in) {
     std::string padded = in;
     for (auto& c : padded) {
         if (c == '-') c = '+';
@@ -69,7 +69,7 @@ std::string JwtService::b64url_decode_str(const std::string& in) {
 
 // ── HMAC-SHA256 ───────────────────────────────────────────────────────────
 
-std::string JwtService::sign(const std::string& headerDotPayload) const {
+static std::string sign(const std::string& headerDotPayload) {
     const auto& secret = Config::get().jwtSecret;
     unsigned char digest[EVP_MAX_MD_SIZE];
     unsigned int  dlen = 0;
@@ -85,8 +85,8 @@ std::string JwtService::sign(const std::string& headerDotPayload) const {
 
 // ── Payload builder ────────────────────────────────────────────────────────
 
-std::string JwtService::makePayload(long long userId,
-                                    const std::string& type, int ttl) {
+static std::string makePayload(long long userId,
+                               const std::string& type, int ttl) {
     long long now = static_cast<long long>(std::time(nullptr));
     Json::Value p;
     p["sub"]  = std::to_string(userId);

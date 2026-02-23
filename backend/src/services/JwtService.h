@@ -26,9 +26,4 @@ public:
 
 private:
     JwtService() = default;
-
-    std::string sign(const std::string& headerDotPayload) const;
-    static std::string b64url_encode(const unsigned char* data, size_t len);
-    static std::string b64url_decode_str(const std::string& in);
-    static std::string makePayload(long long userId, const std::string& type, int ttl);
 };

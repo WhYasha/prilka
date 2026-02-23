@@ -34,6 +34,9 @@ public:
 
     void handleConnectionClosed(const drogon::WebSocketConnectionPtr& conn) override;
 
+    // Push a JSON message to all connections subscribed to a chat (local fan-out).
+    static void broadcast(long long chatId, const Json::Value& payload);
+
 private:
     // Per-connection state stored in conn->getContext()
     struct ConnCtx {
@@ -41,10 +44,6 @@ private:
         bool      authed   = false;
         std::vector<long long> subscriptions;
     };
-
-    // Push a JSON message to all connections subscribed to a chat (local fan-out).
-    // Redis subscriber fan-out happens via subscribeToRedis().
-    static void broadcast(long long chatId, const Json::Value& payload);
 
     // Subscribe this process to Redis channel "chat:<chatId>" if not already done.
     void subscribeToRedis(long long chatId);
@@ -56,3 +55,9 @@ private:
     // Set of Redis channels already subscribed
     static std::unordered_map<long long, bool>                    s_redisSubs;
 };
+
+// Called by MessagesController after a message is persisted.
+// Publishes to Redis so all nodes fan-out to local WS subscribers.
+namespace WsDispatch {
+    void publishMessage(long long chatId, const Json::Value& payload);
+}

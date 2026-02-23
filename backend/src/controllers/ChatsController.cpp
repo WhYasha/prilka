@@ -37,7 +37,7 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "INSERT INTO chats (type, name, owner_id) VALUES ($1, $2, $3) RETURNING id",
-        [cb = std::move(cb), members, me](const drogon::orm::Result& r) mutable {
+        [cb, members, me](const drogon::orm::Result& r) mutable {
             long long chatId = r[0]["id"].as<long long>();
             auto db2 = drogon::app().getDbClient();
 
@@ -60,7 +60,7 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
             respObj->setStatusCode(drogon::k201Created);
             cb(respObj);
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "createChat: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, type, name, me);
@@ -79,7 +79,7 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "JOIN chat_members cm ON cm.chat_id = c.id "
         "WHERE cm.user_id = $1 "
         "ORDER BY c.updated_at DESC",
-        [cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+        [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
             for (auto& row : r) {
                 Json::Value chat;
@@ -92,7 +92,7 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
             }
             cb(drogon::HttpResponse::newHttpJsonResponse(arr));
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "listChats: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, me);
@@ -109,7 +109,7 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
         "FROM chats c "
         "JOIN chat_members cm ON cm.chat_id = c.id "
         "WHERE c.id = $1 AND cm.user_id = $2",
-        [cb = std::move(cb), chatId](const drogon::orm::Result& r) mutable {
+        [cb, chatId](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
             const auto row = r[0];
             Json::Value chat;
@@ -125,7 +125,7 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
                 "SELECT u.id, u.username, u.display_name, cm.role "
                 "FROM chat_members cm JOIN users u ON u.id = cm.user_id "
                 "WHERE cm.chat_id = $1",
-                [cb = std::move(cb), chat = std::move(chat)](const drogon::orm::Result& mr) mutable {
+                [cb, chat = std::move(chat)](const drogon::orm::Result& mr) mutable {
                     Json::Value members(Json::arrayValue);
                     for (auto& m : mr) {
                         Json::Value mem;
@@ -138,12 +138,12 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
                     chat["members"] = members;
                     cb(drogon::HttpResponse::newHttpJsonResponse(chat));
                 },
-                [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
                     LOG_ERROR << "getChat members: " << e.base().what();
                     cb(jsonErr("Internal error", drogon::k500InternalServerError));
                 }, chatId);
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "getChat: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, chatId, me);

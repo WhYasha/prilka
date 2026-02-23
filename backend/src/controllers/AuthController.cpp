@@ -61,14 +61,15 @@ static drogon::HttpResponsePtr err(const std::string& msg, drogon::HttpStatusCod
 
 void AuthController::registerUser(const drogon::HttpRequestPtr& req,
                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-    auto start = std::chrono::steady_clock::now();
-    auto done = [&](auto resp) {
+    auto startTp = std::chrono::steady_clock::now();
+    auto cbSh = std::make_shared<std::function<void(const drogon::HttpResponsePtr&)>>(std::move(cb));
+    auto done = [cbSh, startTp](auto resp) mutable {
         auto end = std::chrono::steady_clock::now();
-        double ms = std::chrono::duration<double>(end - start).count();
+        double ms = std::chrono::duration<double>(end - startTp).count();
         MetricsService::instance().incRequest("POST", "/auth/register",
             resp->statusCode());
         MetricsService::instance().observeLatency("POST", "/auth/register", ms);
-        cb(resp);
+        (*cbSh)(resp);
     };
 
     auto body = req->getJsonObject();
@@ -93,7 +94,7 @@ void AuthController::registerUser(const drogon::HttpRequestPtr& req,
     db->execSqlAsync(
         "INSERT INTO users (username, email, password_hash, display_name) "
         "VALUES ($1, $2, $3, $4) RETURNING id",
-        [cb = std::move(cb), username, done](const drogon::orm::Result& r) mutable {
+        [done, username](const drogon::orm::Result& r) mutable {
             long long uid = r[0]["id"].as<long long>();
             // Create default settings
             auto db2 = drogon::app().getDbClient();
@@ -135,10 +136,14 @@ void AuthController::loginUser(const drogon::HttpRequestPtr& req,
     if (username.empty() || password.empty())
         return cb(err("username and password required", drogon::k400BadRequest));
 
+    using CbPtr = std::shared_ptr<std::function<void(const drogon::HttpResponsePtr&)>>;
+    auto cbSh = std::make_shared<std::function<void(const drogon::HttpResponsePtr&)>>(std::move(cb));
+
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "SELECT id, password_hash FROM users WHERE username = $1 AND is_active = TRUE",
-        [cb = std::move(cb), password](const drogon::orm::Result& r) mutable {
+        [cbSh, password](const drogon::orm::Result& r) mutable {
+            auto& cb = *cbSh;
             if (r.empty()) return cb(err("Invalid credentials", drogon::k401Unauthorized));
 
             long long uid  = r[0]["id"].as<long long>();
@@ -182,9 +187,9 @@ void AuthController::loginUser(const drogon::HttpRequestPtr& req,
             resp["user_id"]       = Json::Int64(uid);
             cb(jsonResp(resp, drogon::k200OK));
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cbSh](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "login DB error: " << e.base().what();
-            cb(err("Internal error", drogon::k500InternalServerError));
+            (*cbSh)(err("Internal error", drogon::k500InternalServerError));
         }, username);
 }
 
@@ -222,7 +227,7 @@ void AuthController::getMe(const drogon::HttpRequestPtr& req,
     db->execSqlAsync(
         "SELECT id, username, email, display_name, bio, created_at "
         "FROM users WHERE id = $1",
-        [cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+        [cb](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(err("User not found", drogon::k404NotFound));
             Json::Value resp;
             resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
@@ -233,7 +238,7 @@ void AuthController::getMe(const drogon::HttpRequestPtr& req,
             resp["created_at"]   = r[0]["created_at"].as<std::string>();
             cb(jsonResp(resp, drogon::k200OK));
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "getMe DB error: " << e.base().what();
             cb(err("Internal error", drogon::k500InternalServerError));
         }, uid);

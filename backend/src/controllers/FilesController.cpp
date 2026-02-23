@@ -2,6 +2,12 @@
 #include "../config/Config.h"
 #include <drogon/orm/DbClient.h>
 #include <drogon/HttpClient.h>
+#include <drogon/MultiPart.h>
+
+// contentTypeToMime is defined in libdrogon but not exposed in a public header.
+namespace drogon {
+    const std::string_view& contentTypeToMime(ContentType ct);
+}
 #include <trantor/utils/Logger.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
@@ -153,14 +159,15 @@ void FilesController::uploadFile(const drogon::HttpRequestPtr& req,
         return cb(jsonErr("File too large (max " + std::to_string(cfg.maxFileSizeMb) + " MB)",
                           drogon::k413RequestEntityTooLarge));
 
-    auto& files = req->getUploadedFiles();
-    if (files.empty())
+    drogon::MultiPartParser mp;
+    if (mp.parse(req) != 0 || mp.getFiles().empty())
         return cb(jsonErr("No file uploaded (use multipart/form-data field 'file')",
                           drogon::k400BadRequest));
 
-    auto& f         = files[0];
-    std::string orig     = f.getFileName();
-    std::string mime     = f.getContentType();
+    const auto& files = mp.getFiles();
+    const auto& f     = files[0];
+    std::string orig  = f.getFileName();
+    std::string mime  = std::string(drogon::contentTypeToMime(f.getContentType()));
     std::string objectKey= newUuid() + "_" + orig;
     std::string bucket   = cfg.minioBucket;
 
@@ -197,7 +204,7 @@ void FilesController::uploadFile(const drogon::HttpRequestPtr& req,
         db->execSqlAsync(
             "INSERT INTO files (uploader_id, bucket, object_key, filename, mime_type, size_bytes) "
             "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-            [cb = std::move(cb), objectKey, bucket, orig, mime](const drogon::orm::Result& r) mutable {
+            [cb, objectKey, bucket, orig, mime](const drogon::orm::Result& r) mutable {
                 long long fileId = r[0]["id"].as<long long>();
                 Json::Value resp;
                 resp["id"]         = Json::Int64(fileId);
@@ -208,7 +215,7 @@ void FilesController::uploadFile(const drogon::HttpRequestPtr& req,
                 httpResp->setStatusCode(drogon::k201Created);
                 cb(httpResp);
             },
-            [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+            [cb](const drogon::orm::DrogonDbException& e) mutable {
                 LOG_ERROR << "file metadata insert: " << e.base().what();
                 cb(jsonErr("Internal error", drogon::k500InternalServerError));
             },
@@ -226,7 +233,7 @@ void FilesController::downloadFile(const drogon::HttpRequestPtr& req,
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "SELECT bucket, object_key, filename, mime_type FROM files WHERE id = $1",
-        [cb = std::move(cb), &cfg](const drogon::orm::Result& r) mutable {
+        [cb, &cfg](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(jsonErr("File not found", drogon::k404NotFound));
 
             std::string bucket    = r[0]["bucket"].as<std::string>();
@@ -241,7 +248,7 @@ void FilesController::downloadFile(const drogon::HttpRequestPtr& req,
             auto resp = drogon::HttpResponse::newRedirectionResponse(presignedUrl);
             cb(resp);
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "downloadFile: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, fileId);

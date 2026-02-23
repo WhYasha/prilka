@@ -25,11 +25,11 @@ void UsersController::getUser(const drogon::HttpRequestPtr& req,
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "SELECT id, username, display_name, bio FROM users WHERE id = $1 AND is_active = TRUE",
-        [cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+        [cb](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(notFound());
             cb(userJson(r[0]));
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "getUser: " << e.base().what();
             Json::Value b; b["error"] = "Internal error";
             auto resp = drogon::HttpResponse::newHttpJsonResponse(b);
@@ -55,7 +55,7 @@ void UsersController::searchUsers(const drogon::HttpRequestPtr& req,
         "SELECT id, username, display_name, bio FROM users "
         "WHERE (username ILIKE $1 OR display_name ILIKE $1) AND is_active = TRUE "
         "ORDER BY username LIMIT 20",
-        [cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+        [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
             for (auto& row : r) {
                 Json::Value u;
@@ -66,7 +66,7 @@ void UsersController::searchUsers(const drogon::HttpRequestPtr& req,
             }
             cb(drogon::HttpResponse::newHttpJsonResponse(arr));
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "searchUsers: " << e.base().what();
             Json::Value b; b["error"] = "Internal error";
             auto resp = drogon::HttpResponse::newHttpJsonResponse(b);

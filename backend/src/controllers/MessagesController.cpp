@@ -32,7 +32,7 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
 
     std::string content  = (*body)["content"].asString();
     std::string msgType  = (*body).get("type", "text").asString();
-    long long   fileId   = (*body).get("file_id", 0LL).asInt64();
+    long long   fileId   = (*body).get("file_id", Json::Value(0)).asInt64();
 
     if (content.empty() && fileId == 0)
         return cb(jsonErr("content or file_id required", drogon::k400BadRequest));
@@ -47,7 +47,7 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
             : "INSERT INTO messages (chat_id, sender_id, content, message_type) "
               "VALUES ($1, $2, $3, $4) RETURNING id, created_at";
 
-        auto insert = [=, cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+        auto insert = [=, cb](const drogon::orm::Result& r) mutable {
             long long msgId = r[0]["id"].as<long long>();
             std::string createdAt = r[0]["created_at"].as<std::string>();
 
@@ -111,7 +111,7 @@ void MessagesController::listMessages(const drogon::HttpRequestPtr& req,
         std::string beforeStr = req->getParameter("before");
 
         auto db = drogon::app().getDbClient();
-        auto handleRows = [cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+        auto handleRows = [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
             for (auto& row : r) {
                 Json::Value msg;

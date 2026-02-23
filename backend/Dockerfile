@@ -41,7 +41,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libhiredis0.14 \
         libuuid1 \
         libjsoncpp25 \
-        libz3-4 \
+        libc-ares2 \
+        zlib1g \
+        libmariadb3 \
+        libsqlite3-0 \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
