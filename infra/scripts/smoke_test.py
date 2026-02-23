@@ -123,14 +123,23 @@ check("POST /files -> 201", fs == 201,
 file_id = fb.get("id")
 
 if file_id:
+    # The presigned URL redirect points to http://minio:9000/... which is a
+    # Docker-internal hostname — not resolvable from the host.  We only need
+    # to verify the backend issues a redirect (302/307); we must NOT follow it.
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+    opener = urllib.request.build_opener(_NoRedirect)
     r = urllib.request.Request(
         BASE + "/files/" + str(file_id) + "/download",
         headers={"Authorization": "Bearer " + token}, method="GET")
     try:
-        with urllib.request.urlopen(r, timeout=10) as resp:
+        with opener.open(r, timeout=10) as resp:
             dl_status = resp.status
     except urllib.error.HTTPError as e:
         dl_status = e.code
+    except urllib.error.URLError as e:
+        dl_status = 0
     check("GET /files/{id}/download -> redirect/200",
           dl_status in (200, 302, 307), "status=" + str(dl_status))
 
