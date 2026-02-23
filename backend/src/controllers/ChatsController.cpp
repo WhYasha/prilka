@@ -111,7 +111,7 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
         "WHERE c.id = $1 AND cm.user_id = $2",
         [cb = std::move(cb), chatId](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
-            auto& row = r[0];
+            const auto row = r[0];
             Json::Value chat;
             chat["id"]         = Json::Int64(row["id"].as<long long>());
             chat["type"]       = row["type"].as<std::string>();
