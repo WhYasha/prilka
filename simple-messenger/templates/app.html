@@ -6,7 +6,7 @@
   <title>Simple Messenger</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
-<body data-theme="light">
+<body data-theme="light"{% if deeplink %} data-deeplink="{{ deeplink }}"{% endif %}{% if cpp_api_url %} data-cpp-api="{{ cpp_api_url }}"{% endif %}>
 
 <div class="layout" id="layout">
 
