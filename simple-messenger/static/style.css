@@ -291,6 +291,9 @@ body:has(.layout) { overflow: hidden; }
 .msg-list::-webkit-scrollbar { width: 5px; }
 .msg-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 4px; }
 .msgs-loading { text-align: center; color: var(--text-muted); font-size: .85rem; padding: 1rem; }
+.msg-load-error { text-align: center; padding: .75rem 1rem; font-size: .85rem; color: var(--danger); }
+.msg-load-error button { margin-left: .5rem; font-size: .8rem; background: none; border: 1px solid var(--danger); color: var(--danger); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+.msg-load-error button:hover { background: var(--danger); color: #fff; }
 
 /* Message row wrapper */
 .msg-row {

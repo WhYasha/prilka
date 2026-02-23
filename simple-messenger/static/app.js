@@ -323,7 +323,14 @@ async function loadMessages(forceScroll = false) {
   const atBottom = msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight < 80;
 
   try {
-    const res = await apiFetch(`/api/messages?chat_id=${S.activeChatId}&after_id=${S.lastMsgId}`);
+    const res = await apiFetch(`/web-api/messages?chat_id=${S.activeChatId}&after_id=${S.lastMsgId}`);
+
+    if (!res.ok) {
+      msgsLoading.classList.add("hidden");
+      if (forceScroll) showMsgError("Could not load messages (" + res.status + ")");
+      return;
+    }
+
     const msgs = await res.json();
     if (!Array.isArray(msgs) || msgs.length === 0) {
       msgsLoading.classList.add("hidden");
@@ -348,7 +355,20 @@ async function loadMessages(forceScroll = false) {
     if (forceScroll || atBottom) {
       msgList.scrollTop = msgList.scrollHeight;
     }
-  } catch (e) { console.error("Failed to load messages", e); }
+  } catch (e) {
+    console.error("Failed to load messages", e);
+    msgsLoading.classList.add("hidden");
+    if (forceScroll) showMsgError("Failed to load messages. Check your connection.");
+  }
+}
+
+function showMsgError(text) {
+  const existing = msgList.querySelector(".msg-load-error");
+  if (existing) existing.remove();
+  const el = document.createElement("div");
+  el.className = "msg-load-error";
+  el.innerHTML = `<span>⚠ ${escHtml(text)}</span> <button onclick="this.parentElement.remove();loadMessages(true)">Retry</button>`;
+  msgList.appendChild(el);
 }
 
 function buildBubble(msg) {
