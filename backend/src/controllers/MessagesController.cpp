@@ -105,9 +105,11 @@ void MessagesController::listMessages(const drogon::HttpRequestPtr& req,
     requireMember(chatId, me, [=, cb = std::move(cb)](bool isMember) mutable {
         if (!isMember) return cb(jsonErr("Not a member of this chat", drogon::k403Forbidden));
 
-        int limit = std::min(std::max(std::stoi(req->getParameter("limit").empty()
-                                                ? "50"
-                                                : req->getParameter("limit")), 1), 100);
+        // Use long long — Drogon's PG driver serialises int as 4 bytes but the
+        // wire-protocol parameter slot expects 8 bytes, causing "insufficient data".
+        long long limit = std::min(std::max(std::stoi(req->getParameter("limit").empty()
+                                                      ? "50"
+                                                      : req->getParameter("limit")), 1), 100);
         std::string beforeStr = req->getParameter("before");
 
         auto db = drogon::app().getDbClient();

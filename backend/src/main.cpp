@@ -27,6 +27,8 @@
 #include <csignal>
 #include <iostream>
 #include <chrono>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 static void onSignal(int) {
     LOG_INFO << "Shutting down…";
@@ -65,15 +67,33 @@ int main(int argc, char* argv[]) {
     );
 
     // ── Redis client ──────────────────────────────────────────────────────────
+    // Drogon's c-ares async resolver can fail to resolve Docker hostnames.
+    // Pre-resolve with getaddrinfo (synchronous, uses the system resolver) and
+    // pass the raw IP so Drogon skips its own DNS lookup entirely.
     if (!cfg.redisHost.empty()) {
+        std::string redisIp = cfg.redisHost;
+        struct addrinfo hints{}, *res = nullptr;
+        hints.ai_family   = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        if (getaddrinfo(cfg.redisHost.c_str(), nullptr, &hints, &res) == 0 && res) {
+            char buf[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &reinterpret_cast<struct sockaddr_in*>(res->ai_addr)->sin_addr,
+                      buf, sizeof(buf));
+            redisIp = buf;
+            freeaddrinfo(res);
+            LOG_INFO << "Redis " << cfg.redisHost << " resolved to " << redisIp;
+        } else {
+            LOG_WARN << "Could not resolve Redis host '" << cfg.redisHost
+                     << "', using as-is";
+        }
         drogon::app().createRedisClient(
-            cfg.redisHost,
+            redisIp,
             static_cast<unsigned short>(cfg.redisPort),
-            "default",       // connection name
+            "default",
             cfg.redisPass,
             /*connectionNum=*/ 4
         );
-        LOG_INFO << "Redis configured at " << cfg.redisHost << ":" << cfg.redisPort;
+        LOG_INFO << "Redis configured at " << redisIp << ":" << cfg.redisPort;
     }
 
     // ── Health endpoint ───────────────────────────────────────────────────────

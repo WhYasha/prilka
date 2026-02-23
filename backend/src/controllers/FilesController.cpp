@@ -68,6 +68,75 @@ static std::vector<unsigned char> hmacSha256Raw(const std::vector<unsigned char>
     return h;
 }
 
+// ── AWS Signature V4 helpers ────────────────────────────────────────────────
+
+// Build the four-stage signing key and return as raw bytes.
+static std::vector<unsigned char> sigV4SigningKey(const std::string& secretKey,
+                                                   const std::string& date,
+                                                   const std::string& region,
+                                                   const std::string& service) {
+    auto kDate    = hmacSha256Raw("AWS4" + secretKey, date);
+    auto kRegion  = hmacSha256Raw(kDate, region);
+    auto kService = hmacSha256Raw(kRegion, service);
+    return hmacSha256Raw(kService, "aws4_request");
+}
+
+// Produce a SigV4 Authorization header for a direct PUT to MinIO.
+// Signs: host, x-amz-content-sha256, x-amz-date.
+static void sigV4PutHeaders(const std::string& host,
+                             const std::string& uri,
+                             const std::string& accessKey,
+                             const std::string& secretKey,
+                             const std::string& contentType,
+                             const std::string& body,
+                             // out-params
+                             std::string& outDate,
+                             std::string& outContentSha,
+                             std::string& outAuth) {
+    const std::string region  = "us-east-1";
+    const std::string service = "s3";
+
+    std::time_t now = std::time(nullptr);
+    char dateBuf[9], timeBuf[17];
+    std::tm* utc = std::gmtime(&now);
+    std::strftime(dateBuf, sizeof(dateBuf),  "%Y%m%d",        utc);
+    std::strftime(timeBuf, sizeof(timeBuf),  "%Y%m%dT%H%M%SZ", utc);
+    std::string date(dateBuf), datetime(timeBuf);
+
+    outDate        = datetime;
+    outContentSha  = sha256Hex(body);
+
+    // Canonical headers (must be sorted alphabetically)
+    std::string canonicalHeaders =
+        "content-type:" + contentType + "\n"
+        "host:" + host + "\n"
+        "x-amz-content-sha256:" + outContentSha + "\n"
+        "x-amz-date:" + datetime + "\n";
+    std::string signedHeaders = "content-type;host;x-amz-content-sha256;x-amz-date";
+
+    std::string canonicalRequest =
+        "PUT\n" + uri + "\n\n" +
+        canonicalHeaders + "\n" +
+        signedHeaders + "\n" +
+        outContentSha;
+
+    std::string credScope = date + "/" + region + "/" + service + "/aws4_request";
+    std::string stringToSign =
+        "AWS4-HMAC-SHA256\n" + datetime + "\n" + credScope + "\n" +
+        sha256Hex(canonicalRequest);
+
+    auto kSigning = sigV4SigningKey(secretKey, date, region, service);
+    unsigned char h[32]; unsigned int hlen = 0;
+    HMAC(EVP_sha256(), kSigning.data(), static_cast<int>(kSigning.size()),
+         reinterpret_cast<const unsigned char*>(stringToSign.data()),
+         stringToSign.size(), h, &hlen);
+    std::string signature = toHex(h, hlen);
+
+    outAuth = "AWS4-HMAC-SHA256 Credential=" + accessKey + "/" + credScope +
+              ", SignedHeaders=" + signedHeaders +
+              ", Signature=" + signature;
+}
+
 // ── AWS Signature V4 Presigned URL ─────────────────────────────────────────
 // Generates a presigned GET URL for MinIO (S3-compatible).
 
@@ -118,19 +187,12 @@ static std::string generatePresignedUrl(const std::string& endpoint,
         sha256Hex(canonicalRequest);
 
     // Signing key
-    auto kDate    = hmacSha256Raw("AWS4" + secretKey, date);
-    auto kRegion  = hmacSha256Raw(kDate, region);
-    auto kService = hmacSha256Raw(kRegion, service);
-    auto kSigning = hmacSha256Raw(kService, "aws4_request");
-    std::string signature = toHex(kSigning.data(), kSigning.size());
-    // Actually need hex of HMAC with kSigning
-    {
-        unsigned char h[32]; unsigned int hlen = 0;
-        HMAC(EVP_sha256(), kSigning.data(), static_cast<int>(kSigning.size()),
-             reinterpret_cast<const unsigned char*>(stringToSign.data()),
-             stringToSign.size(), h, &hlen);
-        signature = toHex(h, hlen);
-    }
+    auto kSigning = sigV4SigningKey(secretKey, date, region, service);
+    unsigned char h[32]; unsigned int hlen = 0;
+    HMAC(EVP_sha256(), kSigning.data(), static_cast<int>(kSigning.size()),
+         reinterpret_cast<const unsigned char*>(stringToSign.data()),
+         stringToSign.size(), h, &hlen);
+    std::string signature = toHex(h, hlen);
 
     std::string scheme = "http://";
     return scheme + host + uri + "?" + qs.str() + "&X-Amz-Signature=" + signature;
@@ -171,22 +233,27 @@ void FilesController::uploadFile(const drogon::HttpRequestPtr& req,
     std::string objectKey= newUuid() + "_" + orig;
     std::string bucket   = cfg.minioBucket;
 
-    // Upload to MinIO via HTTP PUT (S3 API)
-    // TODO: Replace with AWS SDK or minio-cpp for production robustness.
+    // Upload to MinIO via HTTP PUT using AWS Signature V4.
     std::string minioHost = cfg.minioEndpoint;
     auto client = drogon::HttpClient::newHttpClient("http://" + minioHost);
 
+    std::string uri      = "/" + bucket + "/" + objectKey;
+    std::string bodyStr  = std::string(f.fileData(), f.fileLength());
+
+    std::string amzDate, contentSha, authHeader;
+    sigV4PutHeaders(minioHost, uri,
+                    cfg.minioAccessKey, cfg.minioSecretKey,
+                    mime, bodyStr,
+                    amzDate, contentSha, authHeader);
+
     auto putReq = drogon::HttpRequest::newHttpRequest();
     putReq->setMethod(drogon::Put);
-    putReq->setPath("/" + bucket + "/" + objectKey);
+    putReq->setPath(uri);
     putReq->setContentTypeString(mime);
-    putReq->setBody(std::string(f.fileData(), f.fileLength()));
-
-    // Simple auth header for MinIO with root credentials (not production-safe)
-    // For production: use proper AWS SigV4 signed PUT
-    putReq->addHeader("Authorization",
-        "AWS " + cfg.minioAccessKey + ":" +
-        hmacSha256Hex(cfg.minioSecretKey, "PUT\n\n" + mime + "\n\n/" + bucket + "/" + objectKey));
+    putReq->setBody(bodyStr);
+    putReq->addHeader("x-amz-date",             amzDate);
+    putReq->addHeader("x-amz-content-sha256",   contentSha);
+    putReq->addHeader("Authorization",           authHeader);
 
     client->sendRequest(putReq, [=, cb = std::move(cb)](
             drogon::ReqResult result,
