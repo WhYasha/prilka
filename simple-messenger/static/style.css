@@ -552,39 +552,39 @@ body:has(.layout) { overflow: hidden; }
 }
 
 /* ── Tri-option creation cards ──────────────────────────────── */
-.create-options { display: flex; flex-direction: column; gap: .75rem; }
-.create-option-card {
+.chat-type-cards { display: flex; flex-direction: column; gap: .75rem; }
+.chat-type-card {
   display: flex; align-items: center; gap: 1rem;
   padding: 1rem 1.25rem; border-radius: var(--radius);
   background: var(--input-bg); border: 1.5px solid var(--border);
   cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s;
 }
-.create-option-card:hover {
+.chat-type-card:hover {
   border-color: var(--accent); background: var(--surface);
   box-shadow: 0 2px 8px rgba(0,0,0,.08);
 }
-.create-option-icon {
+.chat-type-icon {
   width: 48px; height: 48px; border-radius: 50%;
   background: var(--accent); color: #fff;
   display: flex; align-items: center; justify-content: center;
   font-size: 1.25rem; flex-shrink: 0;
 }
-.create-option-text { flex: 1; min-width: 0; }
-.create-option-title { font-weight: 700; font-size: .95rem; color: var(--text); }
-.create-option-desc { font-size: .8rem; color: var(--text-muted); margin-top: .15rem; line-height: 1.4; }
+.chat-type-label { font-weight: 700; font-size: .95rem; color: var(--text); }
+.chat-type-desc { font-size: .8rem; color: var(--text-muted); margin-top: .15rem; line-height: 1.4; }
 
 /* ── Channel / Group creation form ──────────────────────────── */
-.creation-form { display: flex; flex-direction: column; gap: .75rem; }
-.creation-form .form-group { margin-bottom: .5rem; }
-.creation-form .avatar-upload {
+.new-chat-form { display: flex; flex-direction: column; gap: .75rem; }
+.new-chat-form .form-group { margin-bottom: .5rem; }
+.new-chat-form .avatar-upload {
   display: flex; align-items: center; gap: 1rem; margin-bottom: .5rem;
 }
-.creation-form .avatar-upload .avatar { cursor: pointer; position: relative; }
-.creation-form .avatar-upload .avatar:hover::after {
-  content: '📷'; position: absolute; inset: 0;
+.new-chat-form .avatar-upload .avatar { cursor: pointer; position: relative; }
+.new-chat-form .avatar-upload .avatar:hover::after {
+  content: '\1f4f7'; position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,.4); border-radius: 50%; font-size: 1.2rem;
 }
+.new-chat-back-btn { align-self: flex-start; margin-bottom: .25rem; }
 
 /* ── Channel badge / indicator ──────────────────────────────── */
 .channel-badge {
@@ -597,31 +597,32 @@ body:has(.layout) { overflow: hidden; }
 .chat-item-name .channel-badge { margin-right: .35rem; }
 
 /* ── Invite management section ──────────────────────────────── */
-.invite-section { margin-top: 1rem; }
-.invite-section-title {
+.invite-manage { margin-top: 1rem; }
+.invite-manage-title {
   font-size: .85rem; font-weight: 700; color: var(--text);
   margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .03em;
 }
-.invite-link-row {
+.invite-link-wrap {
   display: flex; align-items: center; gap: .5rem;
   padding: .6rem .85rem; border-radius: 8px;
   background: var(--input-bg); margin-bottom: .5rem;
 }
-.invite-link-text {
+.invite-link-input {
   flex: 1; font-size: .85rem; color: var(--accent);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-family: monospace;
+  font-family: monospace; border: none; background: transparent;
 }
 .invite-link-actions { display: flex; gap: .35rem; flex-shrink: 0; }
 .invite-link-actions .btn-sm { padding: .3rem .65rem; font-size: .78rem; }
 .invite-expires { font-size: .72rem; color: var(--text-muted); margin-top: .25rem; }
 
 /* ── Join preview modal ─────────────────────────────────────── */
-.join-preview {
+.join-preview-body {
   display: flex; flex-direction: column; align-items: center;
   text-align: center; padding: 1.5rem 1rem;
 }
-.join-preview .avatar { margin-bottom: 1rem; }
+.join-preview-body .avatar { margin-bottom: 1rem; }
+.join-preview-meta { margin-top: .25rem; }
 .join-preview-name { font-size: 1.25rem; font-weight: 700; color: var(--text); }
 .join-preview-type { font-size: .85rem; color: var(--text-muted); margin-top: .25rem; }
 .join-preview-members { font-size: .85rem; color: var(--text-muted); margin-top: .15rem; }
@@ -632,29 +633,29 @@ body:has(.layout) { overflow: hidden; }
 .join-preview-actions { margin-top: 1.25rem; display: flex; gap: .75rem; }
 
 /* ── Enhanced profile view (deep link) ──────────────────────── */
-.profile-deep-link {
+.user-profile-body {
   display: flex; flex-direction: column; align-items: center;
   text-align: center; padding: 2rem 1.5rem;
 }
-.profile-deep-link .avatar { margin-bottom: 1rem; }
-.profile-deep-link-name { font-size: 1.3rem; font-weight: 700; color: var(--text); }
-.profile-deep-link-username { font-size: .9rem; color: var(--text-muted); margin-top: .25rem; }
-.profile-deep-link-bio {
+.user-profile-body .avatar { margin-bottom: 1rem; }
+.user-profile-name { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+.user-profile-username { font-size: .9rem; color: var(--text-muted); margin-top: .25rem; }
+.user-profile-bio {
   font-size: .9rem; color: var(--text); margin-top: .75rem;
   line-height: 1.5; max-width: 300px;
 }
-.profile-deep-link-action { margin-top: 1.5rem; }
-.profile-deep-link-action .btn { padding: .75rem 2rem; font-size: 1rem; }
+.user-profile-actions { margin-top: 1.5rem; }
+.user-profile-actions .btn { padding: .75rem 2rem; font-size: 1rem; }
 
 /* ── Read-only channel notice ───────────────────────────────── */
-.read-only-notice {
+.channel-readonly-bar {
   display: flex; align-items: center; justify-content: center; gap: .5rem;
   padding: .55rem 1rem; background: var(--input-bg);
   border-top: 1px solid var(--border);
   color: var(--text-muted); font-size: .85rem;
   flex-shrink: 0;
 }
-.read-only-notice-icon { font-size: .95rem; }
+.channel-readonly-bar .readonly-icon { font-size: .95rem; }
 
 /* ── Member multi-select chips ──────────────────────────────── */
 .member-chips {
