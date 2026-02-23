@@ -139,8 +139,8 @@ function setAvatar(el, name, path) {
 async function bootstrap() {
   try {
     const [meRes, settingsRes] = await Promise.all([
-      apiFetch("/api/me"),
-      apiFetch("/api/settings"),
+      apiFetch("/web-api/me"),
+      apiFetch("/web-api/settings"),
     ]);
     S.me = await meRes.json();
     const settings = await settingsRes.json();
@@ -153,7 +153,7 @@ async function bootstrap() {
 
   // Load stickers
   try {
-    const res = await apiFetch("/api/stickers");
+    const res = await apiFetch("/web-api/stickers");
     S.stickers = await res.json();
     renderStickerGrid();
   } catch (e) { console.warn("Stickers failed", e); }
@@ -204,7 +204,7 @@ drawerOverlay.addEventListener("click", closeDrawer);
 
 drawerLogoutBtn.addEventListener("click", async () => {
   stopPolling();
-  await apiFetch("/api/logout", { method: "POST" });
+  await apiFetch("/web-api/logout", { method: "POST" });
   window.location.href = "/login";
 });
 
@@ -216,7 +216,7 @@ openProfileBtn.addEventListener("click", () => {
 // ── Chats ────────────────────────────────────────────────────────────────────
 async function refreshChats() {
   try {
-    const res = await apiFetch("/api/chats");
+    const res = await apiFetch("/web-api/chats");
     S.chats = await res.json();
     renderChatList();
   } catch (e) { console.error("Failed to load chats", e); }
@@ -409,7 +409,7 @@ async function sendText() {
   sendBtn.disabled = true;
 
   try {
-    const res = await apiFetch("/api/messages", {
+    const res = await apiFetch("/web-api/messages", {
       method: "POST",
       body: JSON.stringify({ chat_id: S.activeChatId, type: "text", content }),
     });
@@ -451,7 +451,7 @@ async function sendSticker(stickerId) {
   stickerPicker.classList.add("hidden");
 
   try {
-    const res = await apiFetch("/api/messages", {
+    const res = await apiFetch("/web-api/messages", {
       method: "POST",
       body: JSON.stringify({ chat_id: S.activeChatId, type: "sticker", sticker_id: stickerId }),
     });
@@ -579,7 +579,7 @@ async function uploadVoice(file, duration) {
   fd.append("duration", duration);
 
   try {
-    const res = await apiFetch("/api/upload/voice", { method: "POST", body: fd });
+    const res = await apiFetch("/web-api/upload/voice", { method: "POST", body: fd });
     if (!res.ok) { showToast("Failed to send voice message"); return; }
     const msg = await res.json();
     S.lastMsgId = Math.max(S.lastMsgId, msg.id - 1);
@@ -601,7 +601,7 @@ async function openNewChatModal() {
   userList.innerHTML = `<div class="empty-state-small">Loading…</div>`;
 
   try {
-    const res = await apiFetch("/api/users");
+    const res = await apiFetch("/web-api/users");
     const users = await res.json();
     renderUserPickList(users);
     userSearchInput.addEventListener("input", () => renderUserPickList(
@@ -642,7 +642,7 @@ function renderUserPickList(users) {
     div.addEventListener("click", async () => {
       newChatModal.classList.add("hidden");
       try {
-        const res = await apiFetch("/api/chats", {
+        const res = await apiFetch("/web-api/chats", {
           method: "POST",
           body: JSON.stringify({ with_user_id: u.id }),
         });
@@ -678,8 +678,8 @@ async function openProfileModal() {
 
   try {
     const [profRes, settRes] = await Promise.all([
-      apiFetch("/api/profile"),
-      apiFetch("/api/settings"),
+      apiFetch("/web-api/profile"),
+      apiFetch("/web-api/settings"),
     ]);
     const prof = await profRes.json();
     const sett = await settRes.json();
@@ -700,7 +700,7 @@ avatarFileInput.addEventListener("change", async () => {
   const fd = new FormData();
   fd.append("file", file);
   try {
-    const res = await apiFetch("/api/upload/avatar", { method: "POST", body: fd });
+    const res = await apiFetch("/web-api/upload/avatar", { method: "POST", body: fd });
     if (!res.ok) { const d = await res.json(); showToast(d.error || "Upload failed"); return; }
     const data = await res.json();
     S.me.avatar_path = data.avatar_path;
@@ -714,14 +714,14 @@ avatarFileInput.addEventListener("change", async () => {
 saveProfileBtn.addEventListener("click", async () => {
   try {
     const [profRes, settRes] = await Promise.all([
-      apiFetch("/api/profile", {
+      apiFetch("/web-api/profile", {
         method: "PUT",
         body: JSON.stringify({
           display_name: profileDisplayName.value.trim(),
           bio: profileBio.value.trim(),
         }),
       }),
-      apiFetch("/api/settings", {
+      apiFetch("/web-api/settings", {
         method: "PUT",
         body: JSON.stringify({
           theme: settingsTheme.value,
