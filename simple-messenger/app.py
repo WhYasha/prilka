@@ -65,8 +65,12 @@ def allowed_ext(filename, allowed):
 
 
 def avatar_url_for(user_id, avatar_path):
-    """Return a stable Flask avatar endpoint URL if user has an avatar, else None."""
-    return f"/api/users/{user_id}/avatar" if avatar_path else None
+    """Return a stable browser-accessible avatar URL if user has an avatar, else None.
+
+    nginx maps /web-api/ → Flask /api/, so browser uses /web-api/users/<id>/avatar
+    which Flask serves at /api/users/<id>/avatar.
+    """
+    return f"/web-api/users/{user_id}/avatar" if avatar_path else None
 
 
 def get_or_create_conversation(conn, uid, other_id):
@@ -425,7 +429,7 @@ def api_get_messages():
         "message_type": r["message_type"],
         "attachment_path": r["attachment_path"],
         "duration_seconds": r["duration_seconds"],
-        "sticker_url": f"/api/stickers/{r['sticker_id']}/image" if r["sticker_id"] else None,
+        "sticker_url": f"/web-api/stickers/{r['sticker_id']}/image" if r["sticker_id"] else None,
         "sticker_label": r["sticker_label"],
         "created_at": r["created_at"],
     } for r in rows])
@@ -506,7 +510,7 @@ def api_send_message():
         "message_type": row["message_type"],
         "attachment_path": row["attachment_path"],
         "duration_seconds": row["duration_seconds"],
-        "sticker_url": f"/api/stickers/{row['sticker_id']}/image" if row["sticker_id"] else None,
+        "sticker_url": f"/web-api/stickers/{row['sticker_id']}/image" if row["sticker_id"] else None,
         "sticker_label": row["sticker_label"],
         "created_at": row["created_at"],
     }), 201
@@ -544,7 +548,7 @@ def api_upload_avatar():
     with get_db() as conn:
         conn.execute("UPDATE users SET avatar_path=? WHERE id=?", (object_key, uid))
 
-    return jsonify({"avatar_url": f"/api/users/{uid}/avatar"})
+    return jsonify({"avatar_url": f"/web-api/users/{uid}/avatar"})
 
 
 # ---------------------------------------------------------------------------
@@ -740,7 +744,7 @@ def api_stickers():
         "id": r["id"],
         "pack_name": r["pack_name"],
         "label": r["label"],
-        "url": f"/api/stickers/{r['id']}/image",
+        "url": f"/web-api/stickers/{r['id']}/image",
     } for r in rows])
 
 
