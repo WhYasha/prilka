@@ -13,6 +13,9 @@ export const useChatsStore = defineStore('chats', () => {
   // Online presence: set of user IDs currently online
   const onlineUsers = ref<Set<number>>(new Set())
 
+  // Detailed presence info: userId → { isOnline, lastSeenAt?, lastSeenBucket? }
+  const userPresenceDetails = ref<Record<number, { isOnline: boolean; lastSeenAt?: string; lastSeenBucket?: string }>>({})
+
   const activeChat = computed(() =>
     chats.value.find((c) => c.id === activeChatId.value) ?? null,
   )
@@ -173,12 +176,38 @@ export const useChatsStore = defineStore('chats', () => {
 
   function setUserOnline(userId: number) {
     onlineUsers.value = new Set([...onlineUsers.value, userId])
+    userPresenceDetails.value = {
+      ...userPresenceDetails.value,
+      [userId]: { isOnline: true },
+    }
   }
 
-  function setUserOffline(userId: number) {
+  function setUserOffline(userId: number, lastSeenAt?: string, lastSeenBucket?: string) {
     const next = new Set(onlineUsers.value)
     next.delete(userId)
     onlineUsers.value = next
+    userPresenceDetails.value = {
+      ...userPresenceDetails.value,
+      [userId]: { isOnline: false, lastSeenAt, lastSeenBucket },
+    }
+  }
+
+  function setUserPresence(userId: number, details: { isOnline: boolean; lastSeenAt?: string; lastSeenBucket?: string }) {
+    if (details.isOnline) {
+      onlineUsers.value = new Set([...onlineUsers.value, userId])
+    } else {
+      const next = new Set(onlineUsers.value)
+      next.delete(userId)
+      onlineUsers.value = next
+    }
+    userPresenceDetails.value = {
+      ...userPresenceDetails.value,
+      [userId]: details,
+    }
+  }
+
+  function getUserPresence(userId: number): { isOnline: boolean; lastSeenAt?: string; lastSeenBucket?: string } | undefined {
+    return userPresenceDetails.value[userId]
   }
 
   function isUserOnline(userId: number): boolean {
@@ -204,8 +233,11 @@ export const useChatsStore = defineStore('chats', () => {
     clearTyping,
     getTypingUsernames,
     onlineUsers,
+    userPresenceDetails,
     setUserOnline,
     setUserOffline,
+    setUserPresence,
+    getUserPresence,
     isUserOnline,
   }
 })

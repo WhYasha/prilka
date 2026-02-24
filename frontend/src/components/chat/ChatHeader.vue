@@ -6,18 +6,21 @@
       :name="displayName"
       :url="chat?.other_avatar_url"
       :online="isOnline"
+      size="sm"
       @click="handleProfileClick"
     />
     <div class="chat-header-info" @click="handleProfileClick">
       <div class="chat-header-name">{{ displayName }}</div>
-      <div class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}</div>
+      <div v-if="subtitle" class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}</div>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useChatsStore } from '@/stores/chats'
+import { formatLastSeen } from '@/utils/formatLastSeen'
+import { getUser } from '@/api/users'
 import Avatar from '@/components/ui/Avatar.vue'
 
 const emit = defineEmits<{
@@ -51,7 +54,6 @@ const isOnline = computed(() => {
 })
 
 const subtitle = computed(() => {
-  // Show typing indicator if someone is typing
   if (typingNames.value.length === 1) {
     return `${typingNames.value[0]} is typing...`
   }
@@ -69,10 +71,47 @@ const subtitle = computed(() => {
     const count = c.member_count ?? 0
     return `${count} member${count !== 1 ? 's' : ''}`
   }
-  // For DMs: show "online" or @username
   if (isOnline.value) return 'online'
+
+  // Show last-seen info for DM chats
+  if (c.type === 'direct' && c.other_user_id) {
+    const presence = chatsStore.getUserPresence(c.other_user_id)
+    if (presence) {
+      if (presence.lastSeenAt) {
+        return formatLastSeen(presence.lastSeenAt)
+      }
+      if (presence.lastSeenBucket) {
+        return `last seen ${presence.lastSeenBucket}`
+      }
+    }
+  }
+
   return c.other_username ? '@' + c.other_username : ''
 })
+
+// Fetch initial presence data when opening a DM chat
+watch(
+  () => chat.value?.id,
+  () => {
+    const c = chat.value
+    if (!c || c.type !== 'direct' || !c.other_user_id) return
+    const userId = c.other_user_id
+    // Only fetch if we don't have presence details yet
+    if (!chatsStore.getUserPresence(userId)) {
+      getUser(userId)
+        .then((user) => {
+          if (user.last_activity) {
+            chatsStore.setUserPresence(userId, {
+              isOnline: chatsStore.isUserOnline(userId),
+              lastSeenAt: user.last_activity,
+            })
+          }
+        })
+        .catch(() => {})
+    }
+  },
+  { immediate: true },
+)
 
 function handleProfileClick() {
   const c = chat.value

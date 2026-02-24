@@ -90,6 +90,7 @@ export interface Settings {
   theme: string
   notifications_enabled: boolean
   language: string
+  last_seen_visibility: 'everyone' | 'approx_only' | 'nobody'
 }
 
 export interface Invite {

@@ -20,6 +20,12 @@ static std::mutex s_redisSubMu;
 static std::unordered_map<long long,
        std::shared_ptr<drogon::nosql::RedisSubscriber>> s_redisSubPtrs;
 
+bool WsHandler::isUserOnline(long long userId) {
+    std::lock_guard<std::mutex> lk(s_userMu);
+    auto it = s_userConns.find(userId);
+    return it != s_userConns.end() && !it->second.empty();
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 static Json::Value parseJson(const std::string& s) {
@@ -116,25 +122,102 @@ void WsHandler::subscribeToRedis(long long chatId) {
 
 // ── Presence broadcast ────────────────────────────────────────────────────
 
+// Helper: compute approximate last-seen bucket string
+static std::string lastSeenBucket(const std::string& status) {
+    if (status == "online") return "online";
+    // For offline, we don't have exact time here — just report "recently"
+    return "recently";
+}
+
 void WsHandler::broadcastPresence(long long userId, const std::string& username,
                                    const std::string& status) {
-    Json::Value payload;
-    payload["type"]    = "presence";
-    payload["user_id"] = Json::Int64(userId);
-    payload["username"] = username;
-    payload["status"]  = status;
-
     auto db = drogon::app().getDbClient();
+
+    // First query the user's last_seen_visibility setting
     db->execSqlAsync(
-        "SELECT chat_id FROM chat_members WHERE user_id = $1",
-        [payload](const drogon::orm::Result& r) {
-            for (const auto& row : r) {
-                long long chatId = row["chat_id"].as<long long>();
-                WsDispatch::publishMessage(chatId, payload);
+        "SELECT COALESCE(us.last_seen_visibility, 'everyone') AS visibility "
+        "FROM users u LEFT JOIN user_settings us ON us.user_id = u.id "
+        "WHERE u.id = $1",
+        [userId, username, status](const drogon::orm::Result& r) {
+            std::string visibility = "everyone";
+            if (!r.empty()) {
+                visibility = r[0]["visibility"].as<std::string>();
+            }
+
+            // Build payloads for different audience types
+            Json::Value fullPayload;
+            fullPayload["type"]     = "presence";
+            fullPayload["user_id"]  = Json::Int64(userId);
+            fullPayload["username"] = username;
+            fullPayload["status"]   = status;
+
+            Json::Value approxPayload;
+            approxPayload["type"]     = "presence";
+            approxPayload["user_id"]  = Json::Int64(userId);
+            approxPayload["username"] = username;
+            approxPayload["privacy"]  = "approx_only";
+            approxPayload["last_seen_bucket"] = lastSeenBucket(status);
+
+            if (visibility == "everyone") {
+                // Current behavior: broadcast full presence to everyone
+                auto db2 = drogon::app().getDbClient();
+                db2->execSqlAsync(
+                    "SELECT chat_id FROM chat_members WHERE user_id = $1",
+                    [fullPayload](const drogon::orm::Result& r2) {
+                        for (const auto& row : r2) {
+                            long long chatId = row["chat_id"].as<long long>();
+                            WsDispatch::publishMessage(chatId, fullPayload);
+                        }
+                    },
+                    [userId](const drogon::orm::DrogonDbException& e) {
+                        LOG_ERROR << "broadcastPresence DB error for user " << userId
+                                  << ": " << e.base().what();
+                    },
+                    userId);
+            } else {
+                // For 'approx_only' and 'nobody': do local filtered broadcast
+                auto db2 = drogon::app().getDbClient();
+                db2->execSqlAsync(
+                    "SELECT chat_id FROM chat_members WHERE user_id = $1",
+                    [visibility, fullPayload, approxPayload](const drogon::orm::Result& r2) {
+                        for (const auto& row : r2) {
+                            long long chatId = row["chat_id"].as<long long>();
+                            std::string fullMsg   = toJsonStr(fullPayload);
+                            std::string approxMsg = toJsonStr(approxPayload);
+
+                            std::lock_guard<std::mutex> lk(s_mu);
+                            auto it = s_subs.find(chatId);
+                            if (it == s_subs.end()) continue;
+
+                            for (auto& conn : it->second) {
+                                try {
+                                    if (!conn || conn->disconnected()) continue;
+                                    auto ctx = conn->getContext<ConnCtx>();
+                                    if (!ctx) continue;
+
+                                    if (ctx->isAdmin) {
+                                        // Admins always get full presence
+                                        conn->send(fullMsg);
+                                    } else if (visibility == "approx_only") {
+                                        // Non-admins get approximate info
+                                        conn->send(approxMsg);
+                                    }
+                                    // visibility == "nobody": non-admins get nothing
+                                } catch (const std::exception& e) {
+                                    LOG_ERROR << "WS presence send error: " << e.what();
+                                }
+                            }
+                        }
+                    },
+                    [userId](const drogon::orm::DrogonDbException& e) {
+                        LOG_ERROR << "broadcastPresence DB error for user " << userId
+                                  << ": " << e.base().what();
+                    },
+                    userId);
             }
         },
         [userId](const drogon::orm::DrogonDbException& e) {
-            LOG_ERROR << "broadcastPresence DB error for user " << userId
+            LOG_ERROR << "broadcastPresence settings query error for user " << userId
                       << ": " << e.base().what();
         },
         userId);
@@ -230,8 +313,9 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                 conn->forceClose();
                 return;
             }
-            ctx->userId = claims->userId;
-            ctx->authed = true;
+            ctx->userId  = claims->userId;
+            ctx->authed  = true;
+            ctx->isAdmin = claims->isAdmin;
 
             // Update last_activity and fetch username for typing/presence
             auto db = drogon::app().getDbClient();
