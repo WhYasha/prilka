@@ -20,6 +20,12 @@ static std::mutex s_redisSubMu;
 static std::unordered_map<long long,
        std::shared_ptr<drogon::nosql::RedisSubscriber>> s_redisSubPtrs;
 
+bool WsHandler::isUserOnline(long long userId) {
+    std::lock_guard<std::mutex> lk(s_userMu);
+    auto it = s_userConns.find(userId);
+    return it != s_userConns.end() && !it->second.empty();
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 static Json::Value parseJson(const std::string& s) {

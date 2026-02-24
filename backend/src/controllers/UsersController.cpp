@@ -1,6 +1,7 @@
 #include "UsersController.h"
 #include "../config/Config.h"
 #include "../utils/MinioPresign.h"
+#include "../ws/WsHandler.h"
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
 #include <regex>
@@ -44,19 +45,88 @@ static Json::Value buildUserJson(const drogon::orm::Row& r) {
     return u;
 }
 
+// Compute approximate last-seen bucket from last_activity timestamp
+static std::string computeLastSeenBucket(const std::string& lastActivity) {
+    // lastActivity is ISO timestamp from DB; we use SQL CASE in query instead
+    // This is a fallback — actual bucket is computed in SQL
+    return lastActivity;
+}
+
 // GET /users/{id}
 void UsersController::getUser(const drogon::HttpRequestPtr& req,
                                std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                long long userId) {
+    long long viewerId = req->getAttributes()->get<long long>("user_id");
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "SELECT u.id, u.username, u.display_name, u.bio, u.is_admin, "
-        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
-        "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "       u.last_activity, "
+        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key, "
+        "       COALESCE(us.last_seen_visibility, 'everyone') AS last_seen_visibility, "
+        "       CASE "
+        "         WHEN u.last_activity IS NULL THEN NULL "
+        "         WHEN u.last_activity > NOW() - INTERVAL '5 minutes' THEN 'just now' "
+        "         WHEN u.last_activity > NOW() - INTERVAL '1 hour' THEN 'within an hour' "
+        "         WHEN u.last_activity > NOW() - INTERVAL '1 day' THEN 'today' "
+        "         WHEN u.last_activity > NOW() - INTERVAL '7 days' THEN 'this week' "
+        "         ELSE 'long ago' "
+        "       END AS last_seen_bucket "
+        "FROM users u "
+        "LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "LEFT JOIN user_settings us ON us.user_id = u.id "
         "WHERE u.id = $1 AND u.is_active = TRUE",
-        [cb](const drogon::orm::Result& r) mutable {
+        [cb, viewerId](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(notFound());
-            cb(drogon::HttpResponse::newHttpJsonResponse(buildUserJson(r[0])));
+            Json::Value u = buildUserJson(r[0]);
+
+            bool viewerIsAdmin = false;
+            // Check if viewer is admin
+            auto db2 = drogon::app().getDbClient();
+            // We already have the target user's data; check viewer admin inline
+            long long targetId = r[0]["id"].as<long long>();
+            bool targetIsAdmin = r[0]["is_admin"].isNull() ? false : r[0]["is_admin"].as<bool>();
+            std::string visibility = r[0]["last_seen_visibility"].as<std::string>();
+            bool isOnline = WsHandler::isUserOnline(targetId);
+
+            std::string lastActivity;
+            if (!r[0]["last_activity"].isNull())
+                lastActivity = r[0]["last_activity"].as<std::string>();
+
+            std::string lastSeenBucket;
+            if (!r[0]["last_seen_bucket"].isNull())
+                lastSeenBucket = r[0]["last_seen_bucket"].as<std::string>();
+
+            // Check if viewer is admin to decide presence rules
+            db2->execSqlAsync(
+                "SELECT is_admin FROM users WHERE id = $1",
+                [cb, u, visibility, isOnline, lastActivity, lastSeenBucket, viewerId, targetId]
+                (const drogon::orm::Result& vr) mutable {
+                    bool viewerIsAdmin = (!vr.empty() && !vr[0]["is_admin"].isNull() && vr[0]["is_admin"].as<bool>());
+
+                    if (viewerIsAdmin || viewerId == targetId) {
+                        // Admin or self: always return exact presence
+                        u["is_online"] = isOnline;
+                        u["last_activity"] = lastActivity.empty() ? Json::Value() : Json::Value(lastActivity);
+                    } else if (visibility == "everyone") {
+                        u["is_online"] = isOnline;
+                        u["last_activity"] = lastActivity.empty() ? Json::Value() : Json::Value(lastActivity);
+                    } else if (visibility == "approx_only") {
+                        u["is_online"] = Json::Value();
+                        u["last_activity"] = Json::Value();
+                        u["last_seen_approx"] = lastSeenBucket.empty() ? Json::Value() : Json::Value(lastSeenBucket);
+                    } else {
+                        // "nobody"
+                        u["is_online"] = Json::Value();
+                        u["last_activity"] = Json::Value();
+                    }
+
+                    cb(drogon::HttpResponse::newHttpJsonResponse(u));
+                },
+                [cb, u](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "getUser viewer check: " << e.base().what();
+                    // Fallback: return user without presence
+                    cb(drogon::HttpResponse::newHttpJsonResponse(u));
+                }, viewerId);
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "getUser: " << e.base().what();

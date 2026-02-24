@@ -44,6 +44,9 @@ public:
     // Push a JSON message to all connections subscribed to a chat (local fan-out).
     static void broadcast(long long chatId, const Json::Value& payload);
 
+    // Check if a user has any active WebSocket connections.
+    static bool isUserOnline(long long userId);
+
 private:
     // Per-connection state stored in conn->getContext()
     struct ConnCtx {
