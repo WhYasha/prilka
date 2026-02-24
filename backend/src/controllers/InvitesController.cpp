@@ -13,8 +13,20 @@ static drogon::HttpResponsePtr jsonErr(const std::string& msg, drogon::HttpStatu
 void InvitesController::createInvite(const drogon::HttpRequestPtr& req,
                                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                       long long chatId) {
-    long long me = req->getAttributes()->get<long long>("user_id");
-    auto db = drogon::app().getDbClient();
+    long long me;
+    try {
+        me = req->getAttributes()->get<long long>("user_id");
+    } catch (...) {
+        return cb(jsonErr("Unauthorized", drogon::k401Unauthorized));
+    }
+
+    drogon::orm::DbClientPtr db;
+    try {
+        db = drogon::app().getDbClient();
+    } catch (const std::exception& e) {
+        LOG_ERROR << "createInvite getDbClient: " << e.what();
+        return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+    }
 
     // Check chat type and user role
     db->execSqlAsync(
@@ -69,8 +81,20 @@ void InvitesController::createInvite(const drogon::HttpRequestPtr& req,
 void InvitesController::listInvites(const drogon::HttpRequestPtr& req,
                                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                      long long chatId) {
-    long long me = req->getAttributes()->get<long long>("user_id");
-    auto db = drogon::app().getDbClient();
+    long long me;
+    try {
+        me = req->getAttributes()->get<long long>("user_id");
+    } catch (...) {
+        return cb(jsonErr("Unauthorized", drogon::k401Unauthorized));
+    }
+
+    drogon::orm::DbClientPtr db;
+    try {
+        db = drogon::app().getDbClient();
+    } catch (const std::exception& e) {
+        LOG_ERROR << "listInvites getDbClient: " << e.what();
+        return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+    }
 
     // Check user role
     db->execSqlAsync(
@@ -117,8 +141,20 @@ void InvitesController::listInvites(const drogon::HttpRequestPtr& req,
 void InvitesController::revokeInvite(const drogon::HttpRequestPtr& req,
                                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                       const std::string& token) {
-    long long me = req->getAttributes()->get<long long>("user_id");
-    auto db = drogon::app().getDbClient();
+    long long me;
+    try {
+        me = req->getAttributes()->get<long long>("user_id");
+    } catch (...) {
+        return cb(jsonErr("Unauthorized", drogon::k401Unauthorized));
+    }
+
+    drogon::orm::DbClientPtr db;
+    try {
+        db = drogon::app().getDbClient();
+    } catch (const std::exception& e) {
+        LOG_ERROR << "revokeInvite getDbClient: " << e.what();
+        return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+    }
 
     // Find invite and check ownership
     db->execSqlAsync(
@@ -156,7 +192,14 @@ void InvitesController::revokeInvite(const drogon::HttpRequestPtr& req,
 void InvitesController::previewInvite(const drogon::HttpRequestPtr& req,
                                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                        const std::string& token) {
-    auto db = drogon::app().getDbClient();
+    drogon::orm::DbClientPtr db;
+    try {
+        db = drogon::app().getDbClient();
+    } catch (const std::exception& e) {
+        LOG_ERROR << "previewInvite getDbClient: " << e.what();
+        return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+    }
+
     db->execSqlAsync(
         "SELECT i.chat_id, i.revoked_at, c.type, c.title, c.description, "
         "       (SELECT COUNT(*) FROM chat_members cm WHERE cm.chat_id = c.id) AS member_count "
@@ -189,8 +232,20 @@ void InvitesController::previewInvite(const drogon::HttpRequestPtr& req,
 void InvitesController::joinInvite(const drogon::HttpRequestPtr& req,
                                     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                     const std::string& token) {
-    long long me = req->getAttributes()->get<long long>("user_id");
-    auto db = drogon::app().getDbClient();
+    long long me;
+    try {
+        me = req->getAttributes()->get<long long>("user_id");
+    } catch (...) {
+        return cb(jsonErr("Unauthorized", drogon::k401Unauthorized));
+    }
+
+    drogon::orm::DbClientPtr db;
+    try {
+        db = drogon::app().getDbClient();
+    } catch (const std::exception& e) {
+        LOG_ERROR << "joinInvite getDbClient: " << e.what();
+        return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+    }
 
     db->execSqlAsync(
         "SELECT i.chat_id, i.revoked_at FROM invites i WHERE i.token = $1",
