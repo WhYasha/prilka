@@ -19,7 +19,10 @@ export const useChatsStore = defineStore('chats', () => {
 
   const sortedChats = computed(() => {
     return [...chats.value].sort((a, b) => {
-      // Favorites first
+      // Pinned first
+      if (a.is_pinned && !b.is_pinned) return -1
+      if (!a.is_pinned && b.is_pinned) return 1
+      // Favorites next
       if (a.is_favorite && !b.is_favorite) return -1
       if (!a.is_favorite && b.is_favorite) return 1
       // Then by updated_at descending
@@ -77,6 +80,38 @@ export const useChatsStore = defineStore('chats', () => {
       chat.is_muted = !chat.is_muted
     } catch (e) {
       console.error('Failed to toggle mute', e)
+      throw e
+    }
+  }
+
+  async function togglePin(chatId: number) {
+    const chat = chats.value.find((c) => c.id === chatId)
+    if (!chat) return
+    try {
+      if (chat.is_pinned) {
+        await chatsApi.unpinChat(chatId)
+      } else {
+        await chatsApi.pinChat(chatId)
+      }
+      chat.is_pinned = !chat.is_pinned
+    } catch (e) {
+      console.error('Failed to toggle pin', e)
+      throw e
+    }
+  }
+
+  async function toggleArchive(chatId: number) {
+    const chat = chats.value.find((c) => c.id === chatId)
+    if (!chat) return
+    try {
+      if (chat.is_archived) {
+        await chatsApi.unarchiveChat(chatId)
+      } else {
+        await chatsApi.archiveChat(chatId)
+      }
+      chat.is_archived = !chat.is_archived
+    } catch (e) {
+      console.error('Failed to toggle archive', e)
       throw e
     }
   }
@@ -160,6 +195,8 @@ export const useChatsStore = defineStore('chats', () => {
     setActiveChat,
     toggleFavorite,
     toggleMute,
+    togglePin,
+    toggleArchive,
     leave,
     updateChatLastMessage,
     incrementUnread,
