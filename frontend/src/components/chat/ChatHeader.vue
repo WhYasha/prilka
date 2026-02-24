@@ -6,11 +6,12 @@
       :name="displayName"
       :url="chat?.other_avatar_url"
       :online="isOnline"
+      size="sm"
       @click="handleProfileClick"
     />
     <div class="chat-header-info" @click="handleProfileClick">
       <div class="chat-header-name">{{ displayName }}</div>
-      <div class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}</div>
+      <div v-if="subtitle" class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}</div>
     </div>
   </header>
 </template>
@@ -51,7 +52,6 @@ const isOnline = computed(() => {
 })
 
 const subtitle = computed(() => {
-  // Show typing indicator if someone is typing
   if (typingNames.value.length === 1) {
     return `${typingNames.value[0]} is typing...`
   }
@@ -69,7 +69,6 @@ const subtitle = computed(() => {
     const count = c.member_count ?? 0
     return `${count} member${count !== 1 ? 's' : ''}`
   }
-  // For DMs: show "online" or @username
   if (isOnline.value) return 'online'
   return c.other_username ? '@' + c.other_username : ''
 })
