@@ -6,7 +6,8 @@
   <title>Simple Messenger</title>
 </head>
 <body data-theme="light">
-  <div id="app"></div>
+  <div id="app">Loading...</div>
+  <script>window.onerror=function(m,s,l,c,e){document.getElementById('app').innerHTML='<pre style="color:red;padding:2rem">'+m+'\n'+s+':'+l+':'+c+'</pre>';}</script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
