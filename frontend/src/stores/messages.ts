@@ -153,12 +153,32 @@ export const useMessagesStore = defineStore('messages', () => {
       messagesByChat.value[chatId] = []
     }
     // Dedup: WS or polling may have already delivered this message
-    const existingIds = new Set(messagesByChat.value[chatId].map((m) => m.id))
-    if (!existingIds.has(msg.id)) {
+    // Always replace with the API response since it has enriched reply_to fields
+    const existingIdx = messagesByChat.value[chatId].findIndex((m) => m.id === msg.id)
+    if (existingIdx !== -1) {
+      messagesByChat.value[chatId][existingIdx] = msg
+    } else {
       messagesByChat.value[chatId].push(msg)
     }
     lastMsgId.value[chatId] = Math.max(lastMsgId.value[chatId] || 0, msg.id)
     return msg
+  }
+
+  function enrichReplyFields(chatId: number, msg: Message) {
+    if (!msg.reply_to_message_id) return
+    if (msg.reply_to_sender_username || msg.reply_to_sender_name) return
+    const msgs = messagesByChat.value[chatId]
+    if (!msgs) return
+    const original = msgs.find((m) => m.id === msg.reply_to_message_id)
+    if (!original) return
+    msg.reply_to_sender_username = original.sender_username
+    msg.reply_to_sender_name = original.sender_display_name || original.sender_username
+    if (!msg.reply_to_content && original.content) {
+      msg.reply_to_content = original.content
+    }
+    if (!msg.reply_to_type && original.message_type) {
+      msg.reply_to_type = original.message_type
+    }
   }
 
   function pushMessage(chatId: number, msg: Message) {
@@ -167,6 +187,7 @@ export const useMessagesStore = defineStore('messages', () => {
     }
     const existing = messagesByChat.value[chatId].find((m) => m.id === msg.id)
     if (!existing) {
+      enrichReplyFields(chatId, msg)
       messagesByChat.value[chatId].push(msg)
       lastMsgId.value[chatId] = Math.max(lastMsgId.value[chatId] || 0, msg.id)
     }
