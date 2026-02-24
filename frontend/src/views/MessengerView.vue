@@ -58,6 +58,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useChatsStore } from '@/stores/chats'
 import { useSettingsStore } from '@/stores/settings'
+import { useSelectionStore } from '@/stores/selection'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { getUserByUsername, getUser } from '@/api/users'
 import { createChat, getChatByName } from '@/api/chats'
@@ -80,6 +81,7 @@ const router = useRouter()
 const authStore = useAuthStore()
 const chatsStore = useChatsStore()
 const settingsStore = useSettingsStore()
+const selectionStore = useSelectionStore()
 const { showToast } = useToast()
 const { connect, disconnect, sendTyping } = useWebSocket()
 
@@ -138,6 +140,13 @@ onUnmounted(() => {
 // Watch route changes for deep links
 watch(() => route.path, () => {
   handleDeepLink()
+})
+
+// Clear selection mode on chat navigation
+watch(() => chatsStore.activeChatId, () => {
+  if (selectionStore.isSelectionMode) {
+    selectionStore.exitSelectionMode()
+  }
 })
 
 async function handleDeepLink() {
@@ -254,6 +263,7 @@ async function handleChatCreated(chatId: number) {
 // Global ESC handler
 function handleEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
+  if (selectionStore.isSelectionMode) { selectionStore.exitSelectionMode(); return }
   if (userProfileTarget.value) { userProfileTarget.value = null; return }
   if (newChatModalOpen.value) { newChatModalOpen.value = false; return }
   if (profileModalOpen.value) { profileModalOpen.value = false; return }
