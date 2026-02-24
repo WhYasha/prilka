@@ -31,6 +31,8 @@ export interface Chat {
   other_avatar_url?: string | null
   is_favorite: boolean
   is_muted: boolean
+  is_pinned?: boolean
+  is_archived?: boolean
   unread_count: number
   last_message?: string
   last_at?: string
@@ -64,6 +66,8 @@ export interface Message {
   attachment_path?: string
   duration_seconds?: number
   file_id?: number
+  forwarded_from_chat_id?: number
+  forwarded_from_message_id?: number
   created_at: string
   reactions?: ReactionGroup[]
 }

@@ -1011,6 +1011,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   .modal-body { overflow-y: auto; }
   .user-profile-body { text-align: center; padding: 1.5rem 1rem; }
 
+
   /* Profile modal: near-full-screen on mobile */
   .profile-modal {
     width: 100%; max-width: 100vw; height: 100vh; height: 100dvh;
@@ -1043,6 +1044,199 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   .sidebar { display: flex !important; }
 }
 
+
+/* ── Message Context Menu ───────────────────────────────────── */
+.msg-context-menu {
+  position: fixed; z-index: 9999;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  min-width: 180px; overflow: hidden;
+  padding: 4px 0;
+}
+.msg-context-menu-item {
+  display: flex; align-items: center; gap: .6rem;
+  width: 100%; padding: .6rem 1rem;
+  background: none; border: none;
+  font-size: .9rem; color: var(--text);
+  cursor: pointer; text-align: left;
+  transition: background .1s;
+}
+.msg-context-menu-item:hover { background: var(--input-bg); }
+.msg-context-menu-item.disabled {
+  opacity: .4; cursor: default; pointer-events: none;
+}
+.msg-context-menu-item.danger { color: var(--danger); }
+.msg-context-menu-item .menu-icon {
+  width: 1.25rem; text-align: center; font-size: .95rem; flex-shrink: 0;
+}
+
+/* ── Bottom Sheet ──────────────────────────────────────────── */
+.bottom-sheet-backdrop {
+  position: fixed; inset: 0; z-index: 400;
+  background: rgba(0,0,0,.45);
+}
+.bottom-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 401;
+  background: var(--surface);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -4px 24px rgba(0,0,0,.2);
+  max-height: 70vh; overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.bottom-sheet-handle {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--border); margin: .6rem auto .4rem;
+}
+.bottom-sheet-title {
+  font-size: .95rem; font-weight: 700; color: var(--text);
+  padding: .25rem 1.25rem .5rem; text-align: center;
+}
+.bottom-sheet-item {
+  display: flex; align-items: center; gap: .75rem;
+  width: 100%; padding: .75rem 1.25rem;
+  background: none; border: none;
+  font-size: .95rem; color: var(--text);
+  cursor: pointer; text-align: left;
+  transition: background .1s;
+}
+.bottom-sheet-item:hover { background: var(--input-bg); }
+.bottom-sheet-item.danger { color: var(--danger); }
+.bottom-sheet-item .menu-icon {
+  width: 1.5rem; text-align: center; font-size: 1.05rem; flex-shrink: 0;
+}
+
+/* ── Selection Bar ─────────────────────────────────────────── */
+.selection-bar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.selection-bar-count {
+  flex: 1; font-size: .9rem; font-weight: 600; color: var(--text);
+}
+.selection-bar .btn { padding: .4rem .85rem; font-size: .85rem; }
+
+/* Message selected state */
+.msg-row.selected .msg-bubble {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.msg-row .msg-select-check {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .7rem; color: #fff; cursor: pointer;
+  flex-shrink: 0; transition: background .12s, border-color .12s;
+}
+.msg-row .msg-select-check.checked {
+  background: var(--accent); border-color: var(--accent);
+}
+
+/* ── Forward Dialog ────────────────────────────────────────── */
+.forward-dialog .forward-search {
+  width: 100%; padding: .6rem .85rem;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--input-bg); color: var(--text);
+  font-size: .9rem; outline: none;
+  transition: border-color .15s;
+}
+.forward-dialog .forward-search:focus { border-color: var(--accent); }
+.forward-dialog .forward-chat-list {
+  margin-top: .75rem; max-height: 320px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: .25rem;
+}
+.forward-dialog .forward-chat-item {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .6rem .85rem; border-radius: 8px;
+  cursor: pointer; transition: background .12s;
+}
+.forward-dialog .forward-chat-item:hover { background: var(--input-bg); }
+.forward-dialog .forward-chat-item.selected {
+  background: rgba(43,154,243,.1); outline: 1.5px solid var(--accent);
+}
+.forward-dialog .forward-chat-name {
+  font-weight: 600; font-size: .9rem; color: var(--text);
+}
+
+/* ── Delete Confirm Modal ──────────────────────────────────── */
+.delete-confirm-text {
+  font-size: .9rem; color: var(--text); line-height: 1.5; margin-bottom: .75rem;
+}
+.delete-confirm-check {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .875rem; color: var(--text); margin-bottom: 1rem;
+  cursor: pointer;
+}
+.delete-confirm-check input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--danger); cursor: pointer;
+}
+
+/* ── Message highlight (deep link) ─────────────────────────── */
+.msg-row.msg-highlight .msg-bubble {
+  animation: msg-highlight-flash .8s ease-out;
+}
+@keyframes msg-highlight-flash {
+  0%   { background: rgba(43,154,243,.25); }
+  100% { background: inherit; }
+}
+
+/* ── Forwarded message indicator ───────────────────────────── */
+.msg-forwarded-label {
+  font-size: .72rem; color: var(--accent); font-weight: 600;
+  margin-bottom: .15rem; padding: 0 .4rem;
+}
+
+/* ── Swipe actions (chat list) ─────────────────────────────── */
+.swipe-actions {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  display: flex; align-items: stretch;
+}
+.swipe-action-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 72px; border: none; color: #fff;
+  font-size: .72rem; font-weight: 600;
+  cursor: pointer; flex-direction: column; gap: .2rem;
+}
+.swipe-action-btn .swipe-icon { font-size: 1.1rem; }
+.swipe-action-btn.swipe-pin { background: var(--accent); }
+.swipe-action-btn.swipe-mute { background: #f39c12; }
+.swipe-action-btn.swipe-archive { background: #6b7280; }
+.swipe-action-btn.swipe-delete { background: var(--danger); }
+
+/* ── Chat item swipe wrapper ───────────────────────────────── */
+.chat-item-swipe-wrap {
+  position: relative; overflow: hidden;
+}
+.chat-item-swipe-wrap .chat-item {
+  position: relative; z-index: 1;
+  transition: transform .2s ease;
+}
+
+/* ── Pinned chat indicator ─────────────────────────────────── */
+.pin-icon {
+  font-size: .7rem; color: var(--sidebar-txt); opacity: .7;
+  flex-shrink: 0; margin-left: .25rem;
+}
+
+/* ── Vue Transitions ───────────────────────────────────────── */
+.fade-enter-active,
+.fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+
+.slide-up-enter-active { transition: transform .25s ease-out, opacity .2s ease; }
+.slide-up-leave-active { transition: transform .2s ease-in, opacity .15s ease; }
+.slide-up-enter-from { transform: translateY(100%); opacity: 0; }
+.slide-up-leave-to { transform: translateY(100%); opacity: 0; }
+
+.slide-down-enter-active { transition: transform .2s ease-out, opacity .15s ease; }
+.slide-down-leave-active { transition: transform .15s ease-in, opacity .1s ease; }
+.slide-down-enter-from { transform: translateY(-100%); opacity: 0; }
+.slide-down-leave-to { transform: translateY(-100%); opacity: 0; }
 
 /* ============================================================
    Admin Panel Styles (ported from admin.css)
@@ -1408,4 +1602,97 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   .admin-stats-grid { grid-template-columns: repeat(2, 1fr); }
   .admin-filter-bar { flex-direction: column; align-items: stretch; }
   .admin-filter-bar input { width: 100%; }
+}
+
+/* ── Unread Badge (pill) ───────────────────────────────────── */
+.unread-badge-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 10px;
+  font-size: .7rem; font-weight: 700; line-height: 1;
+  color: #fff; background: var(--accent);
+  flex-shrink: 0;
+}
+.unread-badge-pill.muted {
+  background: var(--text-muted);
+}
+
+/* ── Chat item unread state ────────────────────────────────── */
+.chat-item-unread .chat-item-title {
+  font-weight: 700;
+  color: var(--sidebar-txt-d);
+}
+.chat-item-unread .chat-item-preview {
+  color: var(--sidebar-txt-d);
+}
+
+/* ── Pin indicator ─────────────────────────────────────────── */
+.pin-indicator {
+  display: inline-flex; align-items: center;
+  font-size: .7rem; color: var(--text-muted);
+  margin-left: 4px; flex-shrink: 0;
+}
+
+/* ── Swipe action color variants ───────────────────────────── */
+.swipe-actions.swipe-actions-left { left: 0; transform: translateX(-100%); }
+.swipe-actions.swipe-actions-right { right: 0; transform: translateX(100%); }
+.swipe-action-btn.swipe-pin    { background: var(--accent); }
+.swipe-action-btn.swipe-mute   { background: var(--text-muted); }
+.swipe-action-btn.swipe-archive { background: #10b981; }
+.swipe-action-btn.swipe-delete  { background: var(--danger); }
+
+/* ── Selection checkbox overlay ────────────────────────────── */
+.selection-checkbox {
+  position: absolute; top: 50%; left: 8px;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  border: 2px solid var(--text-muted);
+  border-radius: 50%; background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s, border-color .15s;
+  z-index: 5;
+}
+.selection-checkbox.checked {
+  background: var(--accent); border-color: var(--accent);
+}
+.selection-checkbox.checked::after {
+  content: '✓'; color: #fff; font-size: .7rem; font-weight: 700;
+}
+
+/* ── Selected message highlight ────────────────────────────── */
+.msg-selected {
+  background: rgba(43, 154, 243, .12) !important;
+}
+[data-theme="dark"] .msg-selected {
+  background: rgba(43, 154, 243, .18) !important;
+}
+
+/* ── Dark theme fixes for new components ──────────────────── */
+[data-theme="dark"] .msg-context-menu,
+[data-theme="dark"] .context-menu {
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .bottom-sheet {
+  box-shadow: 0 -4px 32px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .selection-bar {
+  box-shadow: 0 2px 12px rgba(0,0,0,.3);
+}
+[data-theme="dark"] .emoji-picker {
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .alert-error {
+  background: rgba(239,68,68,.15); color: #fca5a5; border-color: rgba(239,68,68,.3);
+}
+[data-theme="dark"] .date-sep span {
+  background: rgba(255,255,255,.08);
+}
+[data-theme="dark"] .reaction-add-btn {
+  box-shadow: 0 1px 6px rgba(0,0,0,.3);
+}
+[data-theme="dark"] .forward-dialog .forward-chat-item.selected {
+  background: rgba(43,154,243,.18);
+}
+[data-theme="dark"] .delete-confirm-check input[type="checkbox"] {
+  accent-color: #ef4444;
 }

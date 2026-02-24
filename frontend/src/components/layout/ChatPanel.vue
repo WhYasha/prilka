@@ -8,7 +8,14 @@
 
     <!-- Active chat view -->
     <div v-else class="chat-view">
+      <!-- Selection bar (multi-select mode) -->
+      <SelectionBar
+        @forward="onSelectionForward"
+        @delete="onSelectionDelete"
+      />
+
       <ChatHeader
+        v-show="!selectionStore.selectionMode"
         @back="emit('back')"
         @open-user-profile="(u) => emit('openUserProfile', u)"
       />
@@ -74,12 +81,43 @@
 
       <!-- Invite management -->
       <InviteSection v-if="showInviteSection" :chat-id="chatsStore.activeChatId!" />
+
+      <!-- Message context menu (desktop right-click) -->
+      <MessageContextMenu />
+
+      <!-- Bottom sheet (mobile long-press) -->
+      <BottomSheet :visible="bottomSheetVisible" @close="bottomSheetVisible = false">
+        <button class="ctx-item" disabled>Reply</button>
+        <button class="ctx-item" @click="bottomSheetAction('copy')">Copy text</button>
+        <button class="ctx-item" @click="bottomSheetAction('copyLink')">Copy link</button>
+        <button class="ctx-item" @click="bottomSheetAction('forward')">Forward</button>
+        <button class="ctx-item" @click="bottomSheetAction('select')">Select</button>
+        <button class="ctx-item ctx-delete" @click="bottomSheetAction('delete')">Delete</button>
+      </BottomSheet>
+
+      <!-- Forward dialog -->
+      <ForwardDialog
+        v-if="forwardDialogVisible"
+        :message-ids="forwardMessageIds"
+        :from-chat-id="chatsStore.activeChatId!"
+        @close="closeForwardDialog"
+        @forwarded="closeForwardDialog"
+      />
+
+      <!-- Delete confirmation modal -->
+      <DeleteConfirmModal
+        v-if="deleteModalVisible"
+        :message-count="deleteMessageIds.length"
+        :can-delete-for-everyone="canDeleteForEveryone"
+        @close="deleteModalVisible = false"
+        @confirm="onDeleteConfirm"
+      />
     </div>
   </main>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, inject } from 'vue'
+import { ref, computed, watch, nextTick, inject, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatsStore } from '@/stores/chats'
 import { useMessagesStore } from '@/stores/messages'
@@ -96,6 +134,12 @@ import StickerPicker from '@/components/chat/StickerPicker.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import InviteSection from '@/components/chat/InviteSection.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import MessageContextMenu from '@/components/chat/MessageContextMenu.vue'
+import SelectionBar from '@/components/chat/SelectionBar.vue'
+import BottomSheet from '@/components/ui/BottomSheet.vue'
+import ForwardDialog from '@/components/modals/ForwardDialog.vue'
+import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
+import { useSelectionStore } from '@/stores/selection'
 
 const emit = defineEmits<{
   back: []
@@ -109,6 +153,7 @@ const { showToast } = useToast()
 const recorderComposable = useRecorder()
 const stickers = inject<{ value: Sticker[] }>('stickers', ref([]))
 const sendTyping = inject<(chatId: number) => void>('sendTyping', () => {})
+const pendingScrollMessageId = inject<{ value: number | null }>('pendingScrollMessageId', ref(null))
 
 const msgListRef = ref<HTMLElement | null>(null)
 const stickerPickerOpen = ref(false)
@@ -121,6 +166,22 @@ const emojiPickerVisible = ref(false)
 const emojiPickerX = ref(0)
 const emojiPickerY = ref(0)
 const emojiPickerMessageId = ref<number | null>(null)
+
+const selectionStore = useSelectionStore()
+
+// Bottom sheet state
+const bottomSheetVisible = ref(false)
+const bottomSheetMessageId = ref<number | null>(null)
+const bottomSheetMessageText = ref('')
+
+// Forward dialog state
+const forwardDialogVisible = ref(false)
+const forwardMessageIds = ref<number[]>([])
+
+// Delete modal state
+const deleteModalVisible = ref(false)
+const deleteMessageIds = ref<number[]>([])
+const canDeleteForEveryone = ref(false)
 
 // Polling timer for messages
 let msgPollTimer: ReturnType<typeof setInterval> | null = null
@@ -314,6 +375,144 @@ function cancelRec() {
   recorderComposable.cancelRecording()
   isRecording.value = false
 }
+
+// --- Message interaction handlers ---
+
+function onForwardMessages(e: CustomEvent) {
+  const { messageIds } = e.detail
+  forwardMessageIds.value = messageIds
+  forwardDialogVisible.value = true
+}
+
+function onSelectMessage(e: CustomEvent) {
+  const { messageId, chatId } = e.detail
+  if (chatId) {
+    selectionStore.enterSelectionMode(chatId, messageId)
+  }
+}
+
+function onDeleteMessage(e: CustomEvent) {
+  const { messageId, chatId } = e.detail
+  if (!messageId || !chatId) return
+  deleteMessageIds.value = [messageId]
+  // Check if user can delete for everyone (own message within 48h)
+  const msg = messages.value.find((m) => m.id === messageId)
+  canDeleteForEveryone.value = !!(msg && msg.sender_id === authStore.user?.id)
+  deleteModalVisible.value = true
+}
+
+function onSelectionForward() {
+  forwardMessageIds.value = [...selectionStore.selectedMessageIds]
+  forwardDialogVisible.value = true
+}
+
+function onSelectionDelete() {
+  deleteMessageIds.value = [...selectionStore.selectedMessageIds]
+  // Can delete for everyone only if all selected messages are mine
+  canDeleteForEveryone.value = deleteMessageIds.value.every((id) => {
+    const msg = messages.value.find((m) => m.id === id)
+    return msg && msg.sender_id === authStore.user?.id
+  })
+  deleteModalVisible.value = true
+}
+
+function closeForwardDialog() {
+  forwardDialogVisible.value = false
+  forwardMessageIds.value = []
+  selectionStore.exitSelectionMode()
+}
+
+async function onDeleteConfirm(forEveryone: boolean) {
+  deleteModalVisible.value = false
+  const chatId = chatsStore.activeChatId
+  if (!chatId) return
+  for (const msgId of deleteMessageIds.value) {
+    try {
+      await messagesStore.deleteMessage(chatId, msgId)
+    } catch {
+      showToast('Failed to delete message')
+    }
+  }
+  deleteMessageIds.value = []
+  selectionStore.exitSelectionMode()
+}
+
+function bottomSheetAction(action: string) {
+  bottomSheetVisible.value = false
+  const msgId = bottomSheetMessageId.value
+  const chatId = chatsStore.activeChatId
+  if (!msgId || !chatId) return
+
+  switch (action) {
+    case 'copy':
+      navigator.clipboard.writeText(bottomSheetMessageText.value).then(
+        () => showToast('Copied to clipboard'),
+        () => showToast('Failed to copy text'),
+      )
+      break
+    case 'copyLink':
+      navigator.clipboard.writeText(`${window.location.origin}/c/${chatId}/m/${msgId}`).then(
+        () => showToast('Link copied'),
+        () => showToast('Failed to copy link'),
+      )
+      break
+    case 'forward':
+      forwardMessageIds.value = [msgId]
+      forwardDialogVisible.value = true
+      break
+    case 'select':
+      selectionStore.enterSelectionMode(chatId, msgId)
+      break
+    case 'delete':
+      onDeleteMessage(new CustomEvent('', { detail: { messageId: msgId, chatId } }))
+      break
+  }
+}
+
+function scrollToMessage(messageId: number) {
+  if (!msgListRef.value) return
+  const el = msgListRef.value.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('highlight-message')
+    setTimeout(() => el.classList.remove('highlight-message'), 2000)
+  }
+}
+
+// Listen for custom events from MessageContextMenu and other components
+onMounted(() => {
+  window.addEventListener('forward-messages', onForwardMessages as EventListener)
+  window.addEventListener('select-message', onSelectMessage as EventListener)
+  window.addEventListener('delete-message', onDeleteMessage as EventListener)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('forward-messages', onForwardMessages as EventListener)
+  window.removeEventListener('select-message', onSelectMessage as EventListener)
+  window.removeEventListener('delete-message', onDeleteMessage as EventListener)
+})
+
+// Handle pending scroll-to message from deep links
+watch(
+  () => pendingScrollMessageId.value,
+  async (messageId) => {
+    if (!messageId) return
+    await nextTick()
+    // Small delay to ensure messages are rendered
+    setTimeout(() => {
+      scrollToMessage(messageId)
+      pendingScrollMessageId.value = null
+    }, 300)
+  },
+)
+
+// Clear selection when chat changes
+watch(
+  () => chatsStore.activeChatId,
+  () => {
+    selectionStore.exitSelectionMode()
+  },
+)
 
 async function uploadVoice(file: File) {
   if (!chatsStore.activeChatId) return

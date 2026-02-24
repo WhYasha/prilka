@@ -153,6 +153,12 @@ export function useWebSocket() {
         else if (status === 'offline') chatsStore.setUserOffline(userId)
         break
       }
+      case 'message_deleted': {
+        const chatId = data.chat_id as number
+        const messageId = data.message_id as number
+        messagesStore.removeMessage(chatId, messageId)
+        break
+      }
       case 'reaction': {
         const chatId = data.chat_id as number
         const messageId = data.message_id as number

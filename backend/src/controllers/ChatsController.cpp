@@ -162,6 +162,8 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    ouf.object_key  AS other_avatar_key, "
         "    (cf.chat_id IS NOT NULL) AS is_favorite, "
         "    (cms.user_id IS NOT NULL) AS is_muted, "
+        "    (pc.chat_id IS NOT NULL) AS is_pinned, "
+        "    (ac.chat_id IS NOT NULL) AS is_archived, "
         "    COALESCE(( "
         "        SELECT COUNT(*) FROM messages m2 "
         "        WHERE m2.chat_id = c.id AND m2.id > COALESCE(clr.last_read_msg_id, 0) "
@@ -177,7 +179,10 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "LEFT JOIN chat_favorites cf ON cf.chat_id = c.id AND cf.user_id = $1 "
         "LEFT JOIN chat_mute_settings cms ON cms.chat_id = c.id AND cms.user_id = $1 "
         "LEFT JOIN chat_last_read clr ON clr.chat_id = c.id AND clr.user_id = $1 "
-        "ORDER BY (cf.chat_id IS NOT NULL) DESC, c.updated_at DESC",
+        "LEFT JOIN pinned_chats pc ON pc.chat_id = c.id AND pc.user_id = $1 "
+        "LEFT JOIN archived_chats ac ON ac.chat_id = c.id AND ac.user_id = $1 "
+        "WHERE ac.chat_id IS NULL "
+        "ORDER BY (pc.chat_id IS NOT NULL) DESC, (cf.chat_id IS NOT NULL) DESC, c.updated_at DESC",
         [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
             for (auto& row : r) {
@@ -193,6 +198,8 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
                 chat["last_at"]      = row["last_msg_at"].isNull() ? Json::Value() : Json::Value(row["last_msg_at"].as<std::string>());
                 chat["is_favorite"]  = row["is_favorite"].isNull() ? false : row["is_favorite"].as<bool>();
                 chat["is_muted"]     = row["is_muted"].isNull()    ? false : row["is_muted"].as<bool>();
+                chat["is_pinned"]    = row["is_pinned"].isNull()   ? false : row["is_pinned"].as<bool>();
+                chat["is_archived"]  = row["is_archived"].isNull() ? false : row["is_archived"].as<bool>();
                 chat["unread_count"] = Json::Int64(row["unread_count"].isNull() ? 0 : row["unread_count"].as<long long>());
 
                 // DM-specific fields
@@ -494,4 +501,86 @@ void ChatsController::getChatByPublicName(const drogon::HttpRequestPtr& req,
             LOG_ERROR << "getChatByPublicName: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, publicName);
+}
+
+// POST /chats/{id}/pin
+void ChatsController::pinChat(const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                               long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    requireMemberChat(chatId, me, [=, cb = std::move(cb)](bool isMember) mutable {
+        if (!isMember) return cb(jsonErr("Not a member", drogon::k403Forbidden));
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "INSERT INTO pinned_chats (user_id, chat_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            [cb](const drogon::orm::Result&) mutable {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k204NoContent);
+                cb(resp);
+            },
+            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                LOG_ERROR << "pinChat: " << e.base().what();
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }, me, chatId);
+    });
+}
+
+// DELETE /chats/{id}/pin
+void ChatsController::unpinChat(const drogon::HttpRequestPtr& req,
+                                 std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                 long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "DELETE FROM pinned_chats WHERE user_id = $1 AND chat_id = $2",
+        [cb](const drogon::orm::Result&) mutable {
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k204NoContent);
+            cb(resp);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "unpinChat: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, me, chatId);
+}
+
+// POST /chats/{id}/archive
+void ChatsController::archiveChat(const drogon::HttpRequestPtr& req,
+                                   std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                   long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    requireMemberChat(chatId, me, [=, cb = std::move(cb)](bool isMember) mutable {
+        if (!isMember) return cb(jsonErr("Not a member", drogon::k403Forbidden));
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "INSERT INTO archived_chats (user_id, chat_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            [cb](const drogon::orm::Result&) mutable {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k204NoContent);
+                cb(resp);
+            },
+            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                LOG_ERROR << "archiveChat: " << e.base().what();
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }, me, chatId);
+    });
+}
+
+// DELETE /chats/{id}/archive
+void ChatsController::unarchiveChat(const drogon::HttpRequestPtr& req,
+                                     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                     long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "DELETE FROM archived_chats WHERE user_id = $1 AND chat_id = $2",
+        [cb](const drogon::orm::Result&) mutable {
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k204NoContent);
+            cb(resp);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "unarchiveChat: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, me, chatId);
 }
