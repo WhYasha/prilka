@@ -55,7 +55,7 @@
 
           <!-- Subscriber / admin counts -->
           <div class="profile-status">
-            {{ channelStore.memberCount }} {{ channelStore.memberCount === 1 ? 'subscriber' : 'subscribers' }}
+            {{ channelStore.memberCount }} {{ isGroup ? (channelStore.memberCount === 1 ? 'member' : 'members') : (channelStore.memberCount === 1 ? 'subscriber' : 'subscribers') }}
           </div>
 
           <!-- Description -->
@@ -82,7 +82,7 @@
             </button>
             <button class="channel-info-menu-item" @click="activeView = 'subscribers'">
               <Users :size="20" :stroke-width="1.8" />
-              <span>Subscribers</span>
+              <span>{{ isGroup ? 'Members' : 'Subscribers' }}</span>
               <span class="channel-info-menu-count">{{ channelStore.memberCount }}</span>
             </button>
             <button
@@ -91,11 +91,11 @@
               @click="activeView = 'edit'"
             >
               <Pencil :size="20" :stroke-width="1.8" />
-              <span>Edit Channel</span>
+              <span>{{ isGroup ? 'Edit Group' : 'Edit Channel' }}</span>
             </button>
             <button class="channel-info-menu-item channel-info-menu-item--danger" @click="activeView = 'danger'">
               <LogOut :size="20" :stroke-width="1.8" />
-              <span>Leave Channel</span>
+              <span>{{ isGroup ? 'Leave Group' : 'Leave Channel' }}</span>
             </button>
             <button
               v-if="channelStore.isOwner"
@@ -103,7 +103,7 @@
               @click="activeView = 'danger'"
             >
               <Trash2 :size="20" :stroke-width="1.8" />
-              <span>Delete Channel</span>
+              <span>{{ isGroup ? 'Delete Group' : 'Delete Channel' }}</span>
             </button>
           </div>
         </template>
@@ -140,6 +140,7 @@ const channelStore = useChannelStore()
 const activeView = ref<ActiveView>('main')
 
 const numericChatId = computed(() => Number(props.chatId))
+const isGroup = computed(() => channelStore.detail?.type === 'group')
 
 function handleSaved() {
   activeView.value = 'main'

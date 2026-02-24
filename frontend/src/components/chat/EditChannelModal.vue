@@ -10,7 +10,7 @@
         <div class="profile-avatar-section profile-avatar-upload-section">
           <div class="profile-avatar-upload-wrap" @click="fileInput?.click()">
             <Avatar
-              :name="title || 'Channel'"
+              :name="title || typeLabel"
               :url="avatarUrl"
               size="xxl"
             />
@@ -24,12 +24,27 @@
         <!-- Edit form -->
         <div class="profile-info-list">
           <div class="form-group">
-            <label class="form-label">Channel name</label>
-            <input v-model="title" class="form-input" type="text" maxlength="128" placeholder="Channel name" />
+            <label class="form-label">{{ typeLabel }} name</label>
+            <input v-model="title" class="form-input" type="text" maxlength="128" :placeholder="`${typeLabel} name`" />
           </div>
           <div class="form-group">
             <label class="form-label">Description</label>
-            <textarea v-model="description" class="form-input" maxlength="500" rows="4" placeholder="Channel description..." />
+            <textarea v-model="description" class="form-input" maxlength="500" rows="4" :placeholder="`${typeLabel} description...`" />
+          </div>
+          <div v-if="channelStore.isOwner" class="form-group">
+            <label class="form-label">{{ typeLabel }} type</label>
+            <div class="type-selector">
+              <label class="type-option">
+                <input v-model="chatType" type="radio" value="public" name="chatType" />
+                <span class="type-option-label">Public</span>
+                <span class="type-option-desc">Anyone can find and join</span>
+              </label>
+              <label class="type-option">
+                <input v-model="chatType" type="radio" value="private" name="chatType" />
+                <span class="type-option-label">Private</span>
+                <span class="type-option-desc">Only invited users can join</span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -45,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useChannelStore } from '@/stores/channel'
 import { uploadChatAvatar } from '@/api/channel'
 import { uploadFile } from '@/api/files'
@@ -66,14 +81,19 @@ const { showToast } = useToast()
 const title = ref('')
 const description = ref('')
 const avatarUrl = ref<string | undefined>(undefined)
+const chatType = ref<'public' | 'private'>('public')
 const saving = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+
+const isGroup = computed(() => channelStore.detail?.type === 'group')
+const typeLabel = computed(() => isGroup.value ? 'Group' : 'Channel')
 
 onMounted(() => {
   if (channelStore.detail) {
     title.value = channelStore.detail.title || ''
     description.value = channelStore.detail.description || ''
     avatarUrl.value = channelStore.detail.avatar_url ?? undefined
+    chatType.value = channelStore.detail.public_name ? 'public' : 'private'
   }
 })
 
@@ -93,7 +113,7 @@ async function handleAvatarChange() {
 
 async function save() {
   if (!title.value.trim()) {
-    showToast('Channel name is required')
+    showToast(`${typeLabel.value} name is required`)
     return
   }
 
@@ -103,13 +123,47 @@ async function save() {
       title: title.value.trim(),
       description: description.value.trim(),
     })
-    showToast('Channel updated!')
+    showToast(`${typeLabel.value} updated!`)
     emit('saved')
     emit('close')
   } catch {
-    showToast('Failed to update channel')
+    showToast(`Failed to update ${typeLabel.value.toLowerCase()}`)
   } finally {
     saving.value = false
   }
 }
 </script>
+
+<style scoped>
+.type-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.type-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.type-option:hover {
+  background: var(--input-bg);
+}
+
+.type-option-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.type-option-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+</style>
