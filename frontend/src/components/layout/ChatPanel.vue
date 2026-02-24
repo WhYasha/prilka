@@ -67,6 +67,7 @@
         v-show="!isRecording"
         :sticker-picker-open="stickerPickerOpen"
         @send="handleSendText"
+        @edit-message="handleEditMessage"
         @toggle-stickers="stickerPickerOpen = !stickerPickerOpen"
         @start-recording="startRec"
         @typing="handleTyping"
@@ -88,7 +89,7 @@
 
       <!-- Bottom sheet (mobile long-press) -->
       <BottomSheet :visible="bottomSheetVisible" @close="bottomSheetVisible = false">
-        <button class="ctx-item" disabled>Reply</button>
+        <button class="ctx-item" @click="bottomSheetAction('reply')">Reply</button>
         <button class="ctx-item" @click="bottomSheetAction('copy')">Copy text</button>
         <button class="ctx-item" @click="bottomSheetAction('copyLink')">Copy link</button>
         <button class="ctx-item" @click="bottomSheetAction('forward')">Forward</button>
@@ -301,10 +302,12 @@ function handleTyping() {
   }
 }
 
-async function handleSendText(content: string) {
+async function handleSendText(content: string, replyTo?: { messageId: number; senderName: string; snippet: string }) {
   if (!chatsStore.activeChatId || !content.trim()) return
   try {
-    const msg = await messagesStore.sendMessage(chatsStore.activeChatId, content.trim(), 'text')
+    // Include reply context if present (content-only for now; backend reply_to may need future work)
+    const extra = replyTo ? { reply_to_message_id: replyTo.messageId } : undefined
+    const msg = await messagesStore.sendMessage(chatsStore.activeChatId, content.trim(), 'text', extra)
     // Enrich locally
     if (authStore.user) {
       msg.sender_id = authStore.user.id
@@ -316,6 +319,21 @@ async function handleSendText(content: string) {
     chatsStore.loadChats()
   } catch {
     showToast('Failed to send message')
+  }
+}
+
+async function handleEditMessage(messageId: number, content: string) {
+  if (!chatsStore.activeChatId || !content.trim()) return
+  try {
+    await messagesApi.editMessage(chatsStore.activeChatId, messageId, content.trim())
+    // Update local message
+    const msg = messages.value.find((m) => m.id === messageId)
+    if (msg) {
+      msg.content = content.trim()
+    }
+    showToast('Message edited')
+  } catch {
+    showToast('Failed to edit message')
   }
 }
 
@@ -454,6 +472,17 @@ function bottomSheetAction(action: string) {
   if (!msgId || !chatId) return
 
   switch (action) {
+    case 'reply': {
+      const msg = messages.value.find((m) => m.id === msgId)
+      window.dispatchEvent(new CustomEvent('reply-to-message', {
+        detail: {
+          messageId: msgId,
+          senderName: msg?.sender_display_name || msg?.sender_username || 'Unknown',
+          text: msg?.content || '',
+        },
+      }))
+      break
+    }
     case 'copy':
       navigator.clipboard.writeText(bottomSheetMessageText.value).then(
         () => showToast('Copied to clipboard'),
