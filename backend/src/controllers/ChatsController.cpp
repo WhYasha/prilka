@@ -162,6 +162,8 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    ouf.object_key  AS other_avatar_key, "
         "    (cf.chat_id IS NOT NULL) AS is_favorite, "
         "    (cms.user_id IS NOT NULL) AS is_muted, "
+        "    (pc.chat_id IS NOT NULL) AS is_pinned, "
+        "    (ac.chat_id IS NOT NULL) AS is_archived, "
         "    COALESCE(( "
         "        SELECT COUNT(*) FROM messages m2 "
         "        WHERE m2.chat_id = c.id AND m2.id > COALESCE(clr.last_read_msg_id, 0) "
@@ -177,7 +179,10 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "LEFT JOIN chat_favorites cf ON cf.chat_id = c.id AND cf.user_id = $1 "
         "LEFT JOIN chat_mute_settings cms ON cms.chat_id = c.id AND cms.user_id = $1 "
         "LEFT JOIN chat_last_read clr ON clr.chat_id = c.id AND clr.user_id = $1 "
-        "ORDER BY (cf.chat_id IS NOT NULL) DESC, c.updated_at DESC",
+        "LEFT JOIN pinned_chats pc ON pc.chat_id = c.id AND pc.user_id = $1 "
+        "LEFT JOIN archived_chats ac ON ac.chat_id = c.id AND ac.user_id = $1 "
+        "WHERE ac.chat_id IS NULL "
+        "ORDER BY (pc.chat_id IS NOT NULL) DESC, (cf.chat_id IS NOT NULL) DESC, c.updated_at DESC",
         [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
             for (auto& row : r) {
@@ -193,6 +198,8 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
                 chat["last_at"]      = row["last_msg_at"].isNull() ? Json::Value() : Json::Value(row["last_msg_at"].as<std::string>());
                 chat["is_favorite"]  = row["is_favorite"].isNull() ? false : row["is_favorite"].as<bool>();
                 chat["is_muted"]     = row["is_muted"].isNull()    ? false : row["is_muted"].as<bool>();
+                chat["is_pinned"]    = row["is_pinned"].isNull()   ? false : row["is_pinned"].as<bool>();
+                chat["is_archived"]  = row["is_archived"].isNull() ? false : row["is_archived"].as<bool>();
                 chat["unread_count"] = Json::Int64(row["unread_count"].isNull() ? 0 : row["unread_count"].as<long long>());
 
                 // DM-specific fields
