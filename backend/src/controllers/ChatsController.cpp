@@ -83,21 +83,32 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                     [cb, members, me, type, title](const drogon::orm::Result& r2) mutable {
                         long long chatId = r2[0]["id"].as<long long>();
                         auto db3 = drogon::app().getDbClient();
-                        for (auto uid : members) {
-                            std::string role = (uid == me) ? "owner" : "member";
-                            db3->execSqlAsync(
-                                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                                [](const drogon::orm::Result&) {},
-                                [](const drogon::orm::DrogonDbException& e) {
-                                    LOG_WARN << "member insert: " << e.base().what();
-                                }, chatId, uid, role);
-                        }
-                        Json::Value resp;
-                        resp["id"]   = Json::Int64(chatId);
-                        resp["type"] = type;
-                        auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
-                        respObj->setStatusCode(drogon::k201Created);
-                        cb(respObj);
+                        // Insert creator as owner first, wait for completion before responding
+                        db3->execSqlAsync(
+                            "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING",
+                            [cb, members, me, type, chatId](const drogon::orm::Result&) mutable {
+                                // Insert other member fire-and-forget
+                                auto db4 = drogon::app().getDbClient();
+                                for (auto uid : members) {
+                                    if (uid == me) continue;
+                                    db4->execSqlAsync(
+                                        "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING",
+                                        [](const drogon::orm::Result&) {},
+                                        [](const drogon::orm::DrogonDbException& e) {
+                                            LOG_WARN << "member insert: " << e.base().what();
+                                        }, chatId, uid);
+                                }
+                                Json::Value resp;
+                                resp["id"]   = Json::Int64(chatId);
+                                resp["type"] = type;
+                                auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
+                                respObj->setStatusCode(drogon::k201Created);
+                                cb(respObj);
+                            },
+                            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                                LOG_ERROR << "creator member insert (direct): " << e.base().what();
+                                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                            }, chatId, me);
                     },
                     [cb](const drogon::orm::DrogonDbException& e) mutable {
                         LOG_ERROR << "createChat direct: " << e.base().what();
@@ -119,22 +130,35 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
         [cb, members, me, type, title](const drogon::orm::Result& r) mutable {
             long long chatId = r[0]["id"].as<long long>();
             auto db2 = drogon::app().getDbClient();
-            for (auto uid : members) {
-                std::string role = (uid == me) ? "owner" : "member";
-                db2->execSqlAsync(
-                    "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                    [](const drogon::orm::Result&) {},
-                    [](const drogon::orm::DrogonDbException& e) {
-                        LOG_WARN << "member insert: " << e.base().what();
-                    }, chatId, uid, role);
-            }
-            Json::Value resp;
-            resp["id"]   = Json::Int64(chatId);
-            resp["type"] = type;
-            if (!title.empty()) resp["title"] = title;
-            auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
-            respObj->setStatusCode(drogon::k201Created);
-            cb(respObj);
+            // Insert creator as owner first, wait for completion before responding
+            db2->execSqlAsync(
+                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING",
+                [cb, members, me, type, title, chatId](const drogon::orm::Result&) mutable {
+                    // Fire-and-forget remaining members
+                    if (members.size() > 1) {
+                        auto db3 = drogon::app().getDbClient();
+                        for (auto uid : members) {
+                            if (uid == me) continue;
+                            db3->execSqlAsync(
+                                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING",
+                                [](const drogon::orm::Result&) {},
+                                [](const drogon::orm::DrogonDbException& e) {
+                                    LOG_WARN << "member insert: " << e.base().what();
+                                }, chatId, uid);
+                        }
+                    }
+                    Json::Value resp;
+                    resp["id"]   = Json::Int64(chatId);
+                    resp["type"] = type;
+                    if (!title.empty()) resp["title"] = title;
+                    auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
+                    respObj->setStatusCode(drogon::k201Created);
+                    cb(respObj);
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "creator member insert: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, chatId, me);
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             std::string what = e.base().what();
