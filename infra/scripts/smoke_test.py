@@ -206,12 +206,17 @@ ws_code = "\n".join([
     "asyncio.run(test())",
 ])
 
-r = subprocess.run(["python3", "-c", ws_code], capture_output=True, text=True, timeout=10)
+import tempfile
+_py = sys.executable
+r = subprocess.run([_py, "-c", ws_code], capture_output=True, text=True, timeout=10)
 if r.returncode == 2:  # websockets not installed
-    subprocess.run(["python3", "-m", "venv", "/tmp/wsenv"], capture_output=True)
-    subprocess.run(["/tmp/wsenv/bin/pip", "install", "-q", "websockets"],
+    _venv = os.path.join(tempfile.gettempdir(), "wsenv")
+    subprocess.run([_py, "-m", "venv", _venv], capture_output=True)
+    _pip = os.path.join(_venv, "Scripts" if sys.platform == "win32" else "bin", "pip")
+    _vpy = os.path.join(_venv, "Scripts" if sys.platform == "win32" else "bin", "python")
+    subprocess.run([_pip, "install", "-q", "websockets"],
                    capture_output=True, timeout=60)
-    r = subprocess.run(["/tmp/wsenv/bin/python3", "-c", ws_code],
+    r = subprocess.run([_vpy, "-c", ws_code],
                        capture_output=True, text=True, timeout=15)
 out = r.stdout.strip()
 check("WebSocket connect -> accepted", "CONNECTED" in out, out[:80])
