@@ -7,7 +7,7 @@
       @click.stop
       @contextmenu.prevent
     >
-      <button class="ctx-item" disabled>
+      <button class="ctx-item" @click="handleReply">
         Reply
       </button>
       <button class="ctx-item" @click="handleCopyText">
@@ -111,6 +111,16 @@ async function handleCopyLink() {
   } catch {
     showToast('Failed to copy link')
   }
+}
+
+function handleReply() {
+  hide()
+  if (!messageId.value || !chatId.value) return
+  window.dispatchEvent(
+    new CustomEvent('reply-message', {
+      detail: { messageId: messageId.value, chatId: chatId.value },
+    }),
+  )
 }
 
 function handleForward() {

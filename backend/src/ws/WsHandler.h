@@ -16,7 +16,7 @@
 ///   Server → Client:
 ///     { "type": "pong" }
 ///     { "type": "error", "message": "..." }
-///     { "type": "message", "chat_id": 42, "sender_id": 7, "content": "hi", "id": 99, "created_at": "..." }
+///     { "type": "message", "chat_id": 42, "sender_id": 7, "content": "hi", "id": 99, "created_at": "...", "reply_to_message_id": 50 }
 ///     { "type": "typing",  "chat_id": 42, "user_id": 7, "username": "alice" }
 ///     { "type": "presence", "user_id": 7, "status": "online" }
 ///     { "type": "reaction", "chat_id": 42, "message_id": 99, "user_id": 7, "emoji": "...", "action": "added|removed" }

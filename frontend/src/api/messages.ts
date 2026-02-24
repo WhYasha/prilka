@@ -17,6 +17,7 @@ export async function sendMessage(
     sticker_id?: number
     file_id?: number
     duration_seconds?: number
+    reply_to_message_id?: number
   },
 ): Promise<Message> {
   const { data } = await api.post<Message>(`/chats/${chatId}/messages`, payload)

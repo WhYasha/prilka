@@ -138,7 +138,7 @@ export const useMessagesStore = defineStore('messages', () => {
     chatId: number,
     content: string,
     type: string = 'text',
-    extra?: { sticker_id?: number; file_id?: number; duration_seconds?: number },
+    extra?: { sticker_id?: number; file_id?: number; duration_seconds?: number; reply_to_message_id?: number },
   ) {
     const msg = await messagesApi.sendMessage(chatId, {
       content,

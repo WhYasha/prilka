@@ -41,6 +41,7 @@
               @mention-click="(u) => emit('openUserProfile', u)"
               @open-emoji-picker="onOpenEmojiPicker"
               @toggle-reaction="onToggleReaction"
+              @reply-click="scrollToMessage"
             />
           </template>
         </template>
@@ -65,7 +66,9 @@
         v-if="!isChannelReadonly"
         v-show="!isRecording"
         :sticker-picker-open="stickerPickerOpen"
+        :reply-to="replyToMessage"
         @send="handleSendText"
+        @cancel-reply="replyToMessage = null"
         @toggle-stickers="stickerPickerOpen = !stickerPickerOpen"
         @start-recording="startRec"
         @typing="handleTyping"
@@ -87,7 +90,7 @@
 
       <!-- Bottom sheet (mobile long-press) -->
       <BottomSheet :visible="bottomSheetVisible" @close="bottomSheetVisible = false">
-        <button class="ctx-item" disabled>Reply</button>
+        <button class="ctx-item" @click="bottomSheetAction('reply')">Reply</button>
         <button class="ctx-item" @click="bottomSheetAction('copy')">Copy text</button>
         <button class="ctx-item" @click="bottomSheetAction('copyLink')">Copy link</button>
         <button class="ctx-item" @click="bottomSheetAction('forward')">Forward</button>
@@ -125,7 +128,7 @@ import { useRecorder } from '@/composables/useRecorder'
 import { useToast } from '@/composables/useToast'
 import { getChat } from '@/api/chats'
 import { uploadFile } from '@/api/files'
-import type { Sticker } from '@/api/types'
+import type { Message, Sticker } from '@/api/types'
 
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
@@ -182,6 +185,9 @@ const forwardMessageIds = ref<number[]>([])
 const deleteModalVisible = ref(false)
 const deleteMessageIds = ref<number[]>([])
 const canDeleteForEveryone = ref(false)
+
+// Reply state
+const replyToMessage = ref<Message | null>(null)
 
 // Polling timer for messages
 let msgPollTimer: ReturnType<typeof setInterval> | null = null
@@ -293,8 +299,11 @@ function handleTyping() {
 
 async function handleSendText(content: string) {
   if (!chatsStore.activeChatId || !content.trim()) return
+  const replyId = replyToMessage.value?.id
+  replyToMessage.value = null
   try {
-    const msg = await messagesStore.sendMessage(chatsStore.activeChatId, content.trim(), 'text')
+    const extra = replyId ? { reply_to_message_id: replyId } : undefined
+    const msg = await messagesStore.sendMessage(chatsStore.activeChatId, content.trim(), 'text', extra)
     // Enrich locally
     if (authStore.user) {
       msg.sender_id = authStore.user.id
@@ -444,6 +453,11 @@ function bottomSheetAction(action: string) {
   if (!msgId || !chatId) return
 
   switch (action) {
+    case 'reply': {
+      const msg = messages.value.find((m) => m.id === msgId)
+      if (msg) replyToMessage.value = msg
+      break
+    }
     case 'copy':
       navigator.clipboard.writeText(bottomSheetMessageText.value).then(
         () => showToast('Copied to clipboard'),
@@ -479,17 +493,26 @@ function scrollToMessage(messageId: number) {
   }
 }
 
+function onReplyMessage(e: CustomEvent) {
+  const { messageId, chatId: eChatId } = e.detail
+  if (!messageId || eChatId !== chatsStore.activeChatId) return
+  const msg = messages.value.find((m) => m.id === messageId)
+  if (msg) replyToMessage.value = msg
+}
+
 // Listen for custom events from MessageContextMenu and other components
 onMounted(() => {
   window.addEventListener('forward-messages', onForwardMessages as EventListener)
   window.addEventListener('select-message', onSelectMessage as EventListener)
   window.addEventListener('delete-message', onDeleteMessage as EventListener)
+  window.addEventListener('reply-message', onReplyMessage as EventListener)
 })
 
 onUnmounted(() => {
   window.removeEventListener('forward-messages', onForwardMessages as EventListener)
   window.removeEventListener('select-message', onSelectMessage as EventListener)
   window.removeEventListener('delete-message', onDeleteMessage as EventListener)
+  window.removeEventListener('reply-message', onReplyMessage as EventListener)
 })
 
 // Handle pending scroll-to message from deep links
@@ -506,11 +529,12 @@ watch(
   },
 )
 
-// Clear selection when chat changes
+// Clear selection and reply when chat changes
 watch(
   () => chatsStore.activeChatId,
   () => {
     selectionStore.exitSelectionMode()
+    replyToMessage.value = null
   },
 )
 
