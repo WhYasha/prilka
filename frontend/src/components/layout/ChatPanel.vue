@@ -20,7 +20,7 @@
       </div>
 
       <!-- Messages -->
-      <div ref="msgListRef" class="msg-list">
+      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
           <template v-for="item in messagesWithDates" :key="item.type === 'date' ? 'date-' + item.label : 'msg-' + item.msg!.id">
@@ -32,10 +32,21 @@
               :message="item.msg!"
               :is-mine="item.msg!.sender_id === authStore.user?.id"
               @mention-click="(u) => emit('openUserProfile', u)"
+              @open-emoji-picker="onOpenEmojiPicker"
+              @toggle-reaction="onToggleReaction"
             />
           </template>
         </template>
       </div>
+
+      <!-- Emoji reaction picker -->
+      <EmojiPicker
+        :visible="emojiPickerVisible"
+        :x="emojiPickerX"
+        :y="emojiPickerY"
+        @select="onEmojiSelect"
+        @close="emojiPickerVisible = false"
+      />
 
       <!-- Sticker picker -->
       <div v-if="stickerPickerOpen" class="sticker-picker">
@@ -84,6 +95,7 @@ import Composer from '@/components/chat/Composer.vue'
 import StickerPicker from '@/components/chat/StickerPicker.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import InviteSection from '@/components/chat/InviteSection.vue'
+import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 
 const emit = defineEmits<{
   back: []
@@ -103,6 +115,12 @@ const stickerPickerOpen = ref(false)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
 const showInviteSection = ref(false)
+
+// Emoji picker state
+const emojiPickerVisible = ref(false)
+const emojiPickerX = ref(0)
+const emojiPickerY = ref(0)
+const emojiPickerMessageId = ref<number | null>(null)
 
 // Polling timer for messages
 let msgPollTimer: ReturnType<typeof setInterval> | null = null
@@ -249,6 +267,32 @@ async function handleSendSticker(stickerId: number) {
   } catch {
     showToast('Failed to send sticker')
   }
+}
+
+function onOpenEmojiPicker(messageId: number, x: number, y: number) {
+  emojiPickerMessageId.value = messageId
+  emojiPickerX.value = x
+  emojiPickerY.value = y
+  emojiPickerVisible.value = true
+}
+
+function onEmojiSelect(emoji: string) {
+  if (emojiPickerMessageId.value && chatsStore.activeChatId) {
+    messagesStore.toggleReaction(chatsStore.activeChatId, emojiPickerMessageId.value, emoji)
+  }
+  emojiPickerVisible.value = false
+  emojiPickerMessageId.value = null
+}
+
+function onToggleReaction(messageId: number, emoji: string) {
+  if (chatsStore.activeChatId) {
+    messagesStore.toggleReaction(chatsStore.activeChatId, messageId, emoji)
+  }
+}
+
+function closeEmojiPicker() {
+  emojiPickerVisible.value = false
+  emojiPickerMessageId.value = null
 }
 
 async function startRec() {

@@ -153,6 +153,15 @@ export function useWebSocket() {
         else if (status === 'offline') chatsStore.setUserOffline(userId)
         break
       }
+      case 'reaction': {
+        const chatId = data.chat_id as number
+        const messageId = data.message_id as number
+        const userId = data.user_id as number
+        const emoji = data.emoji as string
+        const action = data.action as 'added' | 'removed'
+        messagesStore.applyReactionUpdate(chatId, messageId, action, emoji, userId === authStore.user?.id)
+        break
+      }
     }
   }
 

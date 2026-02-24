@@ -1,12 +1,27 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as messagesApi from '@/api/messages'
-import type { Message } from '@/api/types'
+import * as reactionsApi from '@/api/reactions'
+import type { Message, ReactionGroup } from '@/api/types'
 
 export const useMessagesStore = defineStore('messages', () => {
   const messagesByChat = ref<Record<number, Message[]>>({})
   const lastMsgId = ref<Record<number, number>>({})
   const loadingChat = ref<number | null>(null)
+
+  async function loadReactions(chatId: number) {
+    const msgs = messagesByChat.value[chatId]
+    if (!msgs || msgs.length === 0) return
+    const ids = msgs.map((m) => m.id)
+    try {
+      const map = await reactionsApi.getReactions(chatId, ids)
+      for (const m of msgs) {
+        m.reactions = map[String(m.id)] || undefined
+      }
+    } catch (e) {
+      console.error('Failed to load reactions', e)
+    }
+  }
 
   async function loadMessages(chatId: number) {
     loadingChat.value = chatId
@@ -16,6 +31,7 @@ export const useMessagesStore = defineStore('messages', () => {
       if (msgs.length > 0) {
         lastMsgId.value[chatId] = Math.max(...msgs.map((m) => m.id))
       }
+      await loadReactions(chatId)
     } catch (e) {
       console.error('Failed to load messages', e)
       throw e
@@ -41,6 +57,7 @@ export const useMessagesStore = defineStore('messages', () => {
         const newMsgs = msgs.filter((m) => !existingIds.has(m.id))
         messagesByChat.value[chatId].push(...newMsgs)
         lastMsgId.value[chatId] = Math.max(...msgs.map((m) => m.id))
+        await loadReactions(chatId)
       }
       return msgs
     } catch (e) {
@@ -63,12 +80,58 @@ export const useMessagesStore = defineStore('messages', () => {
         const existingIds = new Set(msgs.map((m) => m.id))
         const newMsgs = olderMsgs.filter((m) => !existingIds.has(m.id))
         messagesByChat.value[chatId] = [...newMsgs, ...msgs]
+        await loadReactions(chatId)
       }
       return olderMsgs
     } catch (e) {
       console.error('Failed to load older messages', e)
       return []
     }
+  }
+
+  async function toggleReaction(chatId: number, messageId: number, emoji: string) {
+    try {
+      const result = await reactionsApi.toggleReaction(chatId, messageId, emoji)
+      applyReactionUpdate(chatId, messageId, result.action, emoji, true)
+    } catch (e) {
+      console.error('Failed to toggle reaction', e)
+    }
+  }
+
+  function applyReactionUpdate(
+    chatId: number,
+    messageId: number,
+    action: 'added' | 'removed',
+    emoji: string,
+    isMe: boolean,
+  ) {
+    const msgs = messagesByChat.value[chatId]
+    if (!msgs) return
+    const msg = msgs.find((m) => m.id === messageId)
+    if (!msg) return
+
+    if (!msg.reactions) msg.reactions = []
+
+    const existing = msg.reactions.find((r) => r.emoji === emoji)
+    if (action === 'added') {
+      if (existing) {
+        existing.count++
+        if (isMe) existing.me = true
+      } else {
+        msg.reactions.push({ emoji, count: 1, me: isMe })
+      }
+    } else {
+      // removed
+      if (existing) {
+        existing.count--
+        if (isMe) existing.me = false
+        if (existing.count <= 0) {
+          msg.reactions = msg.reactions.filter((r) => r.emoji !== emoji)
+        }
+      }
+    }
+    // Clean up empty array
+    if (msg.reactions.length === 0) msg.reactions = undefined
   }
 
   async function sendMessage(
@@ -115,5 +178,7 @@ export const useMessagesStore = defineStore('messages', () => {
     sendMessage,
     pushMessage,
     getMessages,
+    toggleReaction,
+    applyReactionUpdate,
   }
 })

@@ -39,6 +39,14 @@ export interface Chat {
   my_role?: string
 }
 
+export interface ReactionGroup {
+  emoji: string
+  count: number
+  me: boolean
+}
+
+export type ReactionsMap = Record<string, ReactionGroup[]>
+
 export interface Message {
   id: number
   chat_id: number
@@ -57,6 +65,7 @@ export interface Message {
   duration_seconds?: number
   file_id?: number
   created_at: string
+  reactions?: ReactionGroup[]
 }
 
 export interface Sticker {

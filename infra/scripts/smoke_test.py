@@ -344,6 +344,48 @@ else:
     check("Presence online received", False, "could not set up second user")
     check("Presence offline received", False, "could not set up second user")
 
+# ── 14. Reactions ──────────────────────────────────────────────────────────
+print("\n[14] Reactions")
+
+# Find a message ID to react to
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=1", token=token)
+react_msg_id = None
+if s == 200 and isinstance(b, list) and b:
+    react_msg_id = b[0].get("id")
+
+if react_msg_id:
+    # Toggle add
+    s, b = req("POST", "/chats/" + str(chat_id) + "/messages/" + str(react_msg_id) + "/reactions",
+               {"emoji": "\U0001f44d"}, token=token)
+    check("POST reaction toggle -> added", s == 200 and b.get("action") == "added",
+          "action=" + str(b.get("action")))
+
+    # Batch fetch
+    s, b = req("GET", "/chats/" + str(chat_id) + "/reactions?message_ids=" + str(react_msg_id),
+               token=token)
+    msg_reactions = b.get(str(react_msg_id), []) if isinstance(b, dict) else []
+    has_thumbs = any(r.get("emoji") == "\U0001f44d" and r.get("me") for r in msg_reactions)
+    check("GET reactions -> has thumbs_up with me=true", s == 200 and has_thumbs,
+          str(len(msg_reactions)) + " reaction group(s)")
+
+    # Toggle remove
+    s, b = req("POST", "/chats/" + str(chat_id) + "/messages/" + str(react_msg_id) + "/reactions",
+               {"emoji": "\U0001f44d"}, token=token)
+    check("POST reaction toggle -> removed", s == 200 and b.get("action") == "removed",
+          "action=" + str(b.get("action")))
+
+    # Verify empty after removal
+    s, b = req("GET", "/chats/" + str(chat_id) + "/reactions?message_ids=" + str(react_msg_id),
+               token=token)
+    msg_reactions = b.get(str(react_msg_id), []) if isinstance(b, dict) else []
+    check("GET reactions -> empty after removal", s == 200 and len(msg_reactions) == 0,
+          str(len(msg_reactions)) + " remaining")
+else:
+    check("POST reaction toggle -> added", False, "no message to react to")
+    check("GET reactions -> has thumbs_up with me=true", False, "skipped")
+    check("POST reaction toggle -> removed", False, "skipped")
+    check("GET reactions -> empty after removal", False, "skipped")
+
 # ── 13. Metrics ────────────────────────────────────────────────────────────
 print("\n[13] Metrics")
 try:

@@ -6,29 +6,49 @@
       <Badge v-if="message.sender_is_admin" />
     </div>
 
-    <!-- Sticker -->
-    <template v-if="message.message_type === 'sticker'">
-      <div class="msg-bubble sticker-bubble">
-        <img class="sticker-img" :src="stickerUrl" :alt="message.sticker_label || 'sticker'" />
-      </div>
-    </template>
-
-    <!-- Voice -->
-    <template v-else-if="message.message_type === 'voice'">
-      <div class="msg-bubble">
-        <div class="voice-player">
-          <audio controls :src="voiceSrc" />
-          <span v-if="message.duration_seconds" class="voice-dur">
-            {{ formatDuration(message.duration_seconds) }}
-          </span>
+    <div class="msg-content-wrap">
+      <!-- Sticker -->
+      <template v-if="message.message_type === 'sticker'">
+        <div class="msg-bubble sticker-bubble">
+          <img class="sticker-img" :src="stickerUrl" :alt="message.sticker_label || 'sticker'" />
         </div>
-      </div>
-    </template>
+      </template>
 
-    <!-- Text -->
-    <template v-else>
-      <div class="msg-bubble" v-html="renderedContent" />
-    </template>
+      <!-- Voice -->
+      <template v-else-if="message.message_type === 'voice'">
+        <div class="msg-bubble">
+          <div class="voice-player">
+            <audio controls :src="voiceSrc" />
+            <span v-if="message.duration_seconds" class="voice-dur">
+              {{ formatDuration(message.duration_seconds) }}
+            </span>
+          </div>
+        </div>
+      </template>
+
+      <!-- Text -->
+      <template v-else>
+        <div class="msg-bubble" v-html="renderedContent" />
+      </template>
+
+      <!-- Hover reaction button -->
+      <button class="reaction-add-btn" @click.stop="onReactionBtnClick">&#9786;</button>
+
+      <!-- Reaction chips -->
+      <div v-if="message.reactions && message.reactions.length" class="reaction-chips">
+        <button
+          v-for="r in message.reactions"
+          :key="r.emoji"
+          class="reaction-chip"
+          :class="{ 'reaction-mine': r.me }"
+          @click.stop="emit('toggleReaction', message.id, r.emoji)"
+        >
+          <span class="reaction-emoji">{{ r.emoji }}</span>
+          <span class="reaction-count">{{ r.count }}</span>
+        </button>
+        <button class="reaction-chip reaction-add-chip" @click.stop="onReactionBtnClick">+</button>
+      </div>
+    </div>
 
     <div class="msg-time">{{ formatTime(message.created_at) }}</div>
   </div>
@@ -46,6 +66,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   mentionClick: [username: string]
+  openEmojiPicker: [messageId: number, x: number, y: number]
+  toggleReaction: [messageId: number, emoji: string]
 }>()
 
 const stickers = inject<{ value: Sticker[] }>('stickers', ref([]))
@@ -95,6 +117,11 @@ function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60)
   const s = sec % 60
   return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function onReactionBtnClick(event: MouseEvent) {
+  const rect = (event.target as HTMLElement).getBoundingClientRect()
+  emit('openEmojiPicker', props.message.id, rect.left, rect.bottom + 4)
 }
 
 // Listen for mention clicks
