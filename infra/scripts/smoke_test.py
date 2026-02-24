@@ -254,8 +254,98 @@ out = r.stdout.strip()
 check("WebSocket connect -> accepted", "CONNECTED" in out, out[:80])
 check("WebSocket recv (msg or timeout)", "RECV:" in out, out[:80])
 
-# ── 12. Metrics ────────────────────────────────────────────────────────────
-print("\n[12] Metrics")
+# Determine which python has websockets available
+try:
+    _ws_py = _vpy
+except NameError:
+    _ws_py = _py
+
+# ── 12. WebSocket Presence ────────────────────────────────────────────────
+print("\n[12] WebSocket Presence")
+
+# Register + login a second test user for presence testing
+req("POST", "/auth/register", {"username": "smoketest_e2e_b",
+                                "email": "smoketest_b@example.com",
+                                "password": PASS})
+s2, b2 = req("POST", "/auth/login", {"username": "smoketest_e2e_b",
+                                       "password": PASS})
+token_b = b2.get("access_token", "")
+user_b_id = b2.get("user_id", 0)
+
+# Ensure they share a DM
+s2, b2 = req("POST", "/chats", {"type": "direct", "member_ids": [user_b_id]},
+             token=token)
+presence_chat = b2.get("id", chat_id)
+
+if token_b and user_b_id and presence_chat:
+    ws_presence_code = "\n".join([
+        "import asyncio, json, sys",
+        "try:",
+        "    import websockets",
+        "except ImportError:",
+        "    sys.exit(2)",
+        "async def test():",
+        "    URI = 'wss://behappy.rest/ws'",
+        "    TOKEN_A = '" + token + "'",
+        "    TOKEN_B = '" + token_b + "'",
+        "    CHAT_ID = " + str(presence_chat),
+        "    USER_B  = " + str(user_b_id),
+        "    try:",
+        "        ws_a = await websockets.connect(URI, open_timeout=5)",
+        "        await ws_a.send(json.dumps({'type':'auth','token':TOKEN_A}))",
+        "        r = json.loads(await asyncio.wait_for(ws_a.recv(), timeout=3))",
+        "        if r.get('type') != 'auth_ok':",
+        "            print('AUTH_A_FAIL'); return",
+        "        await ws_a.send(json.dumps({'type':'subscribe','chat_id':CHAT_ID}))",
+        "        r = json.loads(await asyncio.wait_for(ws_a.recv(), timeout=3))",
+        "        if r.get('type') != 'subscribed':",
+        "            print('SUB_FAIL'); return",
+        "        await asyncio.sleep(1)",
+        "        try:",
+        "            while True:",
+        "                await asyncio.wait_for(ws_a.recv(), timeout=0.3)",
+        "        except asyncio.TimeoutError:",
+        "            pass",
+        "        ws_b = await websockets.connect(URI, open_timeout=5)",
+        "        await ws_b.send(json.dumps({'type':'auth','token':TOKEN_B}))",
+        "        await asyncio.wait_for(ws_b.recv(), timeout=3)",
+        "        got_online = False",
+        "        for _ in range(5):",
+        "            try:",
+        "                m = json.loads(await asyncio.wait_for(ws_a.recv(), timeout=3))",
+        "                if m.get('type')=='presence' and m.get('status')=='online' and m.get('user_id')==USER_B:",
+        "                    got_online = True; break",
+        "            except asyncio.TimeoutError:",
+        "                break",
+        "        print('ONLINE:' + ('OK' if got_online else 'FAIL'))",
+        "        await ws_b.close()",
+        "        got_offline = False",
+        "        for _ in range(5):",
+        "            try:",
+        "                m = json.loads(await asyncio.wait_for(ws_a.recv(), timeout=3))",
+        "                if m.get('type')=='presence' and m.get('status')=='offline' and m.get('user_id')==USER_B:",
+        "                    got_offline = True; break",
+        "            except asyncio.TimeoutError:",
+        "                break",
+        "        print('OFFLINE:' + ('OK' if got_offline else 'FAIL'))",
+        "        await ws_a.close()",
+        "    except Exception as e:",
+        "        print('ERR:' + str(e))",
+        "asyncio.run(test())",
+    ])
+
+    r = subprocess.run([_ws_py, "-c", ws_presence_code],
+                       capture_output=True, text=True, timeout=25)
+    pout = r.stdout.strip()
+    perr = r.stderr.strip()[:80]
+    check("Presence online received", "ONLINE:OK" in pout, pout[:80] or perr)
+    check("Presence offline received", "OFFLINE:OK" in pout, pout[:80] or perr)
+else:
+    check("Presence online received", False, "could not set up second user")
+    check("Presence offline received", False, "could not set up second user")
+
+# ── 13. Metrics ────────────────────────────────────────────────────────────
+print("\n[13] Metrics")
 try:
     with urllib.request.urlopen(BASE + "/metrics", timeout=5) as resp:
         ms  = resp.status
