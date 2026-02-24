@@ -1409,3 +1409,66 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   .admin-filter-bar { flex-direction: column; align-items: stretch; }
   .admin-filter-bar input { width: 100%; }
 }
+
+/* ── Unread Badge (pill) ───────────────────────────────────── */
+.unread-badge-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 10px;
+  font-size: .7rem; font-weight: 700; line-height: 1;
+  color: #fff; background: var(--accent);
+  flex-shrink: 0;
+}
+.unread-badge-pill.muted {
+  background: var(--text-muted);
+}
+
+/* ── Chat item unread state ────────────────────────────────── */
+.chat-item-unread .chat-item-title {
+  font-weight: 700;
+  color: var(--sidebar-txt-d);
+}
+.chat-item-unread .chat-item-preview {
+  color: var(--sidebar-txt-d);
+}
+
+/* ── Pin indicator ─────────────────────────────────────────── */
+.pin-indicator {
+  display: inline-flex; align-items: center;
+  font-size: .7rem; color: var(--text-muted);
+  margin-left: 4px; flex-shrink: 0;
+}
+
+/* ── Swipe action color variants ───────────────────────────── */
+.swipe-actions.swipe-actions-left { left: 0; transform: translateX(-100%); }
+.swipe-actions.swipe-actions-right { right: 0; transform: translateX(100%); }
+.swipe-action-btn.swipe-pin    { background: var(--accent); }
+.swipe-action-btn.swipe-mute   { background: var(--text-muted); }
+.swipe-action-btn.swipe-archive { background: #10b981; }
+.swipe-action-btn.swipe-delete  { background: var(--danger); }
+
+/* ── Selection checkbox overlay ────────────────────────────── */
+.selection-checkbox {
+  position: absolute; top: 50%; left: 8px;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  border: 2px solid var(--text-muted);
+  border-radius: 50%; background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s, border-color .15s;
+  z-index: 5;
+}
+.selection-checkbox.checked {
+  background: var(--accent); border-color: var(--accent);
+}
+.selection-checkbox.checked::after {
+  content: '✓'; color: #fff; font-size: .7rem; font-weight: 700;
+}
+
+/* ── Selected message highlight ────────────────────────────── */
+.msg-selected {
+  background: rgba(43, 154, 243, .12) !important;
+}
+[data-theme="dark"] .msg-selected {
+  background: rgba(43, 154, 243, .18) !important;
+}
