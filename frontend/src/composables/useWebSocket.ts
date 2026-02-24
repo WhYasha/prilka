@@ -167,6 +167,19 @@ export function useWebSocket() {
         messagesStore.applyMessageUpdate(chatId, messageId, content, updatedAt)
         break
       }
+      case 'message_pinned': {
+        const chatId = data.chat_id as number
+        const messageId = data.message_id as number
+        const pinnedBy = data.pinned_by as number
+        const message = data.message as Message
+        messagesStore.applyMessagePinned(chatId, messageId, pinnedBy, message)
+        break
+      }
+      case 'message_unpinned': {
+        const chatId = data.chat_id as number
+        messagesStore.applyMessageUnpinned(chatId)
+        break
+      }
       case 'reaction': {
         const chatId = data.chat_id as number
         const messageId = data.message_id as number

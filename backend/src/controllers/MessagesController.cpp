@@ -511,6 +511,228 @@ void MessagesController::editMessage(const drogon::HttpRequestPtr& req,
     });
 }
 
+// POST /chats/{chatId}/messages/{messageId}/pin
+void MessagesController::pinMessage(const drogon::HttpRequestPtr& req,
+                                     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                     long long chatId, long long messageId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    requireMember(chatId, me, [=](bool isMember) {
+        if (!isMember) return (*cbPtr)(jsonErr("Not a member of this chat", drogon::k403Forbidden));
+
+        // Check channel permission: only owner/admin can pin in channels
+        auto db0 = drogon::app().getDbClient();
+        db0->execSqlAsync(
+            "SELECT c.type, cm.role FROM chats c "
+            "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $2 "
+            "WHERE c.id = $1",
+            [=](const drogon::orm::Result& pr) {
+                if (!pr.empty()) {
+                    std::string chatType = pr[0]["type"].as<std::string>();
+                    std::string role     = pr[0]["role"].as<std::string>();
+                    if (chatType == "channel" && role != "owner" && role != "admin")
+                        return (*cbPtr)(jsonErr("Only admins can pin in channels", drogon::k403Forbidden));
+                }
+
+                // Verify message exists and belongs to this chat
+                auto db1 = drogon::app().getDbClient();
+                db1->execSqlAsync(
+                    "SELECT id FROM messages WHERE id = $1 AND chat_id = $2 AND is_deleted = FALSE",
+                    [=](const drogon::orm::Result& mr) {
+                        if (mr.empty())
+                            return (*cbPtr)(jsonErr("Message not found", drogon::k404NotFound));
+
+                        // Unpin current pinned message (if any)
+                        auto db2 = drogon::app().getDbClient();
+                        db2->execSqlAsync(
+                            "UPDATE pinned_messages SET unpinned_at = NOW() WHERE chat_id = $1 AND unpinned_at IS NULL",
+                            [=](const drogon::orm::Result&) {
+                                // Insert new pin
+                                auto db3 = drogon::app().getDbClient();
+                                db3->execSqlAsync(
+                                    "INSERT INTO pinned_messages (chat_id, message_id, pinned_by) "
+                                    "VALUES ($1, $2, $3) RETURNING id, pinned_at",
+                                    [=](const drogon::orm::Result& ir) {
+                                        std::string pinnedAt = ir[0]["pinned_at"].as<std::string>();
+
+                                        // Fetch enriched message
+                                        auto db4 = drogon::app().getDbClient();
+                                        std::string sql = std::string(kEnrichedMsgSelect) + "WHERE m.id = $1";
+                                        db4->execSqlAsync(sql,
+                                            [=](const drogon::orm::Result& er) {
+                                                Json::Value msgJson;
+                                                if (!er.empty()) msgJson = buildMsgJson(er[0]);
+
+                                                // WS broadcast
+                                                Json::Value wsPayload;
+                                                wsPayload["type"]       = "message_pinned";
+                                                wsPayload["chat_id"]    = Json::Int64(chatId);
+                                                wsPayload["message_id"] = Json::Int64(messageId);
+                                                wsPayload["pinned_by"]  = Json::Int64(me);
+                                                wsPayload["message"]    = msgJson;
+                                                WsDispatch::publishMessage(chatId, wsPayload);
+
+                                                // HTTP response
+                                                Json::Value resp;
+                                                resp["pinned_message_id"] = Json::Int64(messageId);
+                                                resp["message"]    = msgJson;
+                                                resp["pinned_at"]  = pinnedAt;
+                                                resp["pinned_by"]  = Json::Int64(me);
+                                                (*cbPtr)(drogon::HttpResponse::newHttpJsonResponse(resp));
+                                            },
+                                            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                                                LOG_ERROR << "pinMessage enriched fetch: " << e.base().what();
+                                                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                                            },
+                                            messageId);
+                                    },
+                                    [cbPtr](const drogon::orm::DrogonDbException& e) {
+                                        LOG_ERROR << "pinMessage insert: " << e.base().what();
+                                        (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                                    },
+                                    chatId, messageId, me);
+                            },
+                            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                                LOG_ERROR << "pinMessage unpin current: " << e.base().what();
+                                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                            },
+                            chatId);
+                    },
+                    [cbPtr](const drogon::orm::DrogonDbException& e) {
+                        LOG_ERROR << "pinMessage msg lookup: " << e.base().what();
+                        (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                    },
+                    messageId, chatId);
+            },
+            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                LOG_ERROR << "pinMessage permission check: " << e.base().what();
+                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+            },
+            chatId, me);
+    });
+}
+
+// DELETE /chats/{chatId}/messages/{messageId}/pin
+void MessagesController::unpinMessage(const drogon::HttpRequestPtr& req,
+                                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                       long long chatId, long long messageId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    requireMember(chatId, me, [=](bool isMember) {
+        if (!isMember) return (*cbPtr)(jsonErr("Not a member of this chat", drogon::k403Forbidden));
+
+        // Check channel permission
+        auto db0 = drogon::app().getDbClient();
+        db0->execSqlAsync(
+            "SELECT c.type, cm.role FROM chats c "
+            "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $2 "
+            "WHERE c.id = $1",
+            [=](const drogon::orm::Result& pr) {
+                if (!pr.empty()) {
+                    std::string chatType = pr[0]["type"].as<std::string>();
+                    std::string role     = pr[0]["role"].as<std::string>();
+                    if (chatType == "channel" && role != "owner" && role != "admin")
+                        return (*cbPtr)(jsonErr("Only admins can unpin in channels", drogon::k403Forbidden));
+                }
+
+                auto db1 = drogon::app().getDbClient();
+                db1->execSqlAsync(
+                    "UPDATE pinned_messages SET unpinned_at = NOW() "
+                    "WHERE chat_id = $1 AND message_id = $2 AND unpinned_at IS NULL "
+                    "RETURNING id",
+                    [=](const drogon::orm::Result& r) {
+                        if (r.empty())
+                            return (*cbPtr)(jsonErr("No pinned message found", drogon::k404NotFound));
+
+                        // WS broadcast
+                        Json::Value wsPayload;
+                        wsPayload["type"]       = "message_unpinned";
+                        wsPayload["chat_id"]    = Json::Int64(chatId);
+                        wsPayload["message_id"] = Json::Int64(messageId);
+                        WsDispatch::publishMessage(chatId, wsPayload);
+
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k204NoContent);
+                        (*cbPtr)(resp);
+                    },
+                    [cbPtr](const drogon::orm::DrogonDbException& e) {
+                        LOG_ERROR << "unpinMessage: " << e.base().what();
+                        (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                    },
+                    chatId, messageId);
+            },
+            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                LOG_ERROR << "unpinMessage permission check: " << e.base().what();
+                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+            },
+            chatId, me);
+    });
+}
+
+// GET /chats/{chatId}/pinned-message
+void MessagesController::getPinnedMessage(const drogon::HttpRequestPtr& req,
+                                           std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                           long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    requireMember(chatId, me, [=](bool isMember) {
+        if (!isMember) return (*cbPtr)(jsonErr("Not a member of this chat", drogon::k403Forbidden));
+
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "SELECT pm.message_id, pm.pinned_by, pm.pinned_at "
+            "FROM pinned_messages pm "
+            "WHERE pm.chat_id = $1 AND pm.unpinned_at IS NULL "
+            "LIMIT 1",
+            [=](const drogon::orm::Result& r) {
+                if (r.empty()) {
+                    Json::Value resp(Json::nullValue);
+                    (*cbPtr)(drogon::HttpResponse::newHttpJsonResponse(resp));
+                    return;
+                }
+
+                long long msgId    = r[0]["message_id"].as<long long>();
+                long long pinnedBy = r[0]["pinned_by"].as<long long>();
+                std::string pinnedAt = r[0]["pinned_at"].as<std::string>();
+
+                // Fetch enriched message
+                auto db2 = drogon::app().getDbClient();
+                std::string sql = std::string(kEnrichedMsgSelect) + "WHERE m.id = $1";
+                db2->execSqlAsync(sql,
+                    [=](const drogon::orm::Result& er) {
+                        Json::Value resp;
+                        if (!er.empty()) {
+                            resp["message"]   = buildMsgJson(er[0]);
+                        } else {
+                            resp["message"]   = Json::Value(Json::nullValue);
+                        }
+                        resp["pinned_at"] = pinnedAt;
+                        resp["pinned_by"] = Json::Int64(pinnedBy);
+                        (*cbPtr)(drogon::HttpResponse::newHttpJsonResponse(resp));
+                    },
+                    [cbPtr](const drogon::orm::DrogonDbException& e) {
+                        LOG_ERROR << "getPinnedMessage enriched fetch: " << e.base().what();
+                        (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                    },
+                    msgId);
+            },
+            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                LOG_ERROR << "getPinnedMessage: " << e.base().what();
+                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+            },
+            chatId);
+    });
+}
+
 // POST /chats/{targetChatId}/forward
 void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                                           std::function<void(const drogon::HttpResponsePtr&)>&& cb,

@@ -9,6 +9,10 @@ export const useMessagesStore = defineStore('messages', () => {
   const lastMsgId = ref<Record<number, number>>({})
   const loadingChat = ref<number | null>(null)
 
+  // Pinned message state
+  const pinnedByChat = ref<Record<number, { message: Message; pinnedAt: string; pinnedBy: number } | null>>({})
+  const pinnedDismissed = ref<Set<number>>(new Set())
+
   async function loadReactions(chatId: number) {
     const msgs = messagesByChat.value[chatId]
     if (!msgs || msgs.length === 0) return
@@ -216,6 +220,62 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
+  async function loadPinnedMessage(chatId: number) {
+    try {
+      const data = await messagesApi.getPinnedMessage(chatId)
+      if (data && data.message) {
+        pinnedByChat.value[chatId] = {
+          message: data.message,
+          pinnedAt: data.pinned_at,
+          pinnedBy: data.pinned_by,
+        }
+      } else {
+        pinnedByChat.value[chatId] = null
+      }
+    } catch (e) {
+      console.error('Failed to load pinned message', e)
+      pinnedByChat.value[chatId] = null
+    }
+  }
+
+  async function pinMsg(chatId: number, messageId: number) {
+    try {
+      const data = await messagesApi.pinMessage(chatId, messageId)
+      pinnedByChat.value[chatId] = {
+        message: data.message,
+        pinnedAt: data.pinned_at,
+        pinnedBy: data.pinned_by,
+      }
+      pinnedDismissed.value.delete(chatId)
+    } catch (e) {
+      console.error('Failed to pin message', e)
+      throw e
+    }
+  }
+
+  async function unpinMsg(chatId: number, messageId: number) {
+    try {
+      await messagesApi.unpinMessage(chatId, messageId)
+      pinnedByChat.value[chatId] = null
+    } catch (e) {
+      console.error('Failed to unpin message', e)
+      throw e
+    }
+  }
+
+  function applyMessagePinned(chatId: number, _messageId: number, pinnedBy: number, message: Message) {
+    pinnedByChat.value[chatId] = { message, pinnedAt: new Date().toISOString(), pinnedBy }
+    pinnedDismissed.value.delete(chatId)
+  }
+
+  function applyMessageUnpinned(chatId: number) {
+    pinnedByChat.value[chatId] = null
+  }
+
+  function dismissPin(chatId: number) {
+    pinnedDismissed.value.add(chatId)
+  }
+
   function getMessages(chatId: number): Message[] {
     return messagesByChat.value[chatId] || []
   }
@@ -237,5 +297,13 @@ export const useMessagesStore = defineStore('messages', () => {
     editMessage,
     applyMessageUpdate,
     forwardMessages,
+    pinnedByChat,
+    pinnedDismissed,
+    loadPinnedMessage,
+    pinMsg,
+    unpinMsg,
+    applyMessagePinned,
+    applyMessageUnpinned,
+    dismissPin,
   }
 })

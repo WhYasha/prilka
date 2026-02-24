@@ -40,3 +40,17 @@ export async function forwardMessages(
   const { data } = await api.post<Message[]>(`/chats/${toChatId}/messages/forward`, payload)
   return data
 }
+
+export async function pinMessage(chatId: number, messageId: number) {
+  const { data } = await api.post(`/chats/${chatId}/messages/${messageId}/pin`)
+  return data
+}
+
+export async function unpinMessage(chatId: number, messageId: number) {
+  await api.delete(`/chats/${chatId}/messages/${messageId}/pin`)
+}
+
+export async function getPinnedMessage(chatId: number) {
+  const { data } = await api.get(`/chats/${chatId}/pinned-message`)
+  return data
+}

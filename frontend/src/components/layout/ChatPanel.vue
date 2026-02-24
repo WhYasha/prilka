@@ -21,6 +21,14 @@
         @open-channel-info="channelInfoModalOpen = true"
       />
 
+      <!-- Pinned message bar -->
+      <PinBar
+        v-if="pinnedMessage && !selectionStore.selectionMode"
+        :message="pinnedMessage.message"
+        @click="scrollToMessage(pinnedMessage!.message.id)"
+        @dismiss="messagesStore.dismissPin(chatsStore.activeChatId!)"
+      />
+
       <!-- Channel read-only bar -->
       <div v-if="isChannelReadonly" class="channel-readonly-bar">
         <span class="readonly-icon">&#128274;</span>
@@ -93,7 +101,9 @@
       <BottomSheet :visible="bottomSheetVisible" @close="bottomSheetVisible = false">
         <button class="ctx-item" @click="bottomSheetAction('reply')">Reply</button>
         <button v-if="isBottomSheetEditableMessage" class="ctx-item" @click="bottomSheetAction('edit')">Edit</button>
-        <button class="ctx-item" disabled aria-label="Coming soon — requires V14 migration">Pin</button>
+        <button class="ctx-item" @click="bottomSheetAction(isBottomSheetPinnedMessage ? 'unpin' : 'pin')">
+          {{ isBottomSheetPinnedMessage ? 'Unpin' : 'Pin' }}
+        </button>
         <button class="ctx-item" @click="bottomSheetAction('copy')">Copy text</button>
         <button class="ctx-item" @click="bottomSheetAction('copyLink')">Copy link</button>
         <button class="ctx-item" @click="bottomSheetAction('forward')">Forward</button>
@@ -141,6 +151,7 @@ import { uploadFile } from '@/api/files'
 import * as messagesApi from '@/api/messages'
 import type { Message, Sticker } from '@/api/types'
 
+import PinBar from '@/components/chat/PinBar.vue'
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import Composer from '@/components/chat/Composer.vue'
@@ -199,6 +210,18 @@ const isBottomSheetEditableMessage = computed(() => {
   if (!isBottomSheetOwnMessage.value) return false
   const msg = messages.value.find((m) => m.id === bottomSheetMessageId.value)
   return msg?.message_type === 'text'
+})
+
+const isBottomSheetPinnedMessage = computed(() => {
+  if (!bottomSheetMessageId.value || !chatsStore.activeChatId) return false
+  const pinned = messagesStore.pinnedByChat[chatsStore.activeChatId]
+  return pinned?.message?.id === bottomSheetMessageId.value
+})
+
+const pinnedMessage = computed(() => {
+  if (!chatsStore.activeChatId) return null
+  if (messagesStore.pinnedDismissed.has(chatsStore.activeChatId)) return null
+  return messagesStore.pinnedByChat[chatsStore.activeChatId] || null
 })
 
 // Forward dialog state
@@ -270,8 +293,11 @@ watch(
 
     if (!chatId) return
 
-    // Load messages
-    await messagesStore.loadMessages(chatId)
+    // Load messages and pinned message
+    await Promise.all([
+      messagesStore.loadMessages(chatId),
+      messagesStore.loadPinnedMessage(chatId),
+    ])
     await nextTick()
     scrollToBottom()
 
@@ -433,6 +459,32 @@ function onSelectMessage(e: CustomEvent) {
   }
 }
 
+async function handlePinMessage(chatId: number, messageId: number) {
+  try {
+    await messagesStore.pinMsg(chatId, messageId)
+  } catch {
+    showToast('Failed to pin message')
+  }
+}
+
+async function handleUnpinMessage(chatId: number, messageId: number) {
+  try {
+    await messagesStore.unpinMsg(chatId, messageId)
+  } catch {
+    showToast('Failed to unpin message')
+  }
+}
+
+function onPinMessage(e: CustomEvent) {
+  const { messageId, chatId } = e.detail
+  if (messageId && chatId) handlePinMessage(chatId, messageId)
+}
+
+function onUnpinMessage(e: CustomEvent) {
+  const { messageId, chatId } = e.detail
+  if (messageId && chatId) handleUnpinMessage(chatId, messageId)
+}
+
 function onDeleteMessage(e: CustomEvent) {
   const { messageId, chatId } = e.detail
   if (!messageId || !chatId) return
@@ -529,6 +581,12 @@ function bottomSheetAction(action: string) {
     case 'delete':
       onDeleteMessage(new CustomEvent('', { detail: { messageId: msgId, chatId } }))
       break
+    case 'pin':
+      handlePinMessage(chatId, msgId)
+      break
+    case 'unpin':
+      handleUnpinMessage(chatId, msgId)
+      break
   }
 }
 
@@ -588,6 +646,8 @@ onMounted(() => {
   window.addEventListener('forward-messages', onForwardMessages as EventListener)
   window.addEventListener('select-message', onSelectMessage as EventListener)
   window.addEventListener('delete-message', onDeleteMessage as EventListener)
+  window.addEventListener('pin-message', onPinMessage as EventListener)
+  window.addEventListener('unpin-message', onUnpinMessage as EventListener)
   document.addEventListener('keydown', handleEsc)
 })
 
@@ -595,6 +655,8 @@ onUnmounted(() => {
   window.removeEventListener('forward-messages', onForwardMessages as EventListener)
   window.removeEventListener('select-message', onSelectMessage as EventListener)
   window.removeEventListener('delete-message', onDeleteMessage as EventListener)
+  window.removeEventListener('pin-message', onPinMessage as EventListener)
+  window.removeEventListener('unpin-message', onUnpinMessage as EventListener)
   document.removeEventListener('keydown', handleEsc)
 })
 

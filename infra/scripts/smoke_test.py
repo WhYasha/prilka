@@ -478,6 +478,44 @@ else:
     check("POST reaction toggle -> removed", False, "skipped")
     check("GET reactions -> empty after removal", False, "skipped")
 
+# ── 15. Message Pinning ───────────────────────────────────────────────────
+print("\n[15] Message Pinning")
+
+# Find a message to pin
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=1", token=token)
+pin_msg_id = None
+if s == 200 and isinstance(b, list) and b:
+    pin_msg_id = b[0].get("id")
+
+if pin_msg_id:
+    # Pin message
+    s, b = req("POST", "/chats/" + str(chat_id) + "/messages/" + str(pin_msg_id) + "/pin",
+               token=token)
+    check("POST pin message -> 200", s == 200 and b.get("pinned_message_id") == pin_msg_id,
+          "pinned_message_id=" + str(b.get("pinned_message_id")) if isinstance(b, dict) else "")
+
+    # Get pinned message
+    s, b = req("GET", "/chats/" + str(chat_id) + "/pinned-message", token=token)
+    pinned_id = b.get("message", {}).get("id") if isinstance(b, dict) and b.get("message") else None
+    check("GET pinned-message -> matches", s == 200 and pinned_id == pin_msg_id,
+          "message.id=" + str(pinned_id))
+
+    # Unpin message
+    s, b = req("DELETE", "/chats/" + str(chat_id) + "/messages/" + str(pin_msg_id) + "/pin",
+               token=token)
+    check("DELETE unpin message -> 204", s == 204, "status=" + str(s))
+
+    # Verify no pinned message
+    s, b = req("GET", "/chats/" + str(chat_id) + "/pinned-message", token=token)
+    is_null = b is None or (isinstance(b, dict) and b.get("message") is None) or b == "null"
+    check("GET pinned-message -> null after unpin", s == 200 and is_null,
+          "body=" + str(b)[:80] if not is_null else "")
+else:
+    check("POST pin message -> 200", False, "no message to pin")
+    check("GET pinned-message -> matches", False, "skipped")
+    check("DELETE unpin message -> 204", False, "skipped")
+    check("GET pinned-message -> null after unpin", False, "skipped")
+
 # ── 13. Metrics ────────────────────────────────────────────────────────────
 print("\n[13] Metrics")
 try:

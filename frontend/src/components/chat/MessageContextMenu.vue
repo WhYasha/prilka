@@ -13,8 +13,8 @@
       <button v-if="isOwnMessage && messageType === 'text'" class="ctx-item" @click="handleEdit">
         Edit
       </button>
-      <button class="ctx-item" disabled aria-label="Coming soon — requires V14 migration">
-        Pin
+      <button class="ctx-item" @click="handlePin">
+        {{ isPinnedMessage ? 'Unpin' : 'Pin' }}
       </button>
       <button class="ctx-item" @click="handleCopyText">
         Copy text
@@ -39,9 +39,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
+import { useMessagesStore } from '@/stores/messages'
 
 const { showToast } = useToast()
 const authStore = useAuthStore()
+const messagesStore = useMessagesStore()
 
 const visible = ref(false)
 const posX = ref(0)
@@ -61,6 +63,12 @@ const isOwnMessage = computed(() => {
 const messageLink = computed(() => {
   if (!chatId.value || !messageId.value) return null
   return `${window.location.origin}/c/${chatId.value}/${messageId.value}`
+})
+
+const isPinnedMessage = computed(() => {
+  if (!chatId.value || !messageId.value) return false
+  const pinned = messagesStore.pinnedByChat[chatId.value]
+  return pinned?.message?.id === messageId.value
 })
 
 function onShowMessageContextMenu(e: CustomEvent) {
@@ -179,6 +187,17 @@ function handleSelect() {
   if (!messageId.value || !chatId.value) return
   window.dispatchEvent(
     new CustomEvent('select-message', {
+      detail: { messageId: messageId.value, chatId: chatId.value },
+    }),
+  )
+}
+
+function handlePin() {
+  hide()
+  if (!messageId.value || !chatId.value) return
+  const eventName = isPinnedMessage.value ? 'unpin-message' : 'pin-message'
+  window.dispatchEvent(
+    new CustomEvent(eventName, {
       detail: { messageId: messageId.value, chatId: chatId.value },
     }),
   )

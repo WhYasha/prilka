@@ -9,6 +9,9 @@ public:
     ADD_METHOD_TO(MessagesController::deleteMessage, "/chats/{1}/messages/{2}", drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(MessagesController::editMessage, "/chats/{1}/messages/{2}", drogon::Put, "AuthFilter");
     ADD_METHOD_TO(MessagesController::forwardMessages, "/chats/{1}/forward", drogon::Post, "AuthFilter");
+    ADD_METHOD_TO(MessagesController::pinMessage,      "/chats/{1}/messages/{2}/pin", drogon::Post,   "AuthFilter");
+    ADD_METHOD_TO(MessagesController::unpinMessage,     "/chats/{1}/messages/{2}/pin", drogon::Delete, "AuthFilter");
+    ADD_METHOD_TO(MessagesController::getPinnedMessage, "/chats/{1}/pinned-message",   drogon::Get,    "AuthFilter");
     METHOD_LIST_END
 
     void sendMessage(const drogon::HttpRequestPtr& req,
@@ -30,4 +33,16 @@ public:
     void forwardMessages(const drogon::HttpRequestPtr& req,
                          std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                          long long targetChatId);
+
+    void pinMessage(const drogon::HttpRequestPtr& req,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                    long long chatId, long long messageId);
+
+    void unpinMessage(const drogon::HttpRequestPtr& req,
+                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                      long long chatId, long long messageId);
+
+    void getPinnedMessage(const drogon::HttpRequestPtr& req,
+                          std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                          long long chatId);
 };

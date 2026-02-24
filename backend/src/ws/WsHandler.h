@@ -22,6 +22,8 @@
 ///     { "type": "reaction", "chat_id": 42, "message_id": 99, "user_id": 7, "emoji": "...", "action": "added|removed" }
 ///     { "type": "message_deleted", "chat_id": 42, "message_id": 99, "deleted_by": 7, "for_everyone": true }
 ///     { "type": "message_updated", "chat_id": 42, "message_id": 99, "content": "edited text", "updated_at": "..." }
+///     { "type": "message_pinned", "chat_id": 42, "message_id": 99, "pinned_by": 7, "message": {...} }
+///     { "type": "message_unpinned", "chat_id": 42, "message_id": 99 }
 ///
 /// Fan-out uses Redis Pub/Sub channel "chat:<chat_id>"
 class WsHandler : public drogon::WebSocketController<WsHandler> {

@@ -1734,3 +1734,19 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 
 /* ── Edited label on message bubble ──────────────────────── */
 .msg-edited-label { font-size: .65rem; color: var(--text-muted); margin-right: 4px; font-style: italic; }
+
+/* ── Pin bar below chat header ───────────────────────────── */
+.pin-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  cursor: pointer; }
+.pin-bar:hover { background: var(--input-bg); }
+.pin-bar-icon { font-size: 0.9rem; flex-shrink: 0; }
+.pin-bar-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pin-bar-sender { font-size: .78rem; font-weight: 600; color: var(--accent); }
+.pin-bar-text { font-size: .78rem; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pin-bar-close { flex-shrink: 0; background: none; border: none; font-size: 1rem;
+  color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: 50%; }
+.pin-bar-close:hover { background: var(--input-bg); }
+[data-theme="dark"] .pin-bar { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .pin-bar:hover { background: rgba(255,255,255,.05); }
