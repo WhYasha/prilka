@@ -18,6 +18,7 @@ public:
     ADD_METHOD_TO(ChatsController::unpinChat,      "/chats/{1}/pin",      drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(ChatsController::archiveChat,    "/chats/{1}/archive",  drogon::Post,   "AuthFilter");
     ADD_METHOD_TO(ChatsController::unarchiveChat,  "/chats/{1}/archive",  drogon::Delete, "AuthFilter");
+    ADD_METHOD_TO(ChatsController::updateChat,     "/chats/{1}",          drogon::Patch,  "AuthFilter");
     METHOD_LIST_END
 
     void createChat(const drogon::HttpRequestPtr& req,
@@ -73,4 +74,8 @@ public:
     void unarchiveChat(const drogon::HttpRequestPtr& req,
                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                        long long chatId);
+
+    void updateChat(const drogon::HttpRequestPtr& req,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                    long long chatId);
 };
