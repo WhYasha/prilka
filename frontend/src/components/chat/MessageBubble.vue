@@ -1,6 +1,7 @@
 <template>
   <div
     class="msg-row"
+    :data-message-id="message.id"
     :class="[isMine ? 'mine' : 'theirs', { selected: isSelected }]"
     @contextmenu.prevent="onContextMenu"
     v-bind="longPressHandlers"
