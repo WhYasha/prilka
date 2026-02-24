@@ -842,6 +842,23 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   .modal { max-height: 85vh; max-height: 85dvh; }
   .modal-body { overflow-y: auto; }
   .user-profile-body { text-align: center; padding: 1.5rem 1rem; }
+
+  /* Selection bar – compact for mobile */
+  .selection-bar { padding: .4rem .6rem; gap: .35rem; flex-wrap: nowrap; }
+  .selection-bar .btn { padding: .35rem .6rem; font-size: .78rem; white-space: nowrap; }
+  .selection-bar-count { font-size: .82rem; }
+
+  /* Bottom sheet – full width safe */
+  .bottom-sheet { max-height: 80vh; max-height: 80dvh; }
+
+  /* Context menu – clamp to viewport */
+  .msg-context-menu { min-width: 160px; max-width: calc(100vw - 2rem); }
+
+  /* Forward dialog – tighter padding */
+  .forward-dialog .forward-chat-list { max-height: 50vh; }
+
+  /* Swipe actions – slightly narrower buttons */
+  .swipe-action-btn { width: 64px; font-size: .68rem; }
 }
 
 /* ── Desktop (>768px) ───────────────────────────────────────── */
@@ -1471,4 +1488,34 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 }
 [data-theme="dark"] .msg-selected {
   background: rgba(43, 154, 243, .18) !important;
+}
+
+/* ── Dark theme fixes for new components ──────────────────── */
+[data-theme="dark"] .msg-context-menu,
+[data-theme="dark"] .context-menu {
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .bottom-sheet {
+  box-shadow: 0 -4px 32px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .selection-bar {
+  box-shadow: 0 2px 12px rgba(0,0,0,.3);
+}
+[data-theme="dark"] .emoji-picker {
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+[data-theme="dark"] .alert-error {
+  background: rgba(239,68,68,.15); color: #fca5a5; border-color: rgba(239,68,68,.3);
+}
+[data-theme="dark"] .date-sep span {
+  background: rgba(255,255,255,.08);
+}
+[data-theme="dark"] .reaction-add-btn {
+  box-shadow: 0 1px 6px rgba(0,0,0,.3);
+}
+[data-theme="dark"] .forward-dialog .forward-chat-item.selected {
+  background: rgba(43,154,243,.18);
+}
+[data-theme="dark"] .delete-confirm-check input[type="checkbox"] {
+  accent-color: #ef4444;
 }
