@@ -16,16 +16,17 @@ void AdminMessagesController::listMessages(
         const drogon::HttpRequestPtr& req,
         std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
 
-    int page = 1, perPage = 50;
+    int page = 1;
+    long long perPage = 50;
     auto pStr = req->getParameter("page");
     auto ppStr = req->getParameter("per_page");
     if (!pStr.empty()) page = std::max(1, std::stoi(pStr));
-    if (!ppStr.empty()) perPage = std::clamp(std::stoi(ppStr), 1, 100);
+    if (!ppStr.empty()) perPage = std::clamp((long long)std::stoi(ppStr), 1LL, 100LL);
 
     std::string filterUser = req->getParameter("user_id");
     std::string filterChat = req->getParameter("chat_id");
     std::string filterText = req->getParameter("q");
-    int offset = (page - 1) * perPage;
+    long long offset = (long long)(page - 1) * perPage;
 
     // Build dynamic WHERE clause
     std::string whereClause = "TRUE";
@@ -109,7 +110,7 @@ void AdminMessagesController::listMessages(
         Json::Value resp;
         resp["messages"]    = buildMessages(r2);
         resp["page"]        = page;
-        resp["per_page"]    = perPage;
+        resp["per_page"]    = Json::Int64(perPage);
         resp["total"]       = Json::Int64(total);
         resp["total_pages"] = Json::Int64(totalPages);
         (*cbSh)(jsonResp(resp, drogon::k200OK));

@@ -19,15 +19,16 @@ void AdminUsersController::listUsers(
         const drogon::HttpRequestPtr& req,
         std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
 
-    int page = 1, perPage = 20;
+    int page = 1;
+    long long perPage = 20;
     auto pStr = req->getParameter("page");
     auto ppStr = req->getParameter("per_page");
     if (!pStr.empty()) page = std::max(1, std::stoi(pStr));
-    if (!ppStr.empty()) perPage = std::clamp(std::stoi(ppStr), 1, 100);
+    if (!ppStr.empty()) perPage = std::clamp((long long)std::stoi(ppStr), 1LL, 100LL);
 
     std::string search = req->getParameter("q");
     std::string status = req->getParameter("status");
-    int offset = (page - 1) * perPage;
+    long long offset = (long long)(page - 1) * perPage;
 
     // Build WHERE clause with positional parameters
     std::string whereClause = "TRUE";
@@ -87,7 +88,7 @@ void AdminUsersController::listUsers(
                         Json::Value resp;
                         resp["users"]       = users;
                         resp["page"]        = page;
-                        resp["per_page"]    = perPage;
+                        resp["per_page"]    = Json::Int64(perPage);
                         resp["total"]       = Json::Int64(total);
                         resp["total_pages"] = Json::Int64(totalPages);
                         (*cbSh)(jsonResp(resp, drogon::k200OK));
@@ -126,7 +127,7 @@ void AdminUsersController::listUsers(
                         Json::Value resp;
                         resp["users"]       = users;
                         resp["page"]        = page;
-                        resp["per_page"]    = perPage;
+                        resp["per_page"]    = Json::Int64(perPage);
                         resp["total"]       = Json::Int64(total);
                         resp["total_pages"] = Json::Int64(totalPages);
                         (*cbSh)(jsonResp(resp, drogon::k200OK));
