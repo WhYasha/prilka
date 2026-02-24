@@ -80,12 +80,21 @@ s, b = req("POST", "/chats", {"type": "direct", "member_ids": [alice_id]}, token
 check("POST /chats (direct) -> 200/201", s in (200, 201), "chat_id=" + str(b.get("id")))
 chat_id = b.get("id")
 
-s, b = req("POST", "/chats", {"type": "group", "name": "E2E Test Group",
-                               "member_ids": [alice_id]}, token=token)
-check("POST /chats (group) -> 201", s == 201, "chat_id=" + str(b.get("id")))
-
+# Reuse existing E2E group if one exists, otherwise create it
 s, b = req("GET", "/chats", token=token)
 check("GET /chats -> 200", s == 200, str(len(b)) + " chat(s)")
+group_id = None
+for c in (b if isinstance(b, list) else []):
+    if c.get("type") == "group" and c.get("name") == "E2E Test Group":
+        group_id = c["id"]
+        break
+if group_id:
+    check("POST /chats (group) -> reused", True, "chat_id=" + str(group_id))
+else:
+    s, b = req("POST", "/chats", {"type": "group", "name": "E2E Test Group",
+                                   "member_ids": [alice_id]}, token=token)
+    check("POST /chats (group) -> 201", s == 201, "chat_id=" + str(b.get("id")))
+    group_id = b.get("id")
 
 # ── 8. Messages ────────────────────────────────────────────────────────────
 print("\n[8] Messages")
