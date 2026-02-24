@@ -50,3 +50,19 @@ export async function leaveChat(id: number): Promise<void> {
 export async function markRead(id: number): Promise<void> {
   await api.post(`/chats/${id}/read`)
 }
+
+export async function pinChat(id: number): Promise<void> {
+  await api.post(`/chats/${id}/pin`)
+}
+
+export async function unpinChat(id: number): Promise<void> {
+  await api.delete(`/chats/${id}/pin`)
+}
+
+export async function archiveChat(id: number): Promise<void> {
+  await api.post(`/chats/${id}/archive`)
+}
+
+export async function unarchiveChat(id: number): Promise<void> {
+  await api.delete(`/chats/${id}/archive`)
+}
