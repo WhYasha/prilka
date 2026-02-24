@@ -302,3 +302,108 @@ void MessagesController::listMessages(const drogon::HttpRequestPtr& req,
         }
     });
 }
+
+// DELETE /chats/{chatId}/messages/{messageId}
+// Body (optional): { "for_everyone": true }
+void MessagesController::deleteMessage(const drogon::HttpRequestPtr& req,
+                                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                        long long chatId, long long messageId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+
+    bool forEveryone = false;
+    auto body = req->getJsonObject();
+    if (body) {
+        forEveryone = (*body).get("for_everyone", false).asBool();
+    }
+
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    requireMember(chatId, me, [=](bool isMember) {
+        if (!isMember) return (*cbPtr)(jsonErr("Not a member of this chat", drogon::k403Forbidden));
+
+        // Fetch message details + user's role in chat
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "SELECT m.sender_id, m.created_at, cm.role "
+            "FROM messages m "
+            "JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $3 "
+            "WHERE m.id = $1 AND m.chat_id = $2 AND m.is_deleted = false",
+            [=](const drogon::orm::Result& r) {
+                if (r.empty())
+                    return (*cbPtr)(jsonErr("Message not found", drogon::k404NotFound));
+
+                long long senderId = r[0]["sender_id"].as<long long>();
+                std::string role   = r[0]["role"].as<std::string>();
+                std::string createdAtStr = r[0]["created_at"].as<std::string>();
+
+                if (!forEveryone) {
+                    // Delete for me only: insert into deleted_messages
+                    auto db2 = drogon::app().getDbClient();
+                    db2->execSqlAsync(
+                        "INSERT INTO deleted_messages (user_id, message_id) "
+                        "VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                        [cbPtr](const drogon::orm::Result&) {
+                            auto resp = drogon::HttpResponse::newHttpResponse();
+                            resp->setStatusCode(drogon::k204NoContent);
+                            (*cbPtr)(resp);
+                        },
+                        [cbPtr](const drogon::orm::DrogonDbException& e) {
+                            LOG_ERROR << "deleteMessage (for me): " << e.base().what();
+                            (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                        },
+                        me, messageId);
+                    return;
+                }
+
+                // Delete for everyone: check permissions
+                bool isSender = (senderId == me);
+                bool isAdmin  = (role == "owner" || role == "admin");
+                if (!isSender && !isAdmin)
+                    return (*cbPtr)(jsonErr("Only sender or admin can delete for everyone", drogon::k403Forbidden));
+
+                // Check 48h time window
+                auto db2 = drogon::app().getDbClient();
+                db2->execSqlAsync(
+                    "SELECT ($1::timestamptz > NOW() - INTERVAL '48 hours') AS within_window",
+                    [=](const drogon::orm::Result& tr) {
+                        bool withinWindow = tr[0]["within_window"].as<bool>();
+                        if (!withinWindow)
+                            return (*cbPtr)(jsonErr("Cannot delete for everyone after 48 hours", drogon::k403Forbidden));
+
+                        // Set is_deleted = true
+                        auto db3 = drogon::app().getDbClient();
+                        db3->execSqlAsync(
+                            "UPDATE messages SET is_deleted = true WHERE id = $1 AND chat_id = $2",
+                            [=](const drogon::orm::Result&) {
+                                // Broadcast via WebSocket
+                                Json::Value wsPayload;
+                                wsPayload["type"]       = "message_deleted";
+                                wsPayload["chat_id"]    = Json::Int64(chatId);
+                                wsPayload["message_id"] = Json::Int64(messageId);
+                                wsPayload["deleted_by"] = Json::Int64(me);
+                                WsDispatch::publishMessage(chatId, wsPayload);
+
+                                auto resp = drogon::HttpResponse::newHttpResponse();
+                                resp->setStatusCode(drogon::k204NoContent);
+                                (*cbPtr)(resp);
+                            },
+                            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                                LOG_ERROR << "deleteMessage (for everyone): " << e.base().what();
+                                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                            },
+                            messageId, chatId);
+                    },
+                    [cbPtr](const drogon::orm::DrogonDbException& e) {
+                        LOG_ERROR << "deleteMessage time check: " << e.base().what();
+                        (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                    },
+                    createdAtStr);
+            },
+            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                LOG_ERROR << "deleteMessage lookup: " << e.base().what();
+                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+            },
+            messageId, chatId, me);
+    });
+}
