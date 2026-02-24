@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Simple Messenger</title>
-  <script type="module" crossorigin src="/assets/index-CfLuhcJ0.js"></script>
+  <script type="module" crossorigin src="/assets/index-dWvJ5vCQ.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-DCbInSOj.css">
 </head>
 <body data-theme="light">
-  <div id="app">Loading...</div>
+  <div id="app">Loading HTML...</div>
   <script>
     window.onerror=function(m,s,l,c,e){document.getElementById('app').innerHTML='<pre style="color:red;padding:2rem">onerror: '+m+'\n'+s+':'+l+':'+c+'\n'+(e&&e.stack||'')+'</pre>';};
     window.addEventListener('unhandledrejection',function(ev){document.getElementById('app').innerHTML='<pre style="color:red;padding:2rem">unhandledrejection: '+ev.reason+'\n'+(ev.reason&&ev.reason.stack||'')+'</pre>';});
-    setTimeout(function(){var el=document.getElementById('app');if(el&&el.textContent==='Loading...'){el.innerHTML='<pre style="color:orange;padding:2rem">Vue did not mount after 5s.\nlocalStorage access_token: '+(localStorage.getItem('access_token')?'EXISTS':'null')+'\nCheck browser console (F12) for errors.</pre>';}},5000);
+    document.getElementById('app').textContent='HTML OK. Waiting for JS module...';
   </script>
 </body>
 </html>

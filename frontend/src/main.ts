@@ -1,35 +1,41 @@
-import { createApp } from 'vue'
-import { createPinia } from 'pinia'
-import App from './App.vue'
-import router from './router'
 import './assets/main.css'
 
-try {
-  const app = createApp(App)
-  app.use(createPinia())
-  app.use(router)
+const el = document.getElementById('app')
 
-  app.config.errorHandler = (err, _instance, info) => {
-    console.error('Vue error:', err, info)
-    const el = document.getElementById('app')
-    if (el) {
-      el.innerHTML = `<pre style="color:red;padding:2rem">Vue error (${info}):\n${err}\n${(err as Error)?.stack || ''}</pre>`
+function showStatus(msg: string, color = 'green') {
+  if (el) el.innerHTML = `<pre style="color:${color};padding:2rem">${msg}</pre>`
+}
+
+showStatus('JS module loaded. Importing Vue...')
+
+async function init() {
+  try {
+    const { createApp } = await import('vue')
+    showStatus('Vue imported. Importing Pinia...')
+
+    const { createPinia } = await import('pinia')
+    showStatus('Pinia imported. Importing App...')
+
+    const { default: App } = await import('./App.vue')
+    showStatus('App imported. Importing Router...')
+
+    const { default: router } = await import('./router')
+    showStatus('All imports OK. Mounting app...')
+
+    const app = createApp(App)
+    app.use(createPinia())
+    app.use(router)
+
+    app.config.errorHandler = (err, _instance, info) => {
+      console.error('Vue error:', err, info)
+      showStatus(`Vue error (${info}):\n${err}\n${(err as Error)?.stack || ''}`, 'red')
     }
-  }
 
-  router.isReady().then(() => {
     app.mount('#app')
-  }).catch((err) => {
-    console.error('Router ready error:', err)
-    const el = document.getElementById('app')
-    if (el) {
-      el.innerHTML = `<pre style="color:red;padding:2rem">Router error:\n${err}\n${(err as Error)?.stack || ''}</pre>`
-    }
-  })
-} catch (err) {
-  console.error('Init error:', err)
-  const el = document.getElementById('app')
-  if (el) {
-    el.innerHTML = `<pre style="color:red;padding:2rem">Init error:\n${err}\n${(err as Error)?.stack || ''}</pre>`
+  } catch (err) {
+    console.error('Init error:', err)
+    showStatus(`Init error:\n${err}\n${(err as Error)?.stack || ''}`, 'red')
   }
 }
+
+init()
