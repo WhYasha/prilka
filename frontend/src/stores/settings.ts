@@ -7,6 +7,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const theme = ref(localStorage.getItem('theme') || 'light')
   const notificationsEnabled = ref(true)
   const language = ref('en')
+  const lastSeenVisibility = ref<'everyone' | 'approx_only' | 'nobody'>('everyone')
 
   function applyTheme(t: string) {
     theme.value = t
@@ -20,6 +21,7 @@ export const useSettingsStore = defineStore('settings', () => {
       applyTheme(s.theme || 'light')
       notificationsEnabled.value = s.notifications_enabled
       language.value = s.language || 'en'
+      lastSeenVisibility.value = s.last_seen_visibility || 'everyone'
     } catch (e) {
       console.error('Failed to load settings', e)
     }
@@ -30,6 +32,7 @@ export const useSettingsStore = defineStore('settings', () => {
     if (s.theme) applyTheme(s.theme)
     if (s.notifications_enabled !== undefined) notificationsEnabled.value = s.notifications_enabled
     if (s.language) language.value = s.language
+    if (s.last_seen_visibility) lastSeenVisibility.value = s.last_seen_visibility
   }
 
   // Apply theme on init
@@ -39,6 +42,7 @@ export const useSettingsStore = defineStore('settings', () => {
     theme,
     notificationsEnabled,
     language,
+    lastSeenVisibility,
     applyTheme,
     loadSettings,
     saveSettings,

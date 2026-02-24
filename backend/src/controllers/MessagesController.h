@@ -8,7 +8,7 @@ public:
     ADD_METHOD_TO(MessagesController::listMessages, "/chats/{1}/messages", drogon::Get,  "AuthFilter");
     ADD_METHOD_TO(MessagesController::deleteMessage, "/chats/{1}/messages/{2}", drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(MessagesController::editMessage, "/chats/{1}/messages/{2}", drogon::Put, "AuthFilter");
-    ADD_METHOD_TO(MessagesController::forwardMessages, "/chats/{1}/forward", drogon::Post, "AuthFilter");
+    ADD_METHOD_TO(MessagesController::forwardMessages, "/chats/{1}/messages/forward", drogon::Post, "AuthFilter");
     ADD_METHOD_TO(MessagesController::pinMessage,      "/chats/{1}/messages/{2}/pin", drogon::Post,   "AuthFilter");
     ADD_METHOD_TO(MessagesController::unpinMessage,     "/chats/{1}/messages/{2}/pin", drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(MessagesController::getPinnedMessage, "/chats/{1}/pinned-message",   drogon::Get,    "AuthFilter");

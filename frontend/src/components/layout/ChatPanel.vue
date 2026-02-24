@@ -35,10 +35,23 @@
         <span class="readonly-text">Only admins can send messages in this channel.</span>
       </div>
 
+      <!-- New messages indicator -->
+      <button
+        v-if="newMessageCount > 0"
+        class="new-messages-pill"
+        @click="onNewMessagesPillClick"
+      >
+        {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }} &#8595;
+      </button>
+
       <!-- Messages -->
-      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker">
+      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
+          <!-- Sentinel for loading older messages -->
+          <div ref="olderSentinelRef" class="older-sentinel">
+            <Spinner v-if="loadingOlder" />
+          </div>
           <template v-for="item in messagesWithDates" :key="item.type === 'date' ? 'date-' + item.label : 'msg-' + item.msg!.id">
             <div v-if="item.type === 'date'" class="date-sep">
               <span>{{ item.label }}</span>
@@ -182,11 +195,42 @@ const sendTyping = inject<(chatId: number) => void>('sendTyping', () => {})
 const pendingScrollMessageId = inject<{ value: number | null }>('pendingScrollMessageId', ref(null))
 
 const msgListRef = ref<HTMLElement | null>(null)
+const olderSentinelRef = ref<HTMLElement | null>(null)
+const loadingOlder = ref(false)
+let olderObserver: IntersectionObserver | null = null
 const stickerPickerOpen = ref(false)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
 const showInviteSection = ref(false)
 const channelInfoModalOpen = ref(false)
+
+// New messages indicator state
+const isNearBottom = ref(true)
+const newMessageCount = ref(0)
+let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null
+
+function checkIsNearBottom(): boolean {
+  if (!msgListRef.value) return true
+  const el = msgListRef.value
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - 100
+}
+
+function onMsgListScroll() {
+  if (scrollThrottleTimer) return
+  scrollThrottleTimer = setTimeout(() => {
+    scrollThrottleTimer = null
+    isNearBottom.value = checkIsNearBottom()
+    if (isNearBottom.value) {
+      newMessageCount.value = 0
+    }
+  }, 100)
+}
+
+function onNewMessagesPillClick() {
+  scrollToBottom()
+  newMessageCount.value = 0
+  isNearBottom.value = true
+}
 
 // Emoji picker state
 const emojiPickerVisible = ref(false)
@@ -277,6 +321,45 @@ function formatDateLabel(isoStr: string): string {
   return d.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
+// --- IntersectionObserver for loading older messages ---
+function setupOlderObserver() {
+  teardownOlderObserver()
+  if (!olderSentinelRef.value || !msgListRef.value) return
+  olderObserver = new IntersectionObserver(
+    async (entries) => {
+      const entry = entries[0]
+      if (!entry?.isIntersecting) return
+      const chatId = chatsStore.activeChatId
+      if (!chatId || loadingOlder.value) return
+      if (messagesStore.loadingChat === chatId) return
+
+      loadingOlder.value = true
+      const el = msgListRef.value
+      const oldScrollHeight = el ? el.scrollHeight : 0
+
+      try {
+        const older = await messagesStore.loadOlder(chatId)
+        if (older.length > 0 && el) {
+          await nextTick()
+          const newScrollHeight = el.scrollHeight
+          el.scrollTop += newScrollHeight - oldScrollHeight
+        }
+      } finally {
+        loadingOlder.value = false
+      }
+    },
+    { root: msgListRef.value, threshold: 0 },
+  )
+  olderObserver.observe(olderSentinelRef.value)
+}
+
+function teardownOlderObserver() {
+  if (olderObserver) {
+    olderObserver.disconnect()
+    olderObserver = null
+  }
+}
+
 // Watch active chat changes
 watch(
   () => chatsStore.activeChatId,
@@ -284,6 +367,9 @@ watch(
     stickerPickerOpen.value = false
     myRole.value = 'member'
     showInviteSection.value = false
+    newMessageCount.value = 0
+    isNearBottom.value = true
+    teardownOlderObserver()
 
     // Stop previous polling
     if (msgPollTimer) {
@@ -301,6 +387,10 @@ watch(
     await nextTick()
     scrollToBottom()
 
+    // Setup IntersectionObserver for older messages after DOM is ready
+    await nextTick()
+    setupOlderObserver()
+
     // Check role for channels/groups
     const chat = chatsStore.activeChat
     if (chat && (chat.type === 'channel' || chat.type === 'group')) {
@@ -313,11 +403,11 @@ watch(
       }
     }
 
-    // Start message polling
+    // Start message polling (fallback — don't interfere with scroll position)
     msgPollTimer = setInterval(() => {
       if (chatsStore.activeChatId === chatId) {
         messagesStore.loadNewer(chatId).then((msgs) => {
-          if (msgs.length > 0) scrollToBottomIfNear()
+          if (msgs.length > 0) scrollToBottomIfNear(msgs.length)
         })
       }
     }, 2500)
@@ -330,14 +420,16 @@ function scrollToBottom() {
   }
 }
 
-function scrollToBottomIfNear() {
+function scrollToBottomIfNear(newCount = 1) {
   if (!msgListRef.value) return
   const el = msgListRef.value
-  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
   if (atBottom) {
     nextTick(() => {
       el.scrollTop = el.scrollHeight
     })
+  } else {
+    newMessageCount.value += newCount
   }
 }
 
@@ -652,6 +744,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  teardownOlderObserver()
   window.removeEventListener('forward-messages', onForwardMessages as EventListener)
   window.removeEventListener('select-message', onSelectMessage as EventListener)
   window.removeEventListener('delete-message', onDeleteMessage as EventListener)

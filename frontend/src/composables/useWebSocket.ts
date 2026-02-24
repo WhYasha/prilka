@@ -149,8 +149,13 @@ export function useWebSocket() {
       case 'presence': {
         const userId = data.user_id as number
         const status = data.status as string
-        if (status === 'online') chatsStore.setUserOnline(userId)
-        else if (status === 'offline') chatsStore.setUserOffline(userId)
+        const lastSeenAt = data.last_seen_at as string | undefined
+        const lastSeenBucket = data.last_seen_bucket as string | undefined
+        if (status === 'online') {
+          chatsStore.setUserOnline(userId)
+        } else if (status === 'offline') {
+          chatsStore.setUserOffline(userId, lastSeenAt, lastSeenBucket)
+        }
         break
       }
       case 'message_deleted': {
