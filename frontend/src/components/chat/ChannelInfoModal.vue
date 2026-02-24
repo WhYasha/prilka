@@ -6,7 +6,34 @@
       </button>
 
       <div class="profile-modal-body">
-        <template v-if="channelStore.loading">
+        <!-- Sub-views -->
+        <template v-if="activeView === 'invites'">
+          <InviteLinksView :chat-id="numericChatId" @back="activeView = 'main'" />
+        </template>
+        <template v-else-if="activeView === 'admins'">
+          <AdminsView :chat-id="numericChatId" @back="activeView = 'main'" />
+        </template>
+        <template v-else-if="activeView === 'subscribers'">
+          <SubscribersView :chat-id="numericChatId" @back="activeView = 'main'" />
+        </template>
+        <template v-else-if="activeView === 'edit'">
+          <EditChannelModal
+            :chat-id="numericChatId"
+            @close="activeView = 'main'"
+            @saved="handleSaved"
+          />
+        </template>
+        <template v-else-if="activeView === 'danger'">
+          <DangerZone
+            :chat-id="numericChatId"
+            @back="activeView = 'main'"
+            @left="emit('close')"
+            @deleted="emit('close')"
+          />
+        </template>
+
+        <!-- Main view -->
+        <template v-else-if="channelStore.loading">
           <div class="profile-loading">
             <p>Loading...</p>
           </div>
@@ -44,16 +71,16 @@
 
           <!-- Menu items -->
           <div class="channel-info-menu">
-            <button class="channel-info-menu-item" @click="emit('navigate', 'invite-links')">
+            <button class="channel-info-menu-item" @click="activeView = 'invites'">
               <Link :size="20" :stroke-width="1.8" />
               <span>Invite Links</span>
             </button>
-            <button class="channel-info-menu-item" @click="emit('navigate', 'administrators')">
+            <button class="channel-info-menu-item" @click="activeView = 'admins'">
               <Shield :size="20" :stroke-width="1.8" />
               <span>Administrators</span>
               <span class="channel-info-menu-count">{{ channelStore.adminCount }}</span>
             </button>
-            <button class="channel-info-menu-item" @click="emit('navigate', 'subscribers')">
+            <button class="channel-info-menu-item" @click="activeView = 'subscribers'">
               <Users :size="20" :stroke-width="1.8" />
               <span>Subscribers</span>
               <span class="channel-info-menu-count">{{ channelStore.memberCount }}</span>
@@ -61,19 +88,19 @@
             <button
               v-if="channelStore.isOwner || channelStore.isAdmin"
               class="channel-info-menu-item"
-              @click="emit('navigate', 'edit-channel')"
+              @click="activeView = 'edit'"
             >
               <Pencil :size="20" :stroke-width="1.8" />
               <span>Edit Channel</span>
             </button>
-            <button class="channel-info-menu-item channel-info-menu-item--danger" @click="emit('navigate', 'leave-channel')">
+            <button class="channel-info-menu-item channel-info-menu-item--danger" @click="activeView = 'danger'">
               <LogOut :size="20" :stroke-width="1.8" />
               <span>Leave Channel</span>
             </button>
             <button
               v-if="channelStore.isOwner"
               class="channel-info-menu-item channel-info-menu-item--danger"
-              @click="emit('navigate', 'delete-channel')"
+              @click="activeView = 'danger'"
             >
               <Trash2 :size="20" :stroke-width="1.8" />
               <span>Delete Channel</span>
@@ -91,19 +118,33 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useChannelStore } from '@/stores/channel'
 import Avatar from '@/components/ui/Avatar.vue'
+import InviteLinksView from './InviteLinksView.vue'
+import AdminsView from './AdminsView.vue'
+import SubscribersView from './SubscribersView.vue'
+import EditChannelModal from './EditChannelModal.vue'
+import DangerZone from './DangerZone.vue'
 import { X, Link, Shield, Users, Pencil, LogOut, Trash2 } from 'lucide-vue-next'
+
+type ActiveView = 'main' | 'invites' | 'admins' | 'subscribers' | 'edit' | 'danger'
 
 const props = defineProps<{ chatId: string }>()
 
 const emit = defineEmits<{
   close: []
-  navigate: [view: string]
 }>()
 
 const channelStore = useChannelStore()
+const activeView = ref<ActiveView>('main')
+
+const numericChatId = computed(() => Number(props.chatId))
+
+function handleSaved() {
+  activeView.value = 'main'
+  channelStore.loadDetail()
+}
 
 onMounted(async () => {
   await Promise.all([
