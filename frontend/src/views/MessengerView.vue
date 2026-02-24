@@ -1,0 +1,243 @@
+<template>
+  <div class="layout" :class="{ 'chat-open': !!chatsStore.activeChatId }">
+    <!-- Drawer -->
+    <Drawer
+      :open="drawerOpen"
+      @close="drawerOpen = false"
+      @open-profile="openProfileModal"
+      @open-download="downloadModalOpen = true"
+    />
+    <div
+      class="drawer-overlay"
+      :class="{ visible: drawerOpen }"
+      @click="drawerOpen = false"
+    />
+
+    <!-- Sidebar -->
+    <Sidebar
+      @open-drawer="drawerOpen = true"
+      @open-new-chat="newChatModalOpen = true"
+      @select-chat="handleSelectChat"
+    />
+
+    <!-- Chat Panel -->
+    <ChatPanel
+      @back="handleBack"
+      @open-user-profile="openUserProfileModal"
+    />
+
+    <!-- Modals -->
+    <NewChatModal
+      v-if="newChatModalOpen"
+      @close="newChatModalOpen = false"
+      @chat-created="handleChatCreated"
+    />
+    <ProfileModal
+      v-if="profileModalOpen"
+      @close="profileModalOpen = false"
+    />
+    <UserProfileModal
+      v-if="userProfileTarget"
+      :username="userProfileTarget"
+      @close="userProfileTarget = null"
+      @message="handleDMFromProfile"
+    />
+    <DownloadModal
+      v-if="downloadModalOpen"
+      @close="downloadModalOpen = false"
+    />
+
+    <!-- Context Menu -->
+    <ContextMenu />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { useChatsStore } from '@/stores/chats'
+import { useSettingsStore } from '@/stores/settings'
+import { useWebSocket } from '@/composables/useWebSocket'
+import { getUserByUsername, getUser } from '@/api/users'
+import { createChat, getChatByName } from '@/api/chats'
+import { listStickers } from '@/api/stickers'
+import { useToast } from '@/composables/useToast'
+import { provide } from 'vue'
+import type { Sticker } from '@/api/types'
+
+import Sidebar from '@/components/layout/Sidebar.vue'
+import ChatPanel from '@/components/layout/ChatPanel.vue'
+import Drawer from '@/components/layout/Drawer.vue'
+import NewChatModal from '@/components/modals/NewChatModal.vue'
+import ProfileModal from '@/components/modals/ProfileModal.vue'
+import UserProfileModal from '@/components/modals/UserProfileModal.vue'
+import DownloadModal from '@/components/modals/DownloadModal.vue'
+import ContextMenu from '@/components/chat/ContextMenu.vue'
+
+const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
+const chatsStore = useChatsStore()
+const settingsStore = useSettingsStore()
+const { showToast } = useToast()
+const { connect, disconnect } = useWebSocket()
+
+const drawerOpen = ref(false)
+const newChatModalOpen = ref(false)
+const profileModalOpen = ref(false)
+const downloadModalOpen = ref(false)
+const userProfileTarget = ref<string | null>(null)
+const stickers = ref<Sticker[]>([])
+
+// Provide stickers to child components
+provide('stickers', stickers)
+
+// Chat polling timer
+let chatsPollTimer: ReturnType<typeof setInterval> | null = null
+
+onMounted(async () => {
+  // Load settings
+  await settingsStore.loadSettings()
+
+  // Load stickers
+  try {
+    stickers.value = await listStickers()
+  } catch {
+    // stickers optional
+  }
+
+  // Load chats
+  await chatsStore.loadChats()
+
+  // Connect WebSocket
+  connect()
+
+  // Start chat polling (fallback alongside WS)
+  chatsPollTimer = setInterval(() => chatsStore.loadChats(), 5000)
+
+  // Handle deep links
+  handleDeepLink()
+})
+
+onUnmounted(() => {
+  disconnect()
+  if (chatsPollTimer) {
+    clearInterval(chatsPollTimer)
+    chatsPollTimer = null
+  }
+})
+
+// Watch route changes for deep links
+watch(() => route.path, () => {
+  handleDeepLink()
+})
+
+async function handleDeepLink() {
+  const path = route.path
+
+  if (path.startsWith('/@')) {
+    const username = route.params.username as string
+    if (username) userProfileTarget.value = username
+  } else if (path.startsWith('/u/')) {
+    const userId = route.params.id as string
+    if (userId) {
+      try {
+        const user = await getUser(parseInt(userId))
+        userProfileTarget.value = user.username
+      } catch {
+        showToast('User not found')
+      }
+    }
+  } else if (path.startsWith('/dm/')) {
+    const target = route.params.id as string
+    if (target) await openDM(target)
+  } else if (path.startsWith('/c/')) {
+    const name = route.params.name as string
+    if (name) await openChannelByName(name)
+  }
+}
+
+async function openDM(target: string) {
+  try {
+    let userId: number
+    if (target.startsWith('@')) {
+      const username = target.substring(1)
+      if (authStore.user?.username === username) {
+        userProfileTarget.value = username
+        return
+      }
+      const user = await getUserByUsername(username)
+      userId = user.id
+    } else {
+      userId = parseInt(target)
+      if (authStore.user?.id === userId) {
+        showToast('Cannot open DM with yourself')
+        return
+      }
+    }
+    const chat = await createChat({ type: 'direct', member_ids: [userId] })
+    await chatsStore.loadChats()
+    chatsStore.setActiveChat(chat.id)
+  } catch {
+    showToast('Failed to open conversation')
+  }
+}
+
+async function openChannelByName(name: string) {
+  try {
+    const chat = await getChatByName(name)
+    const existing = chatsStore.chats.find((c) => c.id === chat.id)
+    if (existing) {
+      chatsStore.setActiveChat(chat.id)
+    } else {
+      showToast('You are not a member of this channel')
+    }
+  } catch {
+    showToast('Channel not found')
+  }
+}
+
+function handleSelectChat(chatId: number) {
+  chatsStore.setActiveChat(chatId)
+  router.replace('/app')
+}
+
+function handleBack() {
+  chatsStore.setActiveChat(null)
+}
+
+function openProfileModal() {
+  drawerOpen.value = false
+  profileModalOpen.value = true
+}
+
+function openUserProfileModal(username: string) {
+  userProfileTarget.value = username
+}
+
+async function handleDMFromProfile(username: string) {
+  userProfileTarget.value = null
+  await openDM('@' + username)
+}
+
+async function handleChatCreated(chatId: number) {
+  newChatModalOpen.value = false
+  await chatsStore.loadChats()
+  chatsStore.setActiveChat(chatId)
+}
+
+// Global ESC handler
+function handleEsc(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (userProfileTarget.value) { userProfileTarget.value = null; return }
+  if (newChatModalOpen.value) { newChatModalOpen.value = false; return }
+  if (profileModalOpen.value) { profileModalOpen.value = false; return }
+  if (downloadModalOpen.value) { downloadModalOpen.value = false; return }
+  if (drawerOpen.value) { drawerOpen.value = false; return }
+  if (chatsStore.activeChatId !== null) { handleBack(); return }
+}
+
+onMounted(() => document.addEventListener('keydown', handleEsc))
+onUnmounted(() => document.removeEventListener('keydown', handleEsc))
+</script>

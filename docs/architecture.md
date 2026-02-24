@@ -7,8 +7,8 @@
 │                              Client Layer                                   │
 │   Browser SPA (HTML/JS/CSS)          Future: iOS Swift Client               │
 └──────────────┬──────────────────────────────────────┬───────────────────────┘
-               │ HTTP + WebSocket                      │ HTTP + WebSocket
-               ▼                                       ▼
+               │ HTTP + WebSocket                     │ HTTP + WebSocket
+               ▼                                      ▼
 ┌──────────────────────────────┐    ┌──────────────────────────────────────────┐
 │   api_legacy (Flask :5000)   │    │        api_cpp (Drogon C++ :8080)        │
 │   ─ Serves existing SPA      │    │   ─ POST /auth/register, /auth/login     │
@@ -26,12 +26,12 @@
                │                               │                              │
                ▼                               ▼                              ▼
 ┌──────────────────────┐       ┌───────────────────────┐     ┌───────────────────────┐
-│  PostgreSQL 16       │       │  Redis 7               │     │  MinIO (S3)           │
-│  ─ users             │       │  ─ WebSocket pub/sub   │     │  ─ file objects       │
-│  ─ chats             │       │  ─ presence cache      │     │  ─ presigned URLs     │
-│  ─ chat_members      │       │  ─ rate limit counters │     │  ─ bucket: messenger- │
-│  ─ messages          │       │  ─ session cache       │     │    files              │
-│  ─ files             │       │   (future)             │     └───────────────────────┘
+│  PostgreSQL 16       │       │  Redis 7              │     │  MinIO (S3)           │
+│  ─ users             │       │  ─ WebSocket pub/sub  │     │  ─ file objects       │
+│  ─ chats             │       │  ─ presence cache     │     │  ─ presigned URLs     │
+│  ─ chat_members      │       │  ─ rate limit counters│     │  ─ bucket: messenger- │
+│  ─ messages          │       │  ─ session cache      │     │    files              │
+│  ─ files             │       │   (future)            │     └───────────────────────┘
 │  ─ refresh_tokens    │       └───────────────────────┘
 │  ─ stickers          │
 └──────────────────────┘
