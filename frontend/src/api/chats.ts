@@ -72,6 +72,10 @@ export async function getChatMembers(id: number): Promise<ChatMember[]> {
   return data
 }
 
+export async function deleteChat(id: number): Promise<void> {
+  await api.delete(`/chats/${id}`)
+}
+
 export async function updateChat(
   id: number,
   payload: { title?: string; description?: string; public_name?: string },
