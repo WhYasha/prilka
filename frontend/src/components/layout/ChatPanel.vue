@@ -125,6 +125,7 @@ import { useRecorder } from '@/composables/useRecorder'
 import { useToast } from '@/composables/useToast'
 import { getChat } from '@/api/chats'
 import { uploadFile } from '@/api/files'
+import * as messagesApi from '@/api/messages'
 import type { Sticker } from '@/api/types'
 
 import ChatHeader from '@/components/chat/ChatHeader.vue'
@@ -469,13 +470,45 @@ function bottomSheetAction(action: string) {
   }
 }
 
-function scrollToMessage(messageId: number) {
+async function scrollToMessage(messageId: number) {
   if (!msgListRef.value) return
-  const el = msgListRef.value.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+  const chatId = chatsStore.activeChatId
+  if (!chatId) return
+
+  // Try to find the message element in DOM
+  let el = msgListRef.value.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+
+  if (!el) {
+    // Message not loaded yet — fetch messages around the target ID
+    try {
+      const afterId = Math.max(0, messageId - 25)
+      const msgs = await messagesApi.listMessages(chatId, {
+        after_id: afterId,
+        limit: 50,
+      })
+      // Check if target message exists in fetched results
+      const found = msgs.find((m) => m.id === messageId)
+      if (!found) {
+        showToast('Message not found')
+        return
+      }
+      // Replace loaded messages with the fetched range
+      messagesStore.messagesByChat[chatId] = msgs
+      if (msgs.length > 0) {
+        messagesStore.lastMsgId[chatId] = Math.max(...msgs.map((m) => m.id))
+      }
+      await nextTick()
+      el = msgListRef.value?.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+    } catch {
+      showToast('Message not found')
+      return
+    }
+  }
+
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add('highlight-message')
-    setTimeout(() => el.classList.remove('highlight-message'), 2000)
+    setTimeout(() => el!.classList.remove('highlight-message'), 2000)
   }
 }
 
