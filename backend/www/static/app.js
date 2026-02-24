@@ -3,7 +3,7 @@
 
 // ── State ───────────────────────────────────────────────────────────────────
 const S = {
-  me:            null,   // { id, username, display_name, bio, avatar_url }
+  me:            null,   // { id, username, display_name, bio, avatar_url, is_admin }
   chats:         [],
   activeChatId:  null,
   lastMsgId:     0,
@@ -15,6 +15,7 @@ const S = {
   chatsPollTimer:  null,
   msgsPollTimer:   null,
   userProfileOpen: false,
+  ctxChatId:       null,  // chat id for context menu
 };
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
@@ -63,18 +64,28 @@ const profileAvatar     = document.getElementById("profileAvatar");
 const profileDisplayName= document.getElementById("profileDisplayName");
 const profileBio        = document.getElementById("profileBio");
 const profileUsername   = document.getElementById("profileUsername");
+const profileUserId     = document.getElementById("profileUserId");
+const profileUsernameError = document.getElementById("profileUsernameError");
 const changeAvatarBtn   = document.getElementById("changeAvatarBtn");
 const avatarFileInput   = document.getElementById("avatarFileInput");
 const saveProfileBtn    = document.getElementById("saveProfileBtn");
+const saveSettingsBtn   = document.getElementById("saveSettingsBtn");
 const settingsTheme     = document.getElementById("settingsTheme");
 const settingsNotifications = document.getElementById("settingsNotifications");
+const settingsLanguage  = document.getElementById("settingsLanguage");
 
 const userProfileModal    = document.getElementById("userProfileModal");
 const userProfileCloseBtn = document.getElementById("userProfileCloseBtn");
 const userProfileAvatar   = document.getElementById("userProfileAvatar");
 const userProfileDisplayName = document.getElementById("userProfileDisplayName");
 const userProfileUsername = document.getElementById("userProfileUsername");
+const userProfileId       = document.getElementById("userProfileId");
 const userProfileMessageBtn = document.getElementById("userProfileMessageBtn");
+
+const ctxMenu     = document.getElementById("ctxMenu");
+const ctxFavorite = document.getElementById("ctxFavorite");
+const ctxMute     = document.getElementById("ctxMute");
+const ctxLeave    = document.getElementById("ctxLeave");
 
 const toast           = document.getElementById("toast");
 
@@ -144,6 +155,10 @@ function escHtml(str) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+function renderAdminBadge() {
+  return '<span class="admin-badge" title="Admin">&#10003;</span>';
+}
+
 function initial(name) { return (name || "?")[0].toUpperCase(); }
 
 function formatTime(isoStr) {
@@ -209,6 +224,7 @@ async function bootstrap() {
     applyTheme(settings.theme);
     settingsTheme.value = settings.theme;
     settingsNotifications.checked = settings.notifications_enabled;
+    if (settingsLanguage) settingsLanguage.value = settings.language || "en";
   } catch { return; }
 
   updateDrawerUser();
@@ -319,8 +335,8 @@ function chatDisplayName(c) {
 }
 
 function chatTypeIcon(c) {
-  if (c.type === "channel") return "\uD83D\uDCE2 ";
-  if (c.type === "group") return "\uD83D\uDC65 ";
+  if (c.type === "channel") return '<span class="ci-channel"></span>';
+  if (c.type === "group")   return '<span class="ci-group"></span>';
   return "";
 }
 
@@ -340,33 +356,144 @@ function renderChatList() {
   }
 
   chatList.innerHTML = "";
-  filtered.forEach(c => {
+  const favorites = filtered.filter(c => c.is_favorite);
+  const rest      = filtered.filter(c => !c.is_favorite);
+
+  // "Starred" section divider
+  if (favorites.length > 0) {
+    const divider = document.createElement("div");
+    divider.className = "chat-section-label";
+    divider.textContent = "Starred";
+    chatList.appendChild(divider);
+  }
+
+  const renderItem = (c) => {
     const div = document.createElement("div");
     div.className = "chat-item" + (c.id === S.activeChatId ? " active" : "");
     div.dataset.cid = c.id;
 
     const displayName = chatDisplayName(c);
-    // For DMs use other user's avatar; for groups/channels use first letter of name
     const avatarUrl = c.other_avatar_url;
     const avatarHtml = avatarUrl
       ? `<div class="avatar avatar-sm"><img src="${escHtml(avatarUrl)}" alt="" /></div>`
       : `<div class="avatar avatar-sm">${initial(displayName)}</div>`;
 
     const lastTime = c.last_at || c.updated_at;
+    const muteIcon = c.is_muted ? '<span class="mute-icon" title="Muted">&#128276;</span>' : "";
+    const starClass = c.is_favorite ? " star-active" : "";
     div.innerHTML = `
       ${avatarHtml}
       <div class="chat-item-info">
         <div class="chat-item-top">
-          <span class="chat-item-name">${chatTypeIcon(c)}${escHtml(displayName)}</span>
+          <span class="chat-item-name">${chatTypeIcon(c)}${escHtml(displayName)}${muteIcon}</span>
           <span class="chat-item-time">${formatTime(lastTime)}</span>
         </div>
         <div class="chat-item-preview">${escHtml(c.last_message || "")}</div>
       </div>
+      <button class="star-btn${starClass}" title="${c.is_favorite ? 'Unstar' : 'Star'}" data-cid="${c.id}">&#9733;</button>
     `;
     div.addEventListener("click", () => openChat(c.id));
+    div.addEventListener("contextmenu", (e) => { e.preventDefault(); showCtxMenu(e, c.id); });
+    const starBtn = div.querySelector(".star-btn");
+    starBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleFavorite(c.id); });
     chatList.appendChild(div);
-  });
+  };
+
+  favorites.forEach(renderItem);
+
+  if (favorites.length > 0 && rest.length > 0) {
+    const divider2 = document.createElement("div");
+    divider2.className = "chat-section-label";
+    divider2.textContent = "All chats";
+    chatList.appendChild(divider2);
+  }
+  rest.forEach(renderItem);
 }
+
+async function toggleFavorite(chatId) {
+  const chat = S.chats.find(c => c.id === chatId);
+  if (!chat) return;
+  const isFav = !!chat.is_favorite;
+  try {
+    const res = await cppApiFetch(`/chats/${chatId}/favorite`, {
+      method: isFav ? "DELETE" : "POST",
+    });
+    if (!res.ok && res.status !== 204) { showToast("Failed to update favorite"); return; }
+    chat.is_favorite = !isFav;
+    // Re-sort: favorites first, preserve relative order within each group
+    S.chats.sort((a, b) => {
+      if (!!a.is_favorite !== !!b.is_favorite) return a.is_favorite ? -1 : 1;
+      return 0;
+    });
+    renderChatList();
+  } catch { showToast("Failed to update favorite"); }
+}
+
+// ── Context menu ──────────────────────────────────────────────────────────────
+function showCtxMenu(e, chatId) {
+  S.ctxChatId = chatId;
+  const chat = S.chats.find(c => c.id === chatId);
+  if (!chat) return;
+
+  // Update menu labels based on current state
+  ctxFavorite.textContent = chat.is_favorite ? "\u2605 Unstar" : "\u2606 Star";
+  ctxMute.textContent = chat.is_muted ? "\uD83D\uDD14 Unmute" : "\uD83D\uDD15 Mute";
+
+  // Show leave only for group/channel (not DM)
+  if (ctxLeave) ctxLeave.classList.toggle("hidden", chat.type === "direct");
+
+  ctxMenu.style.left = e.clientX + "px";
+  ctxMenu.style.top  = e.clientY + "px";
+  ctxMenu.classList.remove("hidden");
+}
+
+document.addEventListener("click", (e) => {
+  if (ctxMenu && !ctxMenu.contains(e.target)) {
+    ctxMenu.classList.add("hidden");
+    S.ctxChatId = null;
+  }
+});
+
+if (ctxFavorite) ctxFavorite.addEventListener("click", () => {
+  if (S.ctxChatId) { toggleFavorite(S.ctxChatId); ctxMenu.classList.add("hidden"); }
+});
+
+if (ctxMute) ctxMute.addEventListener("click", async () => {
+  if (!S.ctxChatId) return;
+  ctxMenu.classList.add("hidden");
+  const chat = S.chats.find(c => c.id === S.ctxChatId);
+  if (!chat) return;
+  try {
+    const res = await cppApiFetch(`/chats/${S.ctxChatId}/mute`, {
+      method: chat.is_muted ? "DELETE" : "POST",
+    });
+    if (res.ok || res.status === 204) {
+      chat.is_muted = !chat.is_muted;
+      renderChatList();
+    } else {
+      showToast("Failed to update mute");
+    }
+  } catch { showToast("Failed to update mute"); }
+});
+
+if (ctxLeave) ctxLeave.addEventListener("click", async () => {
+  if (!S.ctxChatId) return;
+  ctxMenu.classList.add("hidden");
+  const cid = S.ctxChatId;
+  if (!confirm("Leave this chat?")) return;
+  try {
+    const res = await cppApiFetch(`/chats/${cid}/leave`, { method: "DELETE" });
+    if (res.ok || res.status === 204) {
+      S.chats = S.chats.filter(c => c.id !== cid);
+      if (S.activeChatId === cid) closeChat();
+      renderChatList();
+      showToast("Left chat");
+    } else {
+      const d = await res.json().catch(() => ({}));
+      showToast(d.error || "Failed to leave chat");
+    }
+  } catch { showToast("Failed to leave chat"); }
+});
 
 searchInput.addEventListener("input", renderChatList);
 
@@ -531,6 +658,8 @@ function buildBubble(msg) {
 
   // Sender display fields (C++ API)
   const senderName = msg.sender_display_name || msg.sender_username || msg.from_display_name || msg.from_username || "";
+  const senderAdmin = !!msg.sender_is_admin;
+  const senderNameHtml = escHtml(senderName) + (senderAdmin ? renderAdminBadge() : "");
 
   let bubbleContent = "";
   if (msg.message_type === "sticker") {
@@ -553,7 +682,7 @@ function buildBubble(msg) {
     bubbleContent = `<div class="voice-player"><audio controls src="${escHtml(src)}"></audio>${dur}</div>`;
     if (!isMine) {
       row.innerHTML = `
-        <div class="msg-sender-name">${escHtml(senderName)}</div>
+        <div class="msg-sender-name">${senderNameHtml}</div>
         <div class="msg-bubble">${bubbleContent}</div>
         <div class="msg-time">${escHtml(formatTime(msg.created_at))}</div>
       `;
@@ -567,7 +696,7 @@ function buildBubble(msg) {
     bubbleContent = escHtml(msg.content || "");
     if (!isMine) {
       row.innerHTML = `
-        <div class="msg-sender-name">${escHtml(senderName)}</div>
+        <div class="msg-sender-name">${senderNameHtml}</div>
         <div class="msg-bubble">${bubbleContent}</div>
         <div class="msg-time">${escHtml(formatTime(msg.created_at))}</div>
       `;
@@ -578,6 +707,21 @@ function buildBubble(msg) {
       `;
     }
   }
+
+  // Process @mentions in text bubbles
+  if (msg.message_type !== "sticker" && msg.message_type !== "voice") {
+    const bubble = row.querySelector(".msg-bubble");
+    if (bubble && !bubble.classList.contains("sticker-bubble")) {
+      bubble.innerHTML = bubble.innerHTML.replace(
+        /@(\w{1,30})/g,
+        '<span class="mention" data-u="$1">@$1</span>'
+      );
+      bubble.querySelectorAll(".mention").forEach(s =>
+        s.addEventListener("click", () => showUserProfile(s.dataset.u))
+      );
+    }
+  }
+
   return row;
 }
 
@@ -1016,6 +1160,16 @@ profileModal.addEventListener("click", (e) => { if (e.target === profileModal) p
 
 async function openProfileModal() {
   profileModal.classList.remove("hidden");
+  // Reset to profile tab
+  document.querySelectorAll(".profile-tab").forEach(t => t.classList.remove("active"));
+  const firstTab = document.querySelector(".profile-tab[data-tab='profile']");
+  if (firstTab) firstTab.classList.add("active");
+  document.querySelectorAll(".profile-tab-pane").forEach(p => p.classList.add("hidden"));
+  const profilePane = document.getElementById("profileTabProfile");
+  if (profilePane) profilePane.classList.remove("hidden");
+
+  // Clear username error
+  if (profileUsernameError) { profileUsernameError.textContent = ""; profileUsernameError.classList.add("hidden"); }
 
   try {
     const [profRes, settRes] = await Promise.all([
@@ -1029,10 +1183,24 @@ async function openProfileModal() {
     profileDisplayName.value = prof.display_name || "";
     profileBio.value         = prof.bio || "";
     profileUsername.value    = prof.username;
+    if (profileUserId) profileUserId.textContent = "ID: " + prof.id;
     settingsTheme.value               = sett.theme || "light";
     settingsNotifications.checked     = sett.notifications_enabled;
+    if (settingsLanguage) settingsLanguage.value = sett.language || "en";
   } catch { showToast("Failed to load profile"); }
 }
+
+// ── Profile tabs switching ─────────────────────────────────────────────────────
+document.querySelectorAll(".profile-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".profile-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    const target = tab.dataset.tab;
+    document.querySelectorAll(".profile-tab-pane").forEach(p => p.classList.add("hidden"));
+    const pane = document.getElementById("profileTab" + target.charAt(0).toUpperCase() + target.slice(1));
+    if (pane) pane.classList.remove("hidden");
+  });
+});
 
 changeAvatarBtn.addEventListener("click", () => avatarFileInput.click());
 avatarFileInput.addEventListener("change", async () => {
@@ -1062,46 +1230,76 @@ avatarFileInput.addEventListener("change", async () => {
 });
 
 saveProfileBtn.addEventListener("click", async () => {
+  // Clear username error
+  if (profileUsernameError) { profileUsernameError.textContent = ""; profileUsernameError.classList.add("hidden"); }
+
+  const newUsername = profileUsername.value.trim();
+  const payload = {
+    display_name: profileDisplayName.value.trim(),
+    bio: profileBio.value.trim(),
+  };
+  // Include username only if changed
+  if (newUsername && newUsername !== S.me.username) {
+    payload.username = newUsername;
+  }
+
   try {
-    const [profRes, settRes] = await Promise.all([
-      cppApiFetch(`/users/${S.me.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          display_name: profileDisplayName.value.trim(),
-          bio: profileBio.value.trim(),
-        }),
-      }),
-      cppApiFetch("/settings", {
-        method: "PUT",
-        body: JSON.stringify({
-          theme: settingsTheme.value,
-          notifications_enabled: settingsNotifications.checked,
-        }),
-      }),
-    ]);
-    if (!profRes.ok || (settRes.status !== 200 && settRes.status !== 204)) {
-      showToast("Save failed");
+    const profRes = await cppApiFetch(`/users/${S.me.id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+
+    if (profRes.status === 409) {
+      if (profileUsernameError) {
+        profileUsernameError.textContent = "Username already taken";
+        profileUsernameError.classList.remove("hidden");
+      } else {
+        showToast("Username already taken");
+      }
       return;
     }
+    if (!profRes.ok) { showToast("Save failed"); return; }
+
     const prof = await profRes.json();
     S.me.display_name = prof.display_name;
-    applyTheme(settingsTheme.value);
+    S.me.username     = prof.username;
     updateDrawerUser();
     profileModal.classList.add("hidden");
-    showToast("Saved!");
+    showToast("Profile saved!");
     refreshChats();
   } catch { showToast("Save failed"); }
 });
 
+if (saveSettingsBtn) {
+  saveSettingsBtn.addEventListener("click", async () => {
+    try {
+      const settRes = await cppApiFetch("/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          theme: settingsTheme.value,
+          notifications_enabled: settingsNotifications.checked,
+          language: settingsLanguage ? settingsLanguage.value : "en",
+        }),
+      });
+      if (settRes.status !== 200 && settRes.status !== 204) {
+        showToast("Settings save failed");
+        return;
+      }
+      applyTheme(settingsTheme.value);
+      profileModal.classList.add("hidden");
+      showToast("Settings saved!");
+    } catch { showToast("Settings save failed"); }
+  });
+}
+
 // ── User profile modal ────────────────────────────────────────────────────
 function openUserProfile() {
   const chat = S.chats.find(c => c.id === S.activeChatId);
-  if (!chat) return;
-  setAvatar(userProfileAvatar, chat.other_display_name || chat.other_username, chat.other_avatar_url);
-  userProfileDisplayName.textContent = chat.other_display_name || chat.other_username;
-  userProfileUsername.textContent = "@" + chat.other_username;
-  S.userProfileOpen = true;
-  userProfileModal.classList.remove("hidden");
+  if (!chat || chat.type !== "direct") return;
+  // Delegate to full profile fetch to get is_admin, bio, user id
+  if (chat.other_username) {
+    showUserProfile(chat.other_username);
+  }
 }
 
 function closeUserProfile() {
@@ -1173,8 +1371,12 @@ async function showUserProfile(username) {
     if (!res.ok) { showToast("User not found"); return; }
     const user = await res.json();
     setAvatar(userProfileAvatar, user.display_name || user.username, user.avatar_url);
-    userProfileDisplayName.textContent = user.display_name || user.username;
+    userProfileDisplayName.innerHTML = escHtml(user.display_name || user.username) +
+      (user.is_admin ? renderAdminBadge() : "");
     userProfileUsername.textContent = "@" + user.username;
+    if (userProfileId) userProfileId.textContent = "ID: " + user.id;
+    const bioEl = document.getElementById("userProfileBio");
+    if (bioEl) bioEl.textContent = user.bio || "";
     userProfileModal.classList.remove("hidden");
     userProfileModal.dataset.username = user.username;
     S.userProfileOpen = true;

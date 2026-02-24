@@ -691,3 +691,106 @@ body:has(.layout) { overflow: hidden; }
 /* ── Button danger variant ──────────────────────────────────── */
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: #dc2626; }
+
+/* ── Chat section dividers (Starred / All chats) ──────────── */
+.chat-section-label {
+  padding: .35rem 1rem .2rem;
+  font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--sidebar-txt); opacity: .7;
+  user-select: none;
+}
+
+/* ── Star button on chat items ──────────────────────────────── */
+.star-btn {
+  background: none; border: none;
+  color: var(--sidebar-txt); font-size: .85rem;
+  padding: 4px 2px; line-height: 1;
+  opacity: 0; transition: opacity .15s, color .15s;
+  flex-shrink: 0;
+}
+.chat-item:hover .star-btn,
+.star-btn.star-active { opacity: 1; }
+.star-btn.star-active { color: gold; }
+
+/* ── Mute icon in chat list ─────────────────────────────────── */
+.mute-icon { font-size: .75rem; margin-left: .25rem; opacity: .6; }
+
+/* ── Context menu ───────────────────────────────────────────── */
+.context-menu {
+  position: fixed; z-index: 9999;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  min-width: 160px; overflow: hidden;
+}
+.ctx-item {
+  display: flex; align-items: center; gap: .5rem;
+  width: 100%; padding: .65rem 1rem;
+  background: none; border: none;
+  font-size: .9rem; color: var(--text);
+  cursor: pointer; text-align: left;
+  transition: background .1s;
+}
+.ctx-item:hover { background: var(--input-bg); }
+.ctx-leave { color: var(--danger); }
+
+/* ── @mention spans ─────────────────────────────────────────── */
+.mention {
+  color: var(--accent); cursor: pointer;
+  font-weight: 500;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.mention:hover { text-decoration: underline; }
+
+/* ── Admin verified badge ───────────────────────────────────── */
+.admin-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  border-radius: 50%;
+  width: 14px; height: 14px;
+  font-size: 9px; line-height: 14px;
+  text-align: center; vertical-align: middle;
+  margin-left: 3px; flex-shrink: 0;
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+@keyframes badge-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(43,154,243,.4); }
+  50%      { box-shadow: 0 0 0 4px rgba(43,154,243,0); }
+}
+
+/* ── Chat type icons ────────────────────────────────────────── */
+.ci-channel::before { content: "\uD83D\uDCE2"; margin-right: .2rem; }
+.ci-group::before   { content: "\uD83D\uDC65"; margin-right: .2rem; }
+
+/* ── User ID display ────────────────────────────────────────── */
+.user-id-display {
+  font-size: .78rem; color: var(--text-muted);
+  margin-top: .25rem;
+}
+.user-id-display code {
+  background: var(--input-bg); border-radius: 4px;
+  padding: 1px 4px; font-size: .8em;
+}
+
+/* ── Profile modal tabs ─────────────────────────────────────── */
+.profile-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  background: var(--modal-bg);
+}
+.profile-tab {
+  flex: 1; padding: .65rem 1rem;
+  background: none; border: none; border-bottom: 2.5px solid transparent;
+  font-size: .9rem; font-weight: 600; color: var(--text-muted);
+  cursor: pointer; transition: color .15s, border-color .15s;
+}
+.profile-tab.active {
+  color: var(--accent); border-bottom-color: var(--accent);
+}
+.profile-tab:hover:not(.active) { color: var(--text); }
+.profile-tab-pane { /* shown/hidden via .hidden */ }
+
+/* ── Form error hint ────────────────────────────────────────── */
+.form-error { color: var(--danger) !important; }

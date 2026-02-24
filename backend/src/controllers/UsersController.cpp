@@ -3,6 +3,7 @@
 #include "../utils/MinioPresign.h"
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
+#include <regex>
 
 static drogon::HttpResponsePtr jsonErr(const std::string& msg, drogon::HttpStatusCode code) {
     Json::Value b; b["error"] = msg;
@@ -34,6 +35,7 @@ static Json::Value buildUserJson(const drogon::orm::Row& r) {
                             ? Json::Value(r["username"].as<std::string>())
                             : Json::Value(r["display_name"].as<std::string>());
     u["bio"]          = r["bio"].isNull() ? Json::Value() : Json::Value(r["bio"].as<std::string>());
+    u["is_admin"]     = r["is_admin"].isNull() ? false : r["is_admin"].as<bool>();
 
     std::string avBucket = r["avatar_bucket"].isNull() ? "" : r["avatar_bucket"].as<std::string>();
     std::string avKey    = r["avatar_key"].isNull()    ? "" : r["avatar_key"].as<std::string>();
@@ -48,7 +50,7 @@ void UsersController::getUser(const drogon::HttpRequestPtr& req,
                                long long userId) {
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT u.id, u.username, u.display_name, u.bio, "
+        "SELECT u.id, u.username, u.display_name, u.bio, u.is_admin, "
         "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
         "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
         "WHERE u.id = $1 AND u.is_active = TRUE",
@@ -68,7 +70,7 @@ void UsersController::getUserByUsername(const drogon::HttpRequestPtr& req,
                                         const std::string& username) {
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT u.id, u.username, u.display_name, u.bio, "
+        "SELECT u.id, u.username, u.display_name, u.bio, u.is_admin, "
         "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
         "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
         "WHERE u.username = $1 AND u.is_active = TRUE",
@@ -90,7 +92,7 @@ void UsersController::searchUsers(const drogon::HttpRequestPtr& req,
     std::string pattern = "%" + q + "%";
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT u.id, u.username, u.display_name, u.bio, "
+        "SELECT u.id, u.username, u.display_name, u.bio, u.is_admin, "
         "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
         "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
         "WHERE (u.username ILIKE $1 OR u.display_name ILIKE $1) AND u.is_active = TRUE "
@@ -129,7 +131,7 @@ void UsersController::getUserAvatar(const drogon::HttpRequestPtr& req,
         }, userId);
 }
 
-// PUT /users/{id}  — update display_name, bio (own profile only)
+// PUT /users/{id}  — update display_name, bio, username (own profile only)
 void UsersController::updateUser(const drogon::HttpRequestPtr& req,
                                   std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                   long long userId) {
@@ -143,23 +145,59 @@ void UsersController::updateUser(const drogon::HttpRequestPtr& req,
     std::string displayName = (*body).get("display_name", "").asString();
     std::string bio         = (*body).get("bio", "").asString();
 
+    // Optional username change
+    bool hasUsername = (*body).isMember("username") && !(*body)["username"].isNull();
+    std::string newUsername = hasUsername ? (*body)["username"].asString() : "";
+
+    if (hasUsername) {
+        static const std::regex usernameRe("^[a-zA-Z0-9_]{3,20}$");
+        if (!std::regex_match(newUsername, usernameRe))
+            return cb(jsonErr("Username must be 3-20 characters: letters, digits, underscores only",
+                              drogon::k400BadRequest));
+    }
+
     auto db = drogon::app().getDbClient();
-    db->execSqlAsync(
-        "UPDATE users SET display_name = $1, bio = $2, updated_at = NOW() WHERE id = $3 "
-        "RETURNING id, username, display_name, bio",
-        [cb](const drogon::orm::Result& r) mutable {
-            if (r.empty()) return cb(jsonErr("User not found", drogon::k404NotFound));
-            Json::Value resp;
-            resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
-            resp["username"]     = r[0]["username"].as<std::string>();
-            resp["display_name"] = r[0]["display_name"].isNull() ? Json::Value() : Json::Value(r[0]["display_name"].as<std::string>());
-            resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
-            cb(drogon::HttpResponse::newHttpJsonResponse(resp));
-        },
-        [cb](const drogon::orm::DrogonDbException& e) mutable {
-            LOG_ERROR << "updateUser: " << e.base().what();
-            cb(jsonErr("Internal error", drogon::k500InternalServerError));
-        }, displayName, bio, userId);
+
+    // Build SQL dynamically based on whether username is being changed
+    if (hasUsername) {
+        db->execSqlAsync(
+            "UPDATE users SET display_name = $1, bio = $2, username = $3, updated_at = NOW() "
+            "WHERE id = $4 RETURNING id, username, display_name, bio",
+            [cb](const drogon::orm::Result& r) mutable {
+                if (r.empty()) return cb(jsonErr("User not found", drogon::k404NotFound));
+                Json::Value resp;
+                resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
+                resp["username"]     = r[0]["username"].as<std::string>();
+                resp["display_name"] = r[0]["display_name"].isNull() ? Json::Value() : Json::Value(r[0]["display_name"].as<std::string>());
+                resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
+                cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+            },
+            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                std::string what = e.base().what();
+                if (what.find("unique") != std::string::npos ||
+                    what.find("duplicate") != std::string::npos)
+                    return cb(jsonErr("Username already taken", drogon::k409Conflict));
+                LOG_ERROR << "updateUser: " << what;
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }, displayName, bio, newUsername, userId);
+    } else {
+        db->execSqlAsync(
+            "UPDATE users SET display_name = $1, bio = $2, updated_at = NOW() WHERE id = $3 "
+            "RETURNING id, username, display_name, bio",
+            [cb](const drogon::orm::Result& r) mutable {
+                if (r.empty()) return cb(jsonErr("User not found", drogon::k404NotFound));
+                Json::Value resp;
+                resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
+                resp["username"]     = r[0]["username"].as<std::string>();
+                resp["display_name"] = r[0]["display_name"].isNull() ? Json::Value() : Json::Value(r[0]["display_name"].as<std::string>());
+                resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
+                cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+            },
+            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                LOG_ERROR << "updateUser: " << e.base().what();
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }, displayName, bio, userId);
+    }
 }
 
 // PUT /users/me/avatar  — body: { "file_id": <int> }

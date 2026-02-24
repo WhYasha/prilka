@@ -45,6 +45,7 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
 
     msg["sender_username"]     = row["sender_username"].isNull() ? Json::Value() : Json::Value(row["sender_username"].as<std::string>());
     msg["sender_display_name"] = row["sender_display_name"].isNull() ? Json::Value() : Json::Value(row["sender_display_name"].as<std::string>());
+    msg["sender_is_admin"]     = row["sender_is_admin"].isNull() ? false : row["sender_is_admin"].as<bool>();
 
     // Sender avatar
     std::string avBucket = row["sender_avatar_bucket"].isNull() ? "" : row["sender_avatar_bucket"].as<std::string>();
@@ -86,6 +87,7 @@ static const char* kEnrichedMsgSelect =
     "       m.duration_seconds, "
     "       u.username AS sender_username, "
     "       COALESCE(u.display_name, u.username) AS sender_display_name, "
+    "       u.is_admin AS sender_is_admin, "
     "       av.bucket AS sender_avatar_bucket, av.object_key AS sender_avatar_key, "
     "       s.label  AS sticker_label, "
     "       sf.bucket AS sticker_bucket, sf.object_key AS sticker_key, "

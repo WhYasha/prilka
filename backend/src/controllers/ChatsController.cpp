@@ -146,7 +146,7 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
         }, type, name, title, description, publicName, me);
 }
 
-// GET /chats — with DM enrichment (other user info + avatar)
+// GET /chats — with DM enrichment, favorites, mute status
 void ChatsController::listChats(const drogon::HttpRequestPtr& req,
                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
     long long me = req->getAttributes()->get<long long>("user_id");
@@ -159,7 +159,9 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    ou.username     AS other_username, "
         "    COALESCE(ou.display_name, ou.username) AS other_display_name, "
         "    ouf.bucket      AS other_avatar_bucket, "
-        "    ouf.object_key  AS other_avatar_key "
+        "    ouf.object_key  AS other_avatar_key, "
+        "    (cf.chat_id IS NOT NULL) AS is_favorite, "
+        "    (cms.user_id IS NOT NULL) AS is_muted "
         "FROM chats c "
         "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1 "
         "LEFT JOIN LATERAL ( "
@@ -168,7 +170,9 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    WHERE cm2.chat_id = c.id AND cm2.user_id != $1 AND c.type = 'direct' LIMIT 1 "
         ") ou ON c.type = 'direct' "
         "LEFT JOIN files ouf ON ouf.id = ou.avatar_file_id "
-        "ORDER BY c.updated_at DESC",
+        "LEFT JOIN chat_favorites cf ON cf.chat_id = c.id AND cf.user_id = $1 "
+        "LEFT JOIN chat_mute_settings cms ON cms.chat_id = c.id AND cms.user_id = $1 "
+        "ORDER BY (cf.chat_id IS NOT NULL) DESC, c.updated_at DESC",
         [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
             for (auto& row : r) {
@@ -182,6 +186,8 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
                 chat["updated_at"]  = row["updated_at"].as<std::string>();
                 chat["last_message"] = row["last_msg"].isNull() ? Json::Value() : Json::Value(row["last_msg"].as<std::string>());
                 chat["last_at"]      = row["last_msg_at"].isNull() ? Json::Value() : Json::Value(row["last_msg_at"].as<std::string>());
+                chat["is_favorite"]  = row["is_favorite"].isNull() ? false : row["is_favorite"].as<bool>();
+                chat["is_muted"]     = row["is_muted"].isNull()    ? false : row["is_muted"].as<bool>();
 
                 // DM-specific fields
                 if (!row["other_user_id"].isNull()) {
@@ -208,6 +214,168 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
             LOG_ERROR << "listChats: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, me);
+}
+
+// Helper: verify membership and run callback with (isMember, role)
+static void requireMemberChat(long long chatId, long long userId,
+                               std::function<void(bool)> cb) {
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+        [cb](const drogon::orm::Result& r) { cb(!r.empty()); },
+        [cb](const drogon::orm::DrogonDbException&) { cb(false); },
+        chatId, userId);
+}
+
+// POST /chats/{id}/favorite
+void ChatsController::addFavorite(const drogon::HttpRequestPtr& req,
+                                   std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                   long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    requireMemberChat(chatId, me, [=, cb = std::move(cb)](bool isMember) mutable {
+        if (!isMember) return cb(jsonErr("Not a member", drogon::k403Forbidden));
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "INSERT INTO chat_favorites (user_id, chat_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            [cb](const drogon::orm::Result&) mutable {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k204NoContent);
+                cb(resp);
+            },
+            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                LOG_ERROR << "addFavorite: " << e.base().what();
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }, me, chatId);
+    });
+}
+
+// DELETE /chats/{id}/favorite
+void ChatsController::removeFavorite(const drogon::HttpRequestPtr& req,
+                                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                      long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "DELETE FROM chat_favorites WHERE user_id = $1 AND chat_id = $2",
+        [cb](const drogon::orm::Result&) mutable {
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k204NoContent);
+            cb(resp);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "removeFavorite: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, me, chatId);
+}
+
+// POST /chats/{id}/mute  body: { "muted_until": "<ISO8601>" }  (optional)
+void ChatsController::muteChat(const drogon::HttpRequestPtr& req,
+                                std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    requireMemberChat(chatId, me, [=, cb = std::move(cb)](bool isMember) mutable {
+        if (!isMember) return cb(jsonErr("Not a member", drogon::k403Forbidden));
+
+        auto body = req->getJsonObject();
+        std::string mutedUntil = (body && (*body).isMember("muted_until") && !(*body)["muted_until"].isNull())
+                                     ? (*body)["muted_until"].asString() : "";
+
+        auto db = drogon::app().getDbClient();
+        if (mutedUntil.empty()) {
+            db->execSqlAsync(
+                "INSERT INTO chat_mute_settings (user_id, chat_id, muted_until) VALUES ($1, $2, NULL) "
+                "ON CONFLICT (user_id, chat_id) DO UPDATE SET muted_until = NULL",
+                [cb](const drogon::orm::Result&) mutable {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k204NoContent);
+                    cb(resp);
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "muteChat: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, me, chatId);
+        } else {
+            db->execSqlAsync(
+                "INSERT INTO chat_mute_settings (user_id, chat_id, muted_until) VALUES ($1, $2, $3::timestamptz) "
+                "ON CONFLICT (user_id, chat_id) DO UPDATE SET muted_until = EXCLUDED.muted_until",
+                [cb](const drogon::orm::Result&) mutable {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k204NoContent);
+                    cb(resp);
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "muteChat timed: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, me, chatId, mutedUntil);
+        }
+    });
+}
+
+// DELETE /chats/{id}/mute
+void ChatsController::unmuteChat(const drogon::HttpRequestPtr& req,
+                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                  long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "DELETE FROM chat_mute_settings WHERE user_id = $1 AND chat_id = $2",
+        [cb](const drogon::orm::Result&) mutable {
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k204NoContent);
+            cb(resp);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "unmuteChat: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, me, chatId);
+}
+
+// DELETE /chats/{id}/leave
+void ChatsController::leaveChat(const drogon::HttpRequestPtr& req,
+                                 std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                 long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+
+    // Check the chat type and user's role first
+    db->execSqlAsync(
+        "SELECT c.type, cm.role, "
+        "    (SELECT COUNT(*) FROM chat_members WHERE chat_id = $1) AS member_count "
+        "FROM chats c "
+        "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $2 "
+        "WHERE c.id = $1",
+        [=, cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("Not a member of this chat", drogon::k404NotFound));
+
+            std::string role = r[0]["role"].as<std::string>();
+            long long memberCount = r[0]["member_count"].as<long long>();
+
+            // Prevent sole owner from leaving (would orphan the chat)
+            if (role == "owner" && memberCount == 1) {
+                // Single member who is owner — allow leave (effectively deletes)
+            } else if (role == "owner") {
+                return cb(jsonErr(
+                    "Transfer ownership before leaving, or delete the chat",
+                    drogon::k400BadRequest));
+            }
+
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+                [cb](const drogon::orm::Result&) mutable {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k204NoContent);
+                    cb(resp);
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "leaveChat delete: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, chatId, me);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "leaveChat check: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, chatId, me);
 }
 
 // GET /chats/{id}

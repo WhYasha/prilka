@@ -211,49 +211,72 @@
       <h2 class="modal-title">Profile &amp; Settings</h2>
       <button class="icon-btn" id="profileCloseBtn">&#10005;</button>
     </div>
+    <!-- Tab navigation -->
+    <div class="profile-tabs">
+      <button class="profile-tab active" data-tab="profile">Profile</button>
+      <button class="profile-tab" data-tab="settings">Settings</button>
+    </div>
     <div class="modal-body profile-body">
 
-      <div class="profile-avatar-section">
-        <div class="avatar avatar-xl" id="profileAvatar">?</div>
-        <button class="btn btn-outline btn-sm" id="changeAvatarBtn">Change photo</button>
-        <input type="file" id="avatarFileInput" accept="image/*" class="hidden" />
+      <!-- Profile tab -->
+      <div class="profile-tab-pane" id="profileTabProfile">
+        <div class="profile-avatar-section">
+          <div class="avatar avatar-xl" id="profileAvatar">?</div>
+          <button class="btn btn-outline btn-sm" id="changeAvatarBtn">Change photo</button>
+          <input type="file" id="avatarFileInput" accept="image/*" class="hidden" />
+          <p class="user-id-display" id="profileUserId"></p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Display name</label>
+          <input class="form-input" id="profileDisplayName" type="text" maxlength="64" placeholder="Your name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <input class="form-input" id="profileUsername" type="text" maxlength="20" placeholder="username" />
+          <small class="form-hint form-error hidden" id="profileUsernameError"></small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Bio</label>
+          <textarea class="form-input" id="profileBio" maxlength="200" rows="3" placeholder="About you…"></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="saveProfileBtn">Save Profile</button>
+          <button class="btn btn-ghost" id="profileCancelBtn">Cancel</button>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Display name</label>
-        <input class="form-input" id="profileDisplayName" type="text" maxlength="64" placeholder="Your name" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Bio</label>
-        <textarea class="form-input" id="profileBio" maxlength="200" rows="3" placeholder="About you…"></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Username (read-only)</label>
-        <input class="form-input" id="profileUsername" type="text" disabled />
+      <!-- Settings tab -->
+      <div class="profile-tab-pane hidden" id="profileTabSettings">
+        <div class="form-group form-inline">
+          <label class="form-label">Theme</label>
+          <select class="form-input form-select" id="settingsTheme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div class="form-group form-inline">
+          <label class="form-label">Notifications</label>
+          <label class="toggle">
+            <input type="checkbox" id="settingsNotifications" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="form-group form-inline">
+          <label class="form-label">Language</label>
+          <select class="form-input form-select" id="settingsLanguage">
+            <option value="en">English</option>
+            <option value="ru">&#1056;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+        </div>
       </div>
 
-      <hr class="modal-divider" />
-
-      <h3 class="settings-title">Settings</h3>
-      <div class="form-group form-inline">
-        <label class="form-label">Theme</label>
-        <select class="form-input form-select" id="settingsTheme">
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </div>
-      <div class="form-group form-inline">
-        <label class="form-label">Notifications</label>
-        <label class="toggle">
-          <input type="checkbox" id="settingsNotifications" checked />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn btn-primary" id="saveProfileBtn">Save</button>
-        <button class="btn btn-ghost" id="profileCancelBtn">Cancel</button>
-      </div>
     </div>
   </div>
 </div>
@@ -271,6 +294,7 @@
       </div>
       <div class="user-profile-name" id="userProfileDisplayName">—</div>
       <div class="user-profile-username" id="userProfileUsername">@—</div>
+      <div class="user-id-display" id="userProfileId"></div>
       <div class="user-profile-bio" id="userProfileBio"></div>
       <div class="modal-actions">
         <button class="btn btn-primary" id="userProfileMessageBtn">&#9998; Message</button>
@@ -301,6 +325,13 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ===================== CONTEXT MENU ===================== -->
+<div class="context-menu hidden" id="ctxMenu">
+  <button class="ctx-item" id="ctxFavorite">&#9733; Star / Unstar</button>
+  <button class="ctx-item" id="ctxMute">&#128276; Mute / Unmute</button>
+  <button class="ctx-item ctx-leave hidden" id="ctxLeave">&#128682; Leave chat</button>
 </div>
 
 <!-- ===================== TOAST ===================== -->

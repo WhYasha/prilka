@@ -225,7 +225,7 @@ void AuthController::getMe(const drogon::HttpRequestPtr& req,
 
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT u.id, u.username, u.email, u.display_name, u.bio, u.created_at, "
+        "SELECT u.id, u.username, u.email, u.display_name, u.bio, u.created_at, u.is_admin, "
         "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
         "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
         "WHERE u.id = $1",
@@ -240,6 +240,7 @@ void AuthController::getMe(const drogon::HttpRequestPtr& req,
                                        : Json::Value(r[0]["display_name"].as<std::string>());
             resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
             resp["created_at"]   = r[0]["created_at"].as<std::string>();
+            resp["is_admin"]     = r[0]["is_admin"].isNull() ? false : r[0]["is_admin"].as<bool>();
 
             std::string avBucket = r[0]["avatar_bucket"].isNull() ? "" : r[0]["avatar_bucket"].as<std::string>();
             std::string avKey    = r[0]["avatar_key"].isNull()    ? "" : r[0]["avatar_key"].as<std::string>();
