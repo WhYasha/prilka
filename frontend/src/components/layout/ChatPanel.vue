@@ -18,6 +18,7 @@
         v-show="!selectionStore.selectionMode"
         @back="emit('back')"
         @open-user-profile="(u) => emit('openUserProfile', u)"
+        @open-channel-info="channelInfoModalOpen = true"
       />
 
       <!-- Channel read-only bar -->
@@ -112,6 +113,12 @@
         @close="deleteModalVisible = false"
         @confirm="onDeleteConfirm"
       />
+
+      <!-- Channel info modal -->
+      <ChannelInfoModal
+        v-if="channelInfoModalOpen"
+        @close="channelInfoModalOpen = false"
+      />
     </div>
   </main>
 </template>
@@ -140,6 +147,7 @@ import SelectionBar from '@/components/chat/SelectionBar.vue'
 import BottomSheet from '@/components/ui/BottomSheet.vue'
 import ForwardDialog from '@/components/modals/ForwardDialog.vue'
 import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
+import ChannelInfoModal from '@/components/chat/ChannelInfoModal.vue'
 import { useSelectionStore } from '@/stores/selection'
 
 const emit = defineEmits<{
@@ -161,6 +169,7 @@ const stickerPickerOpen = ref(false)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
 const showInviteSection = ref(false)
+const channelInfoModalOpen = ref(false)
 
 // Emoji picker state
 const emojiPickerVisible = ref(false)
@@ -512,17 +521,28 @@ async function scrollToMessage(messageId: number) {
   }
 }
 
+// ESC handler for channel info modal
+function handleEsc(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (channelInfoModalOpen.value) {
+    channelInfoModalOpen.value = false
+    e.stopPropagation()
+  }
+}
+
 // Listen for custom events from MessageContextMenu and other components
 onMounted(() => {
   window.addEventListener('forward-messages', onForwardMessages as EventListener)
   window.addEventListener('select-message', onSelectMessage as EventListener)
   window.addEventListener('delete-message', onDeleteMessage as EventListener)
+  document.addEventListener('keydown', handleEsc)
 })
 
 onUnmounted(() => {
   window.removeEventListener('forward-messages', onForwardMessages as EventListener)
   window.removeEventListener('select-message', onSelectMessage as EventListener)
   window.removeEventListener('delete-message', onDeleteMessage as EventListener)
+  document.removeEventListener('keydown', handleEsc)
 })
 
 // Handle pending scroll-to message from deep links
