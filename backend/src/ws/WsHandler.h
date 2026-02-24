@@ -52,6 +52,7 @@ private:
     struct ConnCtx {
         long long userId   = 0;
         bool      authed   = false;
+        bool      isAdmin  = false;
         std::string username;
         std::vector<long long> subscriptions;
     };
