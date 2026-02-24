@@ -27,6 +27,9 @@ compile_commands.json
 # Docker Compose local overrides
 docker-compose.override.yml
 
+# Smoke test state
+infra/scripts/.smoke_state.json
+
 # OS
 .DS_Store
 Thumbs.db

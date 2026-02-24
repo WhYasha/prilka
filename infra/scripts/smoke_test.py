@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end smoke test for the Messenger API."""
-import json, sys, subprocess, urllib.request, urllib.error
+import json, os, sys, subprocess, urllib.request, urllib.error
 
 BASE  = "https://behappy.rest/api"
 PASS  = "SmokeTest@2026"
@@ -107,48 +107,79 @@ check("GET /chats/{id}/messages -> 200", s == 200, str(len(b)) + " message(s)")
 
 # ── 9. File upload / download ──────────────────────────────────────────────
 print("\n[9] File upload / download")
-boundary = "SmokeTestBoundary99"
-body = (
-    "--" + boundary + "\r\n"
-    "Content-Disposition: form-data; name=\"file\"; filename=\"smoke.txt\"\r\n"
-    "Content-Type: text/plain\r\n\r\n"
-    "Hello from smoke test file upload!\r\n"
-    "--" + boundary + "--\r\n"
-).encode()
-r = urllib.request.Request(
-    BASE + "/files", data=body,
-    headers={"Authorization": "Bearer " + token,
-             "Content-Type": "multipart/form-data; boundary=" + boundary},
-    method="POST")
-try:
-    with urllib.request.urlopen(r, timeout=15) as resp:
-        fb = json.loads(resp.read())
-        fs = 201
-except urllib.error.HTTPError as e:
-    fs = e.code
-    fb = json.loads(e.read())
-check("POST /files -> 201", fs == 201,
-      "id=" + str(fb.get("id")) + " key=" + str(fb.get("object_key", "?"))[:20])
-file_id = fb.get("id")
 
-if file_id:
-    # The presigned URL redirect points to http://minio:9000/... which is a
-    # Docker-internal hostname — not resolvable from the host.  We only need
-    # to verify the backend issues a redirect (302/307); we must NOT follow it.
-    class _NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+# The presigned URL redirect points to http://minio:9000/... which is a
+# Docker-internal hostname — not resolvable from the host.  We only need
+# to verify the backend issues a redirect (302/307); we must NOT follow it.
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+def try_download(fid):
+    """Return HTTP status for a download attempt (no redirect follow)."""
     opener = urllib.request.build_opener(_NoRedirect)
     r = urllib.request.Request(
-        BASE + "/files/" + str(file_id) + "/download",
+        BASE + "/files/" + str(fid) + "/download",
         headers={"Authorization": "Bearer " + token}, method="GET")
     try:
         with opener.open(r, timeout=10) as resp:
-            dl_status = resp.status
+            return resp.status
     except urllib.error.HTTPError as e:
-        dl_status = e.code
-    except urllib.error.URLError as e:
-        dl_status = 0
+        return e.code
+    except urllib.error.URLError:
+        return 0
+
+# Reuse a previously uploaded file if it still exists
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".smoke_state.json")
+cached_file_id = None
+try:
+    with open(STATE_FILE) as f:
+        cached_file_id = json.load(f).get("file_id")
+except (OSError, json.JSONDecodeError, KeyError):
+    pass
+
+file_id = None
+if cached_file_id:
+    dl = try_download(cached_file_id)
+    if dl in (200, 302, 307):
+        file_id = cached_file_id
+        check("POST /files -> reused", True, "id=" + str(file_id))
+    # else: stale cache, upload a new one below
+
+if not file_id:
+    boundary = "SmokeTestBoundary99"
+    body = (
+        "--" + boundary + "\r\n"
+        "Content-Disposition: form-data; name=\"file\"; filename=\"smoke.txt\"\r\n"
+        "Content-Type: text/plain\r\n\r\n"
+        "Hello from smoke test file upload!\r\n"
+        "--" + boundary + "--\r\n"
+    ).encode()
+    r = urllib.request.Request(
+        BASE + "/files", data=body,
+        headers={"Authorization": "Bearer " + token,
+                 "Content-Type": "multipart/form-data; boundary=" + boundary},
+        method="POST")
+    try:
+        with urllib.request.urlopen(r, timeout=15) as resp:
+            fb = json.loads(resp.read())
+            fs = 201
+    except urllib.error.HTTPError as e:
+        fs = e.code
+        fb = json.loads(e.read())
+    check("POST /files -> 201", fs == 201,
+          "id=" + str(fb.get("id")) + " key=" + str(fb.get("object_key", "?"))[:20])
+    file_id = fb.get("id")
+    # Cache for next run
+    if file_id:
+        try:
+            with open(STATE_FILE, "w") as f:
+                json.dump({"file_id": file_id}, f)
+        except OSError:
+            pass
+
+if file_id:
+    dl_status = try_download(file_id)
     check("GET /files/{id}/download -> redirect/200",
           dl_status in (200, 302, 307), "status=" + str(dl_status))
 
