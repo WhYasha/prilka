@@ -378,10 +378,11 @@ void MessagesController::deleteMessage(const drogon::HttpRequestPtr& req,
                             [=](const drogon::orm::Result&) {
                                 // Broadcast via WebSocket
                                 Json::Value wsPayload;
-                                wsPayload["type"]       = "message_deleted";
-                                wsPayload["chat_id"]    = Json::Int64(chatId);
-                                wsPayload["message_id"] = Json::Int64(messageId);
-                                wsPayload["deleted_by"] = Json::Int64(me);
+                                wsPayload["type"]         = "message_deleted";
+                                wsPayload["chat_id"]      = Json::Int64(chatId);
+                                wsPayload["message_id"]   = Json::Int64(messageId);
+                                wsPayload["deleted_by"]   = Json::Int64(me);
+                                wsPayload["for_everyone"] = true;
                                 WsDispatch::publishMessage(chatId, wsPayload);
 
                                 auto resp = drogon::HttpResponse::newHttpResponse();

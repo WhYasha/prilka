@@ -20,6 +20,7 @@
 ///     { "type": "typing",  "chat_id": 42, "user_id": 7, "username": "alice" }
 ///     { "type": "presence", "user_id": 7, "status": "online" }
 ///     { "type": "reaction", "chat_id": 42, "message_id": 99, "user_id": 7, "emoji": "...", "action": "added|removed" }
+///     { "type": "message_deleted", "chat_id": 42, "message_id": 99, "deleted_by": 7, "for_everyone": true }
 ///
 /// Fan-out uses Redis Pub/Sub channel "chat:<chat_id>"
 class WsHandler : public drogon::WebSocketController<WsHandler> {
