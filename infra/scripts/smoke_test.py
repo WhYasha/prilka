@@ -12,6 +12,12 @@ FAIL = "\033[31m\u2717\033[0m"
 
 results = []
 
+def _parse_json(raw):
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {"_raw": raw.decode("utf-8", errors="replace")[:200] if isinstance(raw, bytes) else str(raw)[:200]}
+
 def req(method, path, body=None, token=None):
     url = BASE + path
     data = json.dumps(body).encode() if body else None
@@ -21,9 +27,11 @@ def req(method, path, body=None, token=None):
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(r, timeout=10) as resp:
-            return resp.status, json.loads(resp.read())
+            return resp.status, _parse_json(resp.read())
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read())
+        return e.code, _parse_json(e.read())
+    except urllib.error.URLError as e:
+        return 0, {"_raw": str(e.reason)}
 
 def check(label, cond, detail=""):
     sym = OK if cond else FAIL
