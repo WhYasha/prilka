@@ -101,6 +101,18 @@
                 <option value="de">Deutsch</option>
               </select>
             </div>
+
+            <!-- Privacy -->
+            <div class="profile-divider" />
+            <h4 class="form-section-heading">Privacy</h4>
+            <div class="form-group form-inline">
+              <label class="form-label">Last seen &amp; online</label>
+              <select v-model="lastSeenVisibility" class="form-input form-select">
+                <option value="everyone">Everyone</option>
+                <option value="approx_only">Approximate only</option>
+                <option value="nobody">Nobody</option>
+              </select>
+            </div>
           </div>
 
           <div class="profile-edit-actions">
@@ -142,6 +154,7 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const theme = ref('light')
 const notifications = ref(true)
 const language = ref('en')
+const lastSeenVisibility = ref<'everyone' | 'approx_only' | 'nobody'>('everyone')
 
 watch(notifications, async (enabled) => {
   if (enabled && 'Notification' in window) {
@@ -162,6 +175,7 @@ onMounted(async () => {
   theme.value = settingsStore.theme
   notifications.value = settingsStore.notificationsEnabled
   language.value = settingsStore.language
+  lastSeenVisibility.value = settingsStore.lastSeenVisibility
 })
 
 async function handleAvatarChange() {
@@ -214,6 +228,7 @@ async function saveSettings() {
       theme: theme.value,
       notifications_enabled: notifications.value,
       language: language.value,
+      last_seen_visibility: lastSeenVisibility.value,
     })
     showToast('Settings saved!')
     emit('close')
