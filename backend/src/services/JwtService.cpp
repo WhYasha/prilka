@@ -86,13 +86,15 @@ static std::string sign(const std::string& headerDotPayload) {
 // ── Payload builder ────────────────────────────────────────────────────────
 
 static std::string makePayload(long long userId,
-                               const std::string& type, int ttl) {
+                               const std::string& type, int ttl,
+                               bool isAdmin) {
     long long now = static_cast<long long>(std::time(nullptr));
     Json::Value p;
-    p["sub"]  = std::to_string(userId);
-    p["type"] = type;
-    p["iat"]  = Json::Int64(now);
-    p["exp"]  = Json::Int64(now + ttl);
+    p["sub"]      = std::to_string(userId);
+    p["type"]     = type;
+    p["iat"]      = Json::Int64(now);
+    p["exp"]      = Json::Int64(now + ttl);
+    p["is_admin"] = isAdmin;
 
     Json::StreamWriterBuilder wbuilder;
     wbuilder["indentation"] = "";
@@ -104,16 +106,16 @@ static std::string makePayload(long long userId,
 static const std::string kHeader =
     b64url_encode_str(R"({"alg":"HS256","typ":"JWT"})");
 
-std::string JwtService::createAccessToken(long long userId) const {
+std::string JwtService::createAccessToken(long long userId, bool isAdmin) const {
     auto payload = b64url_encode_str(
-        makePayload(userId, "access", Config::get().jwtAccessTtl));
+        makePayload(userId, "access", Config::get().jwtAccessTtl, isAdmin));
     auto hdrPayload = kHeader + "." + payload;
     return hdrPayload + "." + sign(hdrPayload);
 }
 
-std::string JwtService::createRefreshToken(long long userId) const {
+std::string JwtService::createRefreshToken(long long userId, bool isAdmin) const {
     auto payload = b64url_encode_str(
-        makePayload(userId, "refresh", Config::get().jwtRefreshTtl));
+        makePayload(userId, "refresh", Config::get().jwtRefreshTtl, isAdmin));
     auto hdrPayload = kHeader + "." + payload;
     return hdrPayload + "." + sign(hdrPayload);
 }
@@ -155,5 +157,6 @@ std::optional<JwtService::Claims> JwtService::verify(const std::string& token) c
     c.tokenType = root["type"].asString();
     c.exp       = exp;
     c.iat       = root["iat"].asInt64();
+    c.isAdmin   = root.isMember("is_admin") && root["is_admin"].asBool();
     return c;
 }

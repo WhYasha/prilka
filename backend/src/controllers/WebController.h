@@ -15,6 +15,8 @@ public:
     ADD_METHOD_TO(WebController::serveDeepLink, "/dm/{1}",   drogon::Get);
     ADD_METHOD_TO(WebController::serveDeepLink, "/join/{1}", drogon::Get);
     ADD_METHOD_TO(WebController::serveDeepLink, "/c/{1}",    drogon::Get);
+    // Admin SPA
+    ADD_METHOD_TO(WebController::serveAdmin, "/admin",     drogon::Get);
     METHOD_LIST_END
 
     void serveApp(const drogon::HttpRequestPtr& req,
@@ -30,4 +32,7 @@ public:
 
     void serveRegister(const drogon::HttpRequestPtr& req,
                        std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+
+    void serveAdmin(const drogon::HttpRequestPtr& req,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& cb);
 };

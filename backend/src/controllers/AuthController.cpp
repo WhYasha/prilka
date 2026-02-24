@@ -130,7 +130,7 @@ void AuthController::loginUser(const drogon::HttpRequestPtr& req,
 
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT id, password_hash, is_blocked FROM users WHERE username = $1 AND is_active = TRUE",
+        "SELECT id, password_hash, is_blocked, is_admin FROM users WHERE username = $1 AND is_active = TRUE",
         [cbSh, password](const drogon::orm::Result& r) mutable {
             auto& cb = *cbSh;
             if (r.empty()) return cb(err("Invalid credentials", drogon::k401Unauthorized));
@@ -138,6 +138,7 @@ void AuthController::loginUser(const drogon::HttpRequestPtr& req,
             long long uid  = r[0]["id"].as<long long>();
             std::string stored = r[0]["password_hash"].as<std::string>();
             bool isBlocked = r[0]["is_blocked"].as<bool>();
+            bool isAdmin   = r[0]["is_admin"].isNull() ? false : r[0]["is_admin"].as<bool>();
 
             if (isBlocked)
                 return cb(err("Account blocked. Contact support.", drogon::k403Forbidden));
@@ -146,8 +147,8 @@ void AuthController::loginUser(const drogon::HttpRequestPtr& req,
                 return cb(err("Invalid credentials", drogon::k401Unauthorized));
 
             auto& jwt = JwtService::instance();
-            std::string accessToken  = jwt.createAccessToken(uid);
-            std::string refreshToken = jwt.createRefreshToken(uid);
+            std::string accessToken  = jwt.createAccessToken(uid, isAdmin);
+            std::string refreshToken = jwt.createRefreshToken(uid, isAdmin);
 
             // Persist refresh token hash
             std::string tokenHash;
@@ -208,13 +209,25 @@ void AuthController::refreshToken(const drogon::HttpRequestPtr& req,
         return cb(err("Invalid or expired refresh token", drogon::k401Unauthorized));
 
     long long uid = claims->userId;
-    std::string newAccess = JwtService::instance().createAccessToken(uid);
-
-    Json::Value resp;
-    resp["access_token"] = newAccess;
-    resp["token_type"]   = "Bearer";
-    resp["expires_in"]   = Config::get().jwtAccessTtl;
-    cb(jsonResp(resp, drogon::k200OK));
+    auto cbSh2 = std::make_shared<std::function<void(const drogon::HttpResponsePtr&)>>(std::move(cb));
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT is_admin FROM users WHERE id = $1 AND is_active = TRUE",
+        [cbSh2, uid](const drogon::orm::Result& r) mutable {
+            bool isAdmin = false;
+            if (!r.empty() && !r[0]["is_admin"].isNull())
+                isAdmin = r[0]["is_admin"].as<bool>();
+            std::string newAccess = JwtService::instance().createAccessToken(uid, isAdmin);
+            Json::Value resp;
+            resp["access_token"] = newAccess;
+            resp["token_type"]   = "Bearer";
+            resp["expires_in"]   = Config::get().jwtAccessTtl;
+            (*cbSh2)(jsonResp(resp, drogon::k200OK));
+        },
+        [cbSh2](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "refresh DB error: " << e.base().what();
+            (*cbSh2)(err("Internal error", drogon::k500InternalServerError));
+        }, uid);
 }
 
 // ── GET /me ────────────────────────────────────────────────────────────────

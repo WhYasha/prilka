@@ -21,9 +21,6 @@ services:
     environment:
       MINIO_BROWSER_REDIRECT_URL: "https://behappy.rest/minio-console/"
 
-  api_legacy:
-    ports: !reset []              # clear dev port mapping; nginx proxies /admin
-
   api_cpp:
     ports: !reset []              # clear dev port mapping; only nginx exposes 80/443
     restart: always

@@ -45,3 +45,8 @@ void WebController::serveRegister(const drogon::HttpRequestPtr& req,
                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
     cb(serveHtml("./www/register.html"));
 }
+
+void WebController::serveAdmin(const drogon::HttpRequestPtr& req,
+                                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+    cb(serveHtml("./www/admin/index.html"));
+}

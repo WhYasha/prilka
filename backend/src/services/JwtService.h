@@ -11,15 +11,16 @@ public:
         std::string tokenType;  // "access" | "refresh"
         long long   exp;
         long long   iat;
+        bool isAdmin = false;
     };
 
     static JwtService& instance();
 
     /// Create a signed access token
-    std::string createAccessToken(long long userId) const;
+    std::string createAccessToken(long long userId, bool isAdmin = false) const;
 
     /// Create a signed refresh token
-    std::string createRefreshToken(long long userId) const;
+    std::string createRefreshToken(long long userId, bool isAdmin = false) const;
 
     /// Verify and decode a token. Returns nullopt if invalid or expired.
     std::optional<Claims> verify(const std::string& token) const;
