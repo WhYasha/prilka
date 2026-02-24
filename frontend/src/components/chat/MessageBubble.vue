@@ -1,5 +1,16 @@
 <template>
-  <div class="msg-row" :class="isMine ? 'mine' : 'theirs'">
+  <div
+    class="msg-row"
+    :class="[isMine ? 'mine' : 'theirs', { selected: isSelected }]"
+    @contextmenu.prevent="onContextMenu"
+    v-bind="longPressHandlers"
+    @click="onRowClick"
+  >
+    <!-- Selection checkbox overlay -->
+    <div v-if="selectionStore.selectionMode" class="selection-checkbox">
+      <input type="checkbox" :checked="isSelected" tabindex="-1" />
+    </div>
+
     <!-- Sender name for others' messages -->
     <div v-if="!isMine && message.message_type !== 'sticker'" class="msg-sender-name">
       {{ message.sender_display_name || message.sender_username }}
@@ -58,6 +69,9 @@
 import { computed, inject, ref } from 'vue'
 import Badge from '@/components/ui/Badge.vue'
 import type { Message, Sticker } from '@/api/types'
+import { useSelectionStore } from '@/stores/selection'
+import { useChatsStore } from '@/stores/chats'
+import { useLongPress } from '@/composables/useLongPress'
 
 const props = defineProps<{
   message: Message
@@ -69,6 +83,52 @@ const emit = defineEmits<{
   openEmojiPicker: [messageId: number, x: number, y: number]
   toggleReaction: [messageId: number, emoji: string]
 }>()
+
+const selectionStore = useSelectionStore()
+const chatsStore = useChatsStore()
+
+const isSelected = computed(() => selectionStore.isSelected(props.message.id))
+
+const { onPointerDown, onPointerUp, onPointerMove } = useLongPress({
+  delay: 500,
+  onLongPress(event: PointerEvent) {
+    showContextMenu(event.clientX, event.clientY)
+  },
+})
+
+const longPressHandlers = {
+  onPointerdown: onPointerDown,
+  onPointerup: onPointerUp,
+  onPointermove: onPointerMove,
+}
+
+function onContextMenu(event: MouseEvent) {
+  if (selectionStore.selectionMode) {
+    selectionStore.toggleMessage(props.message.id)
+    return
+  }
+  showContextMenu(event.clientX, event.clientY)
+}
+
+function showContextMenu(x: number, y: number) {
+  window.dispatchEvent(
+    new CustomEvent('show-message-context-menu', {
+      detail: {
+        messageId: props.message.id,
+        chatId: chatsStore.activeChatId,
+        text: props.message.content || '',
+        x,
+        y,
+      },
+    }),
+  )
+}
+
+function onRowClick() {
+  if (selectionStore.selectionMode) {
+    selectionStore.toggleMessage(props.message.id)
+  }
+}
 
 const stickers = inject<{ value: Sticker[] }>('stickers', ref([]))
 
