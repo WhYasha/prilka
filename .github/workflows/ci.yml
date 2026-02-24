@@ -10,7 +10,7 @@ jobs:
   # ── Linux build + test ─────────────────────────────────────────────────────
   build-linux:
     name: Build & Test (Linux / GCC)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, docker]
     container:
       image: drogonframework/drogon:latest
 
@@ -119,7 +119,9 @@ jobs:
   # ── Docker Compose smoke test ──────────────────────────────────────────────
   compose-smoke:
     name: Docker Compose Smoke Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, docker]
+    env:
+      COMPOSE_PROJECT_NAME: ci-smoke-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
 
