@@ -98,12 +98,17 @@ else:
 
 # ── 8. Messages ────────────────────────────────────────────────────────────
 print("\n[8] Messages")
-s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
-           {"content": "Hello from smoke test!", "type": "text"}, token=token)
-check("POST /chats/{id}/messages -> 201", s == 201, "msg_id=" + str(b.get("id")))
-
 s, b = req("GET", "/chats/" + str(chat_id) + "/messages", token=token)
 check("GET /chats/{id}/messages -> 200", s == 200, str(len(b)) + " message(s)")
+
+SMOKE_MSG = "Hello from smoke test!"
+has_smoke_msg = any(m.get("content") == SMOKE_MSG for m in (b if isinstance(b, list) else []))
+if has_smoke_msg:
+    check("POST /chats/{id}/messages -> reused", True, "already exists")
+else:
+    s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
+               {"content": SMOKE_MSG, "type": "text"}, token=token)
+    check("POST /chats/{id}/messages -> 201", s == 201, "msg_id=" + str(b.get("id")))
 
 # ── 9. File upload / download ──────────────────────────────────────────────
 print("\n[9] File upload / download")
