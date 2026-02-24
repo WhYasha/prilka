@@ -28,7 +28,7 @@ export function useSwipe(options?: SwipeOptions): SwipeReturn {
   let animationFrame: number | null = null
 
   function onTouchStart(e: TouchEvent) {
-    const touch = e.touches[0]
+    const touch = e.touches[0]!
     startX = touch.clientX
     startY = touch.clientY
     tracking = true
@@ -39,7 +39,7 @@ export function useSwipe(options?: SwipeOptions): SwipeReturn {
   function onTouchMove(e: TouchEvent) {
     if (!tracking) return
 
-    const touch = e.touches[0]
+    const touch = e.touches[0]!
     const dx = touch.clientX - startX
     const dy = touch.clientY - startY
 

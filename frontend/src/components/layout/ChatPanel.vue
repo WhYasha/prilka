@@ -422,7 +422,7 @@ function closeForwardDialog() {
   selectionStore.exitSelectionMode()
 }
 
-async function onDeleteConfirm(forEveryone: boolean) {
+async function onDeleteConfirm(_forEveryone: boolean) {
   deleteModalVisible.value = false
   const chatId = chatsStore.activeChatId
   if (!chatId) return

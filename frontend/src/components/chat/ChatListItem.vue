@@ -99,20 +99,19 @@ function formatTime(isoStr: string | undefined): string {
 }
 
 /* Swipe handling for mobile */
-const swipeRef = ref<HTMLElement | null>(null)
 const swipeX = ref(0)
 let startX = 0
 let swiping = false
 const SWIPE_THRESHOLD = 70
 
 function onTouchStart(e: TouchEvent) {
-  startX = e.touches[0].clientX
+  startX = e.touches[0]!.clientX
   swiping = true
 }
 
 function onTouchMove(e: TouchEvent) {
   if (!swiping) return
-  const dx = e.touches[0].clientX - startX
+  const dx = e.touches[0]!.clientX - startX
   swipeX.value = Math.max(-SWIPE_THRESHOLD, Math.min(SWIPE_THRESHOLD, dx))
 }
 

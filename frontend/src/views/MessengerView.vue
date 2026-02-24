@@ -152,7 +152,7 @@ watch(() => route.path, () => {
 
 // Clear selection mode on chat navigation
 watch(() => chatsStore.activeChatId, () => {
-  if (selectionStore.isSelectionMode) {
+  if (selectionStore.selectionMode) {
     selectionStore.exitSelectionMode()
   }
 })
@@ -294,7 +294,7 @@ async function handleChatCreated(chatId: number) {
 // Global ESC handler
 function handleEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
-  if (selectionStore.isSelectionMode) { selectionStore.exitSelectionMode(); return }
+  if (selectionStore.selectionMode) { selectionStore.exitSelectionMode(); return }
   if (userProfileTarget.value) { userProfileTarget.value = null; return }
   if (newChatModalOpen.value) { newChatModalOpen.value = false; return }
   if (profileModalOpen.value) { profileModalOpen.value = false; return }
