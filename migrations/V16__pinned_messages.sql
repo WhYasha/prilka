@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS pinned_messages (
     id          BIGSERIAL PRIMARY KEY,
     chat_id     BIGINT NOT NULL REFERENCES chats(id),
-    message_id  BIGINT NOT NULL REFERENCES messages(id),
+    message_id  BIGINT NOT NULL,
     pinned_by   BIGINT NOT NULL REFERENCES users(id),
     pinned_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     unpinned_at TIMESTAMPTZ
