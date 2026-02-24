@@ -110,6 +110,15 @@ export interface AvatarResult {
   avatar_url: string
 }
 
+export interface ChatMember {
+  id: number
+  username: string
+  display_name: string
+  avatar_url: string | null
+  role: 'owner' | 'admin' | 'member'
+  joined_at: string
+}
+
 // Admin types
 export interface AdminStats {
   total_users: number
