@@ -44,7 +44,7 @@ const messageText = ref('')
 
 const messageLink = computed(() => {
   if (!chatId.value || !messageId.value) return null
-  return `${window.location.origin}/c/${chatId.value}/m/${messageId.value}`
+  return `${window.location.origin}/c/${chatId.value}/${messageId.value}`
 })
 
 function onShowMessageContextMenu(e: CustomEvent) {

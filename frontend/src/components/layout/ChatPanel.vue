@@ -451,7 +451,7 @@ function bottomSheetAction(action: string) {
       )
       break
     case 'copyLink':
-      navigator.clipboard.writeText(`${window.location.origin}/c/${chatId}/m/${msgId}`).then(
+      navigator.clipboard.writeText(`${window.location.origin}/c/${chatId}/${msgId}`).then(
         () => showToast('Link copied'),
         () => showToast('Failed to copy link'),
       )
