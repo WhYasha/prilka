@@ -118,6 +118,8 @@ function showContextMenu(x: number, y: number) {
         messageId: props.message.id,
         chatId: chatsStore.activeChatId,
         text: props.message.content || '',
+        senderId: props.message.sender_id,
+        senderName: props.message.sender_display_name || props.message.sender_username || '',
         x,
         y,
       },

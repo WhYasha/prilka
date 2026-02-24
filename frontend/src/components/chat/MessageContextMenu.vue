@@ -7,8 +7,14 @@
       @click.stop
       @contextmenu.prevent
     >
-      <button class="ctx-item" disabled>
+      <button class="ctx-item" @click="handleReply">
         Reply
+      </button>
+      <button v-if="isOwnMessage" class="ctx-item" @click="handleEdit">
+        Edit
+      </button>
+      <button class="ctx-item" disabled aria-label="Coming soon — requires V14 migration">
+        Pin
       </button>
       <button class="ctx-item" @click="handleCopyText">
         Copy text
@@ -32,8 +38,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
 
 const { showToast } = useToast()
+const authStore = useAuthStore()
 
 const visible = ref(false)
 const posX = ref(0)
@@ -41,6 +49,13 @@ const posY = ref(0)
 const messageId = ref<number | null>(null)
 const chatId = ref<number | null>(null)
 const messageText = ref('')
+const senderName = ref('')
+const senderId = ref<number | null>(null)
+
+const isOwnMessage = computed(() => {
+  if (!senderId.value || !authStore.user) return false
+  return senderId.value === authStore.user.id
+})
 
 const messageLink = computed(() => {
   if (!chatId.value || !messageId.value) return null
@@ -51,6 +66,8 @@ function onShowMessageContextMenu(e: CustomEvent) {
   messageId.value = e.detail.messageId
   chatId.value = e.detail.chatId
   messageText.value = e.detail.text || ''
+  senderName.value = e.detail.senderName || ''
+  senderId.value = e.detail.senderId ?? null
   posX.value = e.detail.x
   posY.value = e.detail.y
   visible.value = true
@@ -75,6 +92,8 @@ function onClickOutside() {
     messageId.value = null
     chatId.value = null
     messageText.value = ''
+    senderName.value = ''
+    senderId.value = null
   }
 }
 
@@ -90,6 +109,35 @@ onUnmounted(() => {
 
 function hide() {
   visible.value = false
+}
+
+function handleReply() {
+  hide()
+  if (!messageId.value || !chatId.value) return
+  window.dispatchEvent(
+    new CustomEvent('reply-to-message', {
+      detail: {
+        messageId: messageId.value,
+        chatId: chatId.value,
+        senderName: senderName.value,
+        text: messageText.value,
+      },
+    }),
+  )
+}
+
+function handleEdit() {
+  hide()
+  if (!messageId.value || !chatId.value) return
+  window.dispatchEvent(
+    new CustomEvent('edit-message', {
+      detail: {
+        messageId: messageId.value,
+        chatId: chatId.value,
+        text: messageText.value,
+      },
+    }),
+  )
 }
 
 async function handleCopyText() {
