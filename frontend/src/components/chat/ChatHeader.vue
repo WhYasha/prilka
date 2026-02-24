@@ -5,11 +5,12 @@
       class="chat-header-avatar"
       :name="displayName"
       :url="chat?.other_avatar_url"
+      :online="isOnline"
       @click="handleProfileClick"
     />
     <div class="chat-header-info" @click="handleProfileClick">
       <div class="chat-header-name">{{ displayName }}</div>
-      <div class="chat-header-sub" :class="{ 'typing-text': isTyping }">{{ subtitle }}</div>
+      <div class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}</div>
     </div>
   </header>
 </template>
@@ -42,6 +43,12 @@ const typingNames = computed(() => {
 
 const isTyping = computed(() => typingNames.value.length > 0)
 
+const isOnline = computed(() => {
+  const c = chat.value
+  if (!c || c.type !== 'direct' || !c.other_user_id) return false
+  return chatsStore.isUserOnline(c.other_user_id)
+})
+
 const subtitle = computed(() => {
   // Show typing indicator if someone is typing
   if (typingNames.value.length === 1) {
@@ -55,6 +62,8 @@ const subtitle = computed(() => {
   if (!c) return ''
   if (c.type === 'channel') return 'Channel'
   if (c.type === 'group') return 'Group'
+  // For DMs: show "online" or @username
+  if (isOnline.value) return 'online'
   return c.other_username ? '@' + c.other_username : ''
 })
 

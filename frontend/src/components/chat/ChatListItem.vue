@@ -5,7 +5,7 @@
     @click="emit('select')"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
-    <Avatar :name="displayName" :url="chat.other_avatar_url" size="sm" />
+    <Avatar :name="displayName" :url="chat.other_avatar_url" size="sm" :online="isOnline" />
     <div class="chat-item-info">
       <div class="chat-item-top">
         <span class="chat-item-name">
@@ -31,12 +31,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Avatar from '@/components/ui/Avatar.vue'
+import { useChatsStore } from '@/stores/chats'
 import type { Chat } from '@/api/types'
 
 const props = defineProps<{
   chat: Chat
   active: boolean
 }>()
+
+const chatsStore = useChatsStore()
+
+const isOnline = computed(() => {
+  if (props.chat.type !== 'direct' || !props.chat.other_user_id) return null
+  return chatsStore.isUserOnline(props.chat.other_user_id) || null
+})
 
 const emit = defineEmits<{
   select: []

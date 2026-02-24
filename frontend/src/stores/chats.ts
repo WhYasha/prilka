@@ -10,6 +10,9 @@ export const useChatsStore = defineStore('chats', () => {
   // Typing indicators: chatId → { userId → expiry timer }
   const typingUsers = ref<Record<number, Record<number, { username: string; timer: ReturnType<typeof setTimeout> }>>>({})
 
+  // Online presence: set of user IDs currently online
+  const onlineUsers = ref<Set<number>>(new Set())
+
   const activeChat = computed(() =>
     chats.value.find((c) => c.id === activeChatId.value) ?? null,
   )
@@ -133,6 +136,20 @@ export const useChatsStore = defineStore('chats', () => {
     return Object.values(chatTyping).map((e) => e.username)
   }
 
+  function setUserOnline(userId: number) {
+    onlineUsers.value = new Set([...onlineUsers.value, userId])
+  }
+
+  function setUserOffline(userId: number) {
+    const next = new Set(onlineUsers.value)
+    next.delete(userId)
+    onlineUsers.value = next
+  }
+
+  function isUserOnline(userId: number): boolean {
+    return onlineUsers.value.has(userId)
+  }
+
   return {
     chats,
     activeChatId,
@@ -149,5 +166,9 @@ export const useChatsStore = defineStore('chats', () => {
     setTyping,
     clearTyping,
     getTypingUsernames,
+    onlineUsers,
+    setUserOnline,
+    setUserOffline,
+    isUserOnline,
   }
 })

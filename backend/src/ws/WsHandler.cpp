@@ -12,6 +12,8 @@
 std::mutex WsHandler::s_mu;
 std::unordered_map<long long, std::vector<drogon::WebSocketConnectionPtr>> WsHandler::s_subs;
 std::unordered_map<long long, bool> WsHandler::s_redisSubs;
+std::mutex WsHandler::s_userMu;
+std::unordered_map<long long, std::vector<drogon::WebSocketConnectionPtr>> WsHandler::s_userConns;
 
 // Keep Redis subscriber objects alive so callbacks remain valid
 static std::mutex s_redisSubMu;
@@ -112,6 +114,32 @@ void WsHandler::subscribeToRedis(long long chatId) {
     }
 }
 
+// ── Presence broadcast ────────────────────────────────────────────────────
+
+void WsHandler::broadcastPresence(long long userId, const std::string& username,
+                                   const std::string& status) {
+    Json::Value payload;
+    payload["type"]    = "presence";
+    payload["user_id"] = Json::Int64(userId);
+    payload["username"] = username;
+    payload["status"]  = status;
+
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT chat_id FROM chat_members WHERE user_id = $1",
+        [payload](const drogon::orm::Result& r) {
+            for (const auto& row : r) {
+                long long chatId = row["chat_id"].as<long long>();
+                WsDispatch::publishMessage(chatId, payload);
+            }
+        },
+        [userId](const drogon::orm::DrogonDbException& e) {
+            LOG_ERROR << "broadcastPresence DB error for user " << userId
+                      << ": " << e.base().what();
+        },
+        userId);
+}
+
 // ── WebSocket lifecycle ────────────────────────────────────────────────────
 
 void WsHandler::handleNewConnection(const drogon::HttpRequestPtr& req,
@@ -135,10 +163,37 @@ void WsHandler::handleConnectionClosed(const drogon::WebSocketConnectionPtr& con
         MetricsService::instance().wsDisconnect();
         auto ctx = conn->getContext<ConnCtx>();
         if (ctx) {
-            std::lock_guard<std::mutex> lk(s_mu);
-            for (long long chatId : ctx->subscriptions) {
-                auto& vec = s_subs[chatId];
-                vec.erase(std::remove(vec.begin(), vec.end(), conn), vec.end());
+            {
+                std::lock_guard<std::mutex> lk(s_mu);
+                for (long long chatId : ctx->subscriptions) {
+                    auto& vec = s_subs[chatId];
+                    vec.erase(std::remove(vec.begin(), vec.end(), conn), vec.end());
+                }
+            }
+
+            // Remove from user connections and broadcast offline if last
+            if (ctx->authed && ctx->userId > 0) {
+                bool nowOffline = false;
+                {
+                    std::lock_guard<std::mutex> lk(s_userMu);
+                    auto it = s_userConns.find(ctx->userId);
+                    if (it != s_userConns.end()) {
+                        auto& vec = it->second;
+                        vec.erase(std::remove(vec.begin(), vec.end(), conn), vec.end());
+                        nowOffline = vec.empty();
+                        if (nowOffline) s_userConns.erase(it);
+                    }
+                }
+                if (nowOffline) {
+                    broadcastPresence(ctx->userId, ctx->username, "offline");
+                    // Update last_activity
+                    auto db = drogon::app().getDbClient();
+                    db->execSqlAsync(
+                        "UPDATE users SET last_activity = NOW() WHERE id = $1",
+                        [](const drogon::orm::Result&) {},
+                        [](const drogon::orm::DrogonDbException&) {},
+                        ctx->userId);
+                }
             }
         }
         LOG_INFO << "WebSocket closed";
@@ -178,12 +233,23 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
             ctx->userId = claims->userId;
             ctx->authed = true;
 
-            // Update last_activity and fetch username for typing indicators
+            // Update last_activity and fetch username for typing/presence
             auto db = drogon::app().getDbClient();
             db->execSqlAsync(
                 "UPDATE users SET last_activity = NOW() WHERE id = $1 RETURNING username",
-                [ctx](const drogon::orm::Result& r) {
+                [this, ctx, conn](const drogon::orm::Result& r) {
                     if (!r.empty()) ctx->username = r[0]["username"].as<std::string>();
+                    // Track user connection for presence
+                    bool wasOffline = false;
+                    {
+                        std::lock_guard<std::mutex> lk(s_userMu);
+                        auto& vec = s_userConns[ctx->userId];
+                        wasOffline = vec.empty();
+                        vec.push_back(conn);
+                    }
+                    if (wasOffline) {
+                        broadcastPresence(ctx->userId, ctx->username, "online");
+                    }
                 },
                 [](const drogon::orm::DrogonDbException&) {},
                 ctx->userId);

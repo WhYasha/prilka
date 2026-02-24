@@ -1,7 +1,10 @@
 <template>
-  <div class="avatar" :class="sizeClass">
-    <img v-if="url" :src="url" :alt="name" />
-    <template v-else>{{ initial }}</template>
+  <div class="avatar-wrap" :class="sizeClass">
+    <div class="avatar" :class="sizeClass">
+      <img v-if="url" :src="url" :alt="name" />
+      <template v-else>{{ initial }}</template>
+    </div>
+    <span v-if="online" class="online-dot" />
   </div>
 </template>
 
@@ -12,9 +15,11 @@ const props = withDefaults(defineProps<{
   name: string
   url?: string | null
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  online?: boolean | null
 }>(), {
   url: null,
   size: 'md',
+  online: null,
 })
 
 const initial = computed(() => (props.name ?? '?')[0]?.toUpperCase() ?? '?')

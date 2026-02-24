@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { updateUser, uploadAvatar } from '@/api/users'
@@ -115,6 +115,16 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const theme = ref('light')
 const notifications = ref(true)
 const language = ref('en')
+
+watch(notifications, async (enabled) => {
+  if (enabled && 'Notification' in window) {
+    const permission = await Notification.requestPermission()
+    if (permission === 'denied') {
+      notifications.value = false
+      showToast('Notifications blocked by browser')
+    }
+  }
+})
 
 onMounted(async () => {
   if (authStore.user) {

@@ -51,12 +51,21 @@ private:
     // Subscribe this process to Redis channel "chat:<chatId>" if not already done.
     void subscribeToRedis(long long chatId);
 
+    // Broadcast presence (online/offline) to all chats the user belongs to.
+    void broadcastPresence(long long userId, const std::string& username,
+                           const std::string& status);
+
     // Map: chatId → list of local connections subscribed
     static std::mutex                                              s_mu;
     static std::unordered_map<long long,
            std::vector<drogon::WebSocketConnectionPtr>>           s_subs;
     // Set of Redis channels already subscribed
     static std::unordered_map<long long, bool>                    s_redisSubs;
+
+    // Per-user connection tracking for presence
+    static std::mutex                                              s_userMu;
+    static std::unordered_map<long long,
+           std::vector<drogon::WebSocketConnectionPtr>>           s_userConns;
 };
 
 // Called by MessagesController after a message is persisted.

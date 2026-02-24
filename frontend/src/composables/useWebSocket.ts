@@ -2,7 +2,42 @@ import { ref, onUnmounted } from 'vue'
 import { useMessagesStore } from '@/stores/messages'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 import type { Message } from '@/api/types'
+
+function showMessageNotification(
+  msg: Message,
+  chatsStore: ReturnType<typeof useChatsStore>,
+  authStore: ReturnType<typeof useAuthStore>,
+) {
+  if (!document.hidden) return
+  if (msg.sender_id === authStore.user?.id) return
+  const settingsStore = useSettingsStore()
+  if (!settingsStore.notificationsEnabled) return
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
+  const chat = chatsStore.chats.find((c) => c.id === msg.chat_id)
+  if (chat?.is_muted) return
+
+  const senderName = msg.sender_display_name || msg.sender_username || 'Someone'
+  const body =
+    msg.message_type === 'text'
+      ? msg.content?.length > 100
+        ? msg.content.substring(0, 100) + '...'
+        : msg.content
+      : `sent a ${msg.message_type === 'sticker' ? 'sticker' : msg.message_type === 'voice' ? 'voice message' : 'file'}`
+
+  const n = new Notification(senderName, {
+    body,
+    tag: `chat-${msg.chat_id}`,
+    silent: false,
+  })
+  n.onclick = () => {
+    window.focus()
+    chatsStore.setActiveChat(msg.chat_id)
+    n.close()
+  }
+  setTimeout(() => n.close(), 5000)
+}
 
 export function useWebSocket() {
   const connected = ref(false)
@@ -93,6 +128,8 @@ export function useWebSocket() {
         }
         // Clear typing indicator for the sender (they sent a message)
         chatsStore.clearTyping(msg.chat_id, msg.sender_id)
+        // Browser notification for background tab
+        showMessageNotification(msg, chatsStore, authStore)
         break
       }
       case 'typing': {
@@ -109,9 +146,13 @@ export function useWebSocket() {
       case 'pong':
         // heartbeat acknowledged
         break
-      case 'presence':
-        // Could update online status here
+      case 'presence': {
+        const userId = data.user_id as number
+        const status = data.status as string
+        if (status === 'online') chatsStore.setUserOnline(userId)
+        else if (status === 'offline') chatsStore.setUserOffline(userId)
         break
+      }
     }
   }
 
