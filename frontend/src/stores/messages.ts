@@ -164,6 +164,38 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
+  async function deleteMessage(chatId: number, messageId: number) {
+    try {
+      await messagesApi.deleteMessage(chatId, messageId)
+      removeMessage(chatId, messageId)
+    } catch (e) {
+      console.error('Failed to delete message', e)
+      throw e
+    }
+  }
+
+  function removeMessage(chatId: number, messageId: number) {
+    const msgs = messagesByChat.value[chatId]
+    if (!msgs) return
+    messagesByChat.value[chatId] = msgs.filter((m) => m.id !== messageId)
+  }
+
+  async function forwardMessages(toChatId: number, fromChatId: number, messageIds: number[]) {
+    try {
+      const msgs = await messagesApi.forwardMessages(toChatId, {
+        from_chat_id: fromChatId,
+        message_ids: messageIds,
+      })
+      for (const msg of msgs) {
+        pushMessage(toChatId, msg)
+      }
+      return msgs
+    } catch (e) {
+      console.error('Failed to forward messages', e)
+      throw e
+    }
+  }
+
   function getMessages(chatId: number): Message[] {
     return messagesByChat.value[chatId] || []
   }
@@ -180,5 +212,8 @@ export const useMessagesStore = defineStore('messages', () => {
     getMessages,
     toggleReaction,
     applyReactionUpdate,
+    deleteMessage,
+    removeMessage,
+    forwardMessages,
   }
 })
