@@ -6,15 +6,17 @@
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: 80px auto; color: #333; }
     h1 { color: #0070f3; }
-    .note { background: #f0f4ff; border-left: 4px solid #0070f3; padding: 12px 16px; border-radius: 4px; }
+    .btn { display: inline-block; background: #0070f3; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin: 16px 0; }
+    .btn:hover { background: #005cc5; }
+    .info { color: #666; font-size: 0.9em; }
   </style>
 </head>
 <body>
-  <h1>Messenger – Windows</h1>
-  <div class="note">
-    <p>The Windows installer is not yet available.</p>
-    <p>Upload <code>MessengerSetup.exe</code> to this directory to make it downloadable.</p>
-  </div>
+  <h1>Simple Messenger – Windows</h1>
+  <p>Download the desktop app for Windows:</p>
+  <a href="MessengerSetup.exe" class="btn">Download MessengerSetup.exe</a>
+  <p class="info">Version 0.1.0 | ~1.9 MB | Windows 10+</p>
+  <p class="info"><a href="MessengerSetup.exe.sha256">SHA256 checksum</a> | <a href="latest.json">Version info</a></p>
   <p><a href="/">← Back to Messenger</a></p>
 </body>
 </html>
