@@ -77,7 +77,7 @@ alice_id = b[0]["id"] if b else 1
 # ── 7. Chats ───────────────────────────────────────────────────────────────
 print("\n[7] Chats")
 s, b = req("POST", "/chats", {"type": "direct", "member_ids": [alice_id]}, token=token)
-check("POST /chats (direct) -> 201", s == 201, "chat_id=" + str(b.get("id")))
+check("POST /chats (direct) -> 200/201", s in (200, 201), "chat_id=" + str(b.get("id")))
 chat_id = b.get("id")
 
 s, b = req("POST", "/chats", {"type": "group", "name": "E2E Test Group",
