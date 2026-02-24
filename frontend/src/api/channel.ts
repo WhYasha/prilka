@@ -17,7 +17,7 @@ export async function updateChat(
 
 export async function uploadChatAvatar(
   chatId: number,
-  fileId: string,
+  fileId: number,
 ): Promise<void> {
   // TODO: requires backend support
   await api.post(`/chats/${chatId}/avatar`, { file_id: fileId })

@@ -73,7 +73,7 @@ onMounted(() => {
   if (channelStore.detail) {
     title.value = channelStore.detail.title || ''
     description.value = channelStore.detail.description || ''
-    avatarUrl.value = channelStore.detail.avatar_url
+    avatarUrl.value = channelStore.detail.avatar_url ?? undefined
   }
 })
 

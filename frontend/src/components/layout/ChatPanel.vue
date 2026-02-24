@@ -120,6 +120,7 @@
       <!-- Channel info modal -->
       <ChannelInfoModal
         v-if="channelInfoModalOpen"
+        :chat-id="String(chatsStore.activeChatId)"
         @close="channelInfoModalOpen = false"
       />
     </div>

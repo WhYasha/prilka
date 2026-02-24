@@ -43,7 +43,7 @@
           <div class="profile-avatar-section">
             <Avatar
               :name="channelStore.detail.title || 'Channel'"
-              :url="channelStore.detail.avatar_url"
+              :url="channelStore.detail.avatar_url ?? undefined"
               size="xxl"
             />
           </div>
@@ -143,13 +143,13 @@ const numericChatId = computed(() => Number(props.chatId))
 
 function handleSaved() {
   activeView.value = 'main'
-  channelStore.loadDetail()
+  channelStore.loadDetail(numericChatId.value)
 }
 
 onMounted(async () => {
   await Promise.all([
-    channelStore.loadDetail(),
-    channelStore.loadMembers(),
+    channelStore.loadDetail(numericChatId.value),
+    channelStore.loadMembers(numericChatId.value),
   ])
 })
 </script>

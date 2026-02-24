@@ -38,6 +38,7 @@ export interface Chat {
   last_at?: string
   updated_at: string
   member_count?: number
+  avatar_url?: string | null
   my_role?: string
 }
 
