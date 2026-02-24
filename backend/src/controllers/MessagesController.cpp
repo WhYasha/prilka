@@ -888,7 +888,7 @@ void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                             "file_id, sticker_id, duration_seconds, "
                             "forwarded_from_chat_id, forwarded_from_message_id) "
                             "VALUES ($1, $2, $3, $4, "
-                            "NULLIF($5, 0), NULLIF($6, 0), NULLIF($7, 0), $8, $9) "
+                            "NULLIF($5::BIGINT, 0), NULLIF($6::BIGINT, 0), NULLIF($7::BIGINT, 0), $8, $9) "
                             "RETURNING id, created_at",
                             [=](const drogon::orm::Result& ir) {
                                 long long newId = ir[0]["id"].as<long long>();
