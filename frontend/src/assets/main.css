@@ -306,6 +306,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 .avatar-sm  { width: 34px; height: 34px; font-size: .75rem; }
 .avatar-lg  { width: 56px; height: 56px; font-size: 1.1rem; }
 .avatar-xl  { width: 80px; height: 80px; font-size: 1.5rem; }
+.avatar-xxl { width: 120px; height: 120px; font-size: 2.2rem; }
 
 .avatar-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
 .online-dot {
@@ -731,6 +732,86 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 .user-profile-actions { margin-top: 1.5rem; }
 .user-profile-actions .btn { padding: .75rem 2rem; font-size: 1rem; }
 
+/* ── Profile modal (Telegram-like redesign) ────────────────── */
+.profile-backdrop {
+  animation: modalFadeIn var(--transition-normal) ease;
+}
+.profile-modal {
+  width: 400px; max-width: 95vw;
+  border-radius: var(--modal-radius);
+  padding: 0; overflow: hidden;
+  animation: modalScaleIn var(--transition-normal) ease;
+  position: relative;
+}
+.profile-close-btn {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  color: var(--text-muted);
+}
+.profile-close-btn:hover { color: var(--text); background: var(--input-bg); }
+.profile-modal-body {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 2rem 1.5rem 1.5rem;
+}
+.profile-loading {
+  padding: 3rem 0;
+  color: var(--text-muted); font-size: .95rem;
+}
+.profile-avatar-section {
+  margin-bottom: 1rem;
+}
+.profile-avatar-section .avatar-wrap.avatar-xxl .online-dot {
+  width: 14px; height: 14px; bottom: 4px; right: 4px;
+  border-width: 3px;
+}
+.profile-name {
+  font-size: 1.4rem; font-weight: 700;
+  color: var(--profile-name-color);
+  display: flex; align-items: center; gap: 6px;
+}
+.profile-status {
+  font-size: .85rem; margin-top: 4px;
+  color: var(--profile-status-offline);
+}
+.profile-status--online {
+  color: var(--profile-status-online);
+}
+.profile-actions-row {
+  display: flex; gap: 12px; margin-top: 1.25rem;
+}
+.profile-action-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 20px; border: none; border-radius: 10px;
+  background: var(--input-bg); color: var(--accent);
+  cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast);
+  min-width: 72px;
+}
+.profile-action-btn:hover { background: var(--accent); color: #fff; }
+.profile-action-btn--danger { color: var(--danger); }
+.profile-action-btn--danger:hover { background: var(--danger); color: #fff; }
+.profile-action-icon { font-size: 1.2rem; line-height: 1; }
+.profile-action-label { font-size: .75rem; font-weight: 600; }
+.profile-divider {
+  width: 100%; height: 1px;
+  background: var(--profile-divider);
+  margin: 1.25rem 0;
+}
+.profile-info-list {
+  width: 100%; text-align: left;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.profile-info-item {
+  padding: 0 4px;
+}
+.profile-info-label {
+  font-size: .75rem; font-weight: 600;
+  color: var(--accent); text-transform: uppercase;
+  letter-spacing: .03em; margin-bottom: 2px;
+}
+.profile-info-value {
+  font-size: .95rem; color: var(--text);
+  line-height: 1.4; word-break: break-word;
+}
+
 /* ── Read-only channel notice ───────────────────────────────── */
 .channel-readonly-bar {
   display: flex; align-items: center; justify-content: center; gap: .5rem;
@@ -888,6 +969,11 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   .modal { max-height: 85vh; max-height: 85dvh; }
   .modal-body { overflow-y: auto; }
   .user-profile-body { text-align: center; padding: 1.5rem 1rem; }
+  .profile-modal {
+    width: 100%; max-width: 100vw; height: 100vh; height: 100dvh;
+    border-radius: 0; max-height: none;
+  }
+  .profile-modal-body { padding: 3rem 1.25rem 1.5rem; }
 }
 
 /* ── Desktop (>768px) ───────────────────────────────────────── */
