@@ -14,7 +14,7 @@ import { computed } from 'vue'
 const props = withDefaults(defineProps<{
   name: string
   url?: string | null
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
   online?: boolean | null
 }>(), {
   url: null,
@@ -28,6 +28,7 @@ const sizeClass = computed(() => {
   if (props.size === 'sm') return 'avatar-sm'
   if (props.size === 'lg') return 'avatar-lg'
   if (props.size === 'xl') return 'avatar-xl'
+  if (props.size === 'xxl') return 'avatar-xxl'
   return ''
 })
 </script>

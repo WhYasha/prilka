@@ -1,10 +1,9 @@
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal modal-wide">
-      <div class="modal-header">
-        <h2 class="modal-title">Profile &amp; Settings</h2>
-        <button class="icon-btn" @click="emit('close')">&#10005;</button>
-      </div>
+  <div class="modal-backdrop profile-backdrop" @click.self="emit('close')">
+    <div class="modal profile-modal profile-modal--self">
+      <button class="icon-btn profile-close-btn" aria-label="Close" @click="emit('close')">
+        <X :size="20" :stroke-width="2" />
+      </button>
 
       <!-- Tabs -->
       <div class="profile-tabs">
@@ -20,37 +19,58 @@
         >Settings</button>
       </div>
 
-      <div class="modal-body profile-body">
+      <div class="profile-modal-body profile-modal-body--scrollable">
         <!-- Profile tab -->
         <div v-show="activeTab === 'profile'">
-          <div class="profile-avatar-section">
-            <Avatar
-              :name="displayName || authStore.user?.username || '?'"
-              :url="authStore.user?.avatar_url"
-              size="xl"
-            />
-            <button class="btn btn-outline btn-sm" @click="fileInput?.click()">
-              Change photo
-            </button>
+          <!-- Avatar section -->
+          <div class="profile-avatar-section profile-avatar-upload-section">
+            <div class="profile-avatar-upload-wrap" @click="fileInput?.click()">
+              <Avatar
+                :name="displayName || authStore.user?.username || '?'"
+                :url="authStore.user?.avatar_url"
+                size="xxl"
+              />
+              <div class="profile-avatar-overlay">
+                <Camera :size="24" :stroke-width="1.8" class="profile-avatar-overlay-icon" />
+              </div>
+            </div>
             <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="handleAvatarChange" />
-            <p class="user-id-display">ID: {{ authStore.user?.id }}</p>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Display name</label>
-            <input v-model="displayName" class="form-input" type="text" maxlength="64" placeholder="Your name" />
+          <!-- Name display -->
+          <div class="profile-name">
+            {{ displayName || authStore.user?.username || '?' }}
           </div>
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input v-model="username" class="form-input" type="text" maxlength="20" placeholder="username" />
-            <small v-if="usernameError" class="form-hint form-error">{{ usernameError }}</small>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Bio</label>
-            <textarea v-model="bio" class="form-input" maxlength="200" rows="3" placeholder="About you..." />
+          <div class="profile-status profile-status--online" v-if="authStore.user">
+            online
           </div>
 
-          <div class="modal-actions">
+          <!-- Divider -->
+          <div class="profile-divider" />
+
+          <!-- Edit form -->
+          <div class="profile-info-list">
+            <div class="form-group">
+              <label class="form-label">Display name</label>
+              <input v-model="displayName" class="form-input" type="text" maxlength="64" placeholder="Your name" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input v-model="username" class="form-input" type="text" maxlength="20" placeholder="username" />
+              <small v-if="usernameError" class="form-hint form-error">{{ usernameError }}</small>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bio</label>
+              <textarea v-model="bio" class="form-input" maxlength="200" rows="3" placeholder="About you..." />
+            </div>
+
+            <div class="profile-info-item">
+              <div class="profile-info-label">User ID</div>
+              <div class="profile-info-value">{{ authStore.user?.id }}</div>
+            </div>
+          </div>
+
+          <div class="profile-edit-actions">
             <button class="btn btn-primary" @click="saveProfile">Save Profile</button>
             <button class="btn btn-ghost" @click="emit('close')">Cancel</button>
           </div>
@@ -58,30 +78,32 @@
 
         <!-- Settings tab -->
         <div v-show="activeTab === 'settings'">
-          <div class="form-group form-inline">
-            <label class="form-label">Theme</label>
-            <select v-model="theme" class="form-input form-select">
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </div>
-          <div class="form-group form-inline">
-            <label class="form-label">Notifications</label>
-            <label class="toggle">
-              <input v-model="notifications" type="checkbox" />
-              <span class="toggle-slider" />
-            </label>
-          </div>
-          <div class="form-group form-inline">
-            <label class="form-label">Language</label>
-            <select v-model="language" class="form-input form-select">
-              <option value="en">English</option>
-              <option value="ru">&#1056;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;</option>
-              <option value="de">Deutsch</option>
-            </select>
+          <div class="profile-info-list">
+            <div class="form-group form-inline">
+              <label class="form-label">Theme</label>
+              <select v-model="theme" class="form-input form-select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+            <div class="form-group form-inline">
+              <label class="form-label">Notifications</label>
+              <label class="toggle">
+                <input v-model="notifications" type="checkbox" />
+                <span class="toggle-slider" />
+              </label>
+            </div>
+            <div class="form-group form-inline">
+              <label class="form-label">Language</label>
+              <select v-model="language" class="form-input form-select">
+                <option value="en">English</option>
+                <option value="ru">&#1056;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
           </div>
 
-          <div class="modal-actions">
+          <div class="profile-edit-actions">
             <button class="btn btn-primary" @click="saveSettings">Save Settings</button>
           </div>
         </div>
@@ -98,6 +120,11 @@ import { updateUser, uploadAvatar } from '@/api/users'
 import { uploadFile } from '@/api/files'
 import { useToast } from '@/composables/useToast'
 import Avatar from '@/components/ui/Avatar.vue'
+import { X, Camera } from 'lucide-vue-next'
+
+const props = withDefaults(defineProps<{ initialTab?: 'profile' | 'settings' }>(), {
+  initialTab: 'profile',
+})
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -105,7 +132,7 @@ const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const { showToast } = useToast()
 
-const activeTab = ref<'profile' | 'settings'>('profile')
+const activeTab = ref<'profile' | 'settings'>(props.initialTab)
 const displayName = ref('')
 const username = ref('')
 const bio = ref('')

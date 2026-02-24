@@ -1,37 +1,69 @@
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal">
-      <div class="modal-header">
-        <h2 class="modal-title">User Profile</h2>
-        <button class="icon-btn" @click="emit('close')">&#10005;</button>
-      </div>
-      <div class="modal-body user-profile-body">
+  <div class="modal-backdrop profile-backdrop" @click.self="emit('close')">
+    <div class="modal profile-modal">
+      <button class="icon-btn profile-close-btn" aria-label="Close" @click="emit('close')">
+        <X :size="20" :stroke-width="2" />
+      </button>
+
+      <div class="profile-modal-body">
         <template v-if="loading">
-          <p>Loading...</p>
+          <div class="profile-loading">
+            <p>Loading...</p>
+          </div>
         </template>
         <template v-else-if="user">
+          <!-- Avatar section -->
           <div class="profile-avatar-section">
             <Avatar
               :name="user.display_name || user.username"
               :url="user.avatar_url"
-              size="xl"
+              :online="isOnline"
+              size="xxl"
             />
           </div>
-          <div class="user-profile-name">
+
+          <!-- Name + badge -->
+          <div class="profile-name">
             {{ user.display_name || user.username }}
             <Badge v-if="user.is_admin" />
           </div>
-          <div class="user-profile-username">@{{ user.username }}</div>
-          <div class="user-id-display">ID: {{ user.id }}</div>
-          <div v-if="user.bio" class="user-profile-bio">{{ user.bio }}</div>
-          <div class="modal-actions" style="justify-content: center">
-            <button class="btn btn-primary" @click="emit('message', user!.username)">
-              &#9998; Message
-            </button>
+
+          <!-- Online/offline status -->
+          <div class="profile-status" :class="{ 'profile-status--online': isOnline }">
+            {{ isOnline ? 'online' : 'offline' }}
+          </div>
+
+          <!-- Action buttons row -->
+          <ProfileActionButtons
+            :muted="isMuted"
+            :show-more="false"
+            @message="emit('message', user!.username)"
+            @mute="handleMute"
+          />
+
+          <!-- Divider -->
+          <div class="profile-divider" />
+
+          <!-- Info list -->
+          <div class="profile-info-list">
+            <div class="profile-info-item">
+              <div class="profile-info-label">Username</div>
+              <div class="profile-info-value">@{{ user.username }}</div>
+            </div>
+            <div v-if="user.bio" class="profile-info-item">
+              <div class="profile-info-label">Bio</div>
+              <div class="profile-info-value">{{ user.bio }}</div>
+            </div>
+            <div class="profile-info-item">
+              <div class="profile-info-label">User ID</div>
+              <div class="profile-info-value">{{ user.id }}</div>
+            </div>
           </div>
         </template>
         <template v-else>
-          <p>User not found</p>
+          <div class="profile-loading">
+            <p>User not found</p>
+          </div>
         </template>
       </div>
     </div>
@@ -39,10 +71,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getUserByUsername } from '@/api/users'
+import { useChatsStore } from '@/stores/chats'
+import { useToast } from '@/composables/useToast'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
+import ProfileActionButtons from '@/components/profile/ProfileActionButtons.vue'
+import { X } from 'lucide-vue-next'
 import type { User } from '@/api/types'
 
 const props = defineProps<{ username: string }>()
@@ -52,8 +88,17 @@ const emit = defineEmits<{
   message: [username: string]
 }>()
 
+const chatsStore = useChatsStore()
+const { showToast } = useToast()
+
 const user = ref<User | null>(null)
 const loading = ref(true)
+const isMuted = ref(false)
+
+const isOnline = computed(() => {
+  if (!user.value) return false
+  return chatsStore.isUserOnline(user.value.id)
+})
 
 onMounted(async () => {
   try {
@@ -64,4 +109,9 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+function handleMute() {
+  isMuted.value = !isMuted.value
+  showToast(isMuted.value ? 'User muted' : 'User unmuted')
+}
 </script>
