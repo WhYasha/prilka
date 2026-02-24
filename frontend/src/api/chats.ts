@@ -1,5 +1,5 @@
 import api from './client'
-import type { Chat } from './types'
+import type { Chat, ChatMember } from './types'
 
 export async function listChats(): Promise<Chat[]> {
   const { data } = await api.get<Chat[]>('/chats')
@@ -65,4 +65,17 @@ export async function archiveChat(id: number): Promise<void> {
 
 export async function unarchiveChat(id: number): Promise<void> {
   await api.delete(`/chats/${id}/archive`)
+}
+
+export async function getChatMembers(id: number): Promise<ChatMember[]> {
+  const { data } = await api.get<ChatMember[]>(`/chats/${id}/members`)
+  return data
+}
+
+export async function updateChat(
+  id: number,
+  payload: { title?: string; description?: string; public_name?: string },
+): Promise<Chat> {
+  const { data } = await api.patch<Chat>(`/chats/${id}`, payload)
+  return data
 }
