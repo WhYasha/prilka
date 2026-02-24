@@ -7,6 +7,9 @@ export const useChatsStore = defineStore('chats', () => {
   const chats = ref<Chat[]>([])
   const activeChatId = ref<number | null>(null)
 
+  // Typing indicators: chatId → { userId → expiry timer }
+  const typingUsers = ref<Record<number, Record<number, { username: string; timer: ReturnType<typeof setTimeout> }>>>({})
+
   const activeChat = computed(() =>
     chats.value.find((c) => c.id === activeChatId.value) ?? null,
   )
@@ -33,6 +36,14 @@ export const useChatsStore = defineStore('chats', () => {
 
   function setActiveChat(id: number | null) {
     activeChatId.value = id
+    // Reset unread count for the chat being opened
+    if (id !== null) {
+      const chat = chats.value.find((c) => c.id === id)
+      if (chat && chat.unread_count > 0) {
+        chat.unread_count = 0
+        chatsApi.markRead(id).catch(() => {})
+      }
+    }
   }
 
   async function toggleFavorite(chatId: number) {
@@ -83,16 +94,60 @@ export const useChatsStore = defineStore('chats', () => {
     }
   }
 
+  function incrementUnread(chatId: number) {
+    const chat = chats.value.find((c) => c.id === chatId)
+    if (chat) {
+      chat.unread_count = (chat.unread_count || 0) + 1
+    }
+  }
+
+  function setTyping(chatId: number, userId: number, username: string) {
+    if (!typingUsers.value[chatId]) {
+      typingUsers.value[chatId] = {}
+    }
+    // Clear existing timer for this user
+    const existing = typingUsers.value[chatId][userId]
+    if (existing) {
+      clearTimeout(existing.timer)
+    }
+    // Auto-expire after 3 seconds
+    const timer = setTimeout(() => {
+      clearTyping(chatId, userId)
+    }, 3000)
+    typingUsers.value[chatId][userId] = { username, timer }
+  }
+
+  function clearTyping(chatId: number, userId: number) {
+    if (typingUsers.value[chatId]) {
+      const entry = typingUsers.value[chatId][userId]
+      if (entry) {
+        clearTimeout(entry.timer)
+        delete typingUsers.value[chatId][userId]
+      }
+    }
+  }
+
+  function getTypingUsernames(chatId: number): string[] {
+    const chatTyping = typingUsers.value[chatId]
+    if (!chatTyping) return []
+    return Object.values(chatTyping).map((e) => e.username)
+  }
+
   return {
     chats,
     activeChatId,
     activeChat,
     sortedChats,
+    typingUsers,
     loadChats,
     setActiveChat,
     toggleFavorite,
     toggleMute,
     leave,
     updateChatLastMessage,
+    incrementUnread,
+    setTyping,
+    clearTyping,
+    getTypingUsernames,
   }
 })

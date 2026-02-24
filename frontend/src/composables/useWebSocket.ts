@@ -1,6 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { useMessagesStore } from '@/stores/messages'
 import { useChatsStore } from '@/stores/chats'
+import { useAuthStore } from '@/stores/auth'
 import type { Message } from '@/api/types'
 
 export function useWebSocket() {
@@ -74,6 +75,7 @@ export function useWebSocket() {
   function handleMessage(data: Record<string, unknown>) {
     const messagesStore = useMessagesStore()
     const chatsStore = useChatsStore()
+    const authStore = useAuthStore()
 
     switch (data.type) {
       case 'message': {
@@ -84,6 +86,24 @@ export function useWebSocket() {
           msg.content || (msg.message_type === 'sticker' ? 'Sticker' : 'Attachment'),
           msg.created_at,
         )
+        // Increment unread if this chat is not currently active
+        // and the message is from someone else
+        if (msg.chat_id !== chatsStore.activeChatId && msg.sender_id !== authStore.user?.id) {
+          chatsStore.incrementUnread(msg.chat_id)
+        }
+        // Clear typing indicator for the sender (they sent a message)
+        chatsStore.clearTyping(msg.chat_id, msg.sender_id)
+        break
+      }
+      case 'typing': {
+        const chatId = data.chat_id as number
+        const userId = data.user_id as number
+        // Don't show typing for ourselves
+        if (userId !== authStore.user?.id) {
+          // Look up username from chat members or use a placeholder
+          const username = (data.username as string) || 'Someone'
+          chatsStore.setTyping(chatId, userId, username)
+        }
         break
       }
       case 'pong':
@@ -126,6 +146,12 @@ export function useWebSocket() {
     }
   }
 
+  function sendTyping(chatId: number) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'typing', chat_id: chatId }))
+    }
+  }
+
   function disconnect() {
     intentionalClose = true
     stopHeartbeat()
@@ -149,5 +175,6 @@ export function useWebSocket() {
     connect,
     disconnect,
     subscribeToChat,
+    sendTyping,
   }
 }

@@ -161,7 +161,11 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    ouf.bucket      AS other_avatar_bucket, "
         "    ouf.object_key  AS other_avatar_key, "
         "    (cf.chat_id IS NOT NULL) AS is_favorite, "
-        "    (cms.user_id IS NOT NULL) AS is_muted "
+        "    (cms.user_id IS NOT NULL) AS is_muted, "
+        "    COALESCE(( "
+        "        SELECT COUNT(*) FROM messages m2 "
+        "        WHERE m2.chat_id = c.id AND m2.id > COALESCE(clr.last_read_msg_id, 0) "
+        "    ), 0) AS unread_count "
         "FROM chats c "
         "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1 "
         "LEFT JOIN LATERAL ( "
@@ -172,6 +176,7 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "LEFT JOIN files ouf ON ouf.id = ou.avatar_file_id "
         "LEFT JOIN chat_favorites cf ON cf.chat_id = c.id AND cf.user_id = $1 "
         "LEFT JOIN chat_mute_settings cms ON cms.chat_id = c.id AND cms.user_id = $1 "
+        "LEFT JOIN chat_last_read clr ON clr.chat_id = c.id AND clr.user_id = $1 "
         "ORDER BY (cf.chat_id IS NOT NULL) DESC, c.updated_at DESC",
         [cb](const drogon::orm::Result& r) mutable {
             Json::Value arr(Json::arrayValue);
@@ -188,6 +193,7 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
                 chat["last_at"]      = row["last_msg_at"].isNull() ? Json::Value() : Json::Value(row["last_msg_at"].as<std::string>());
                 chat["is_favorite"]  = row["is_favorite"].isNull() ? false : row["is_favorite"].as<bool>();
                 chat["is_muted"]     = row["is_muted"].isNull()    ? false : row["is_muted"].as<bool>();
+                chat["unread_count"] = Json::Int64(row["unread_count"].isNull() ? 0 : row["unread_count"].as<long long>());
 
                 // DM-specific fields
                 if (!row["other_user_id"].isNull()) {
@@ -432,6 +438,29 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
             LOG_ERROR << "getChat: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, chatId, me);
+}
+
+// POST /chats/{id}/read — mark all messages in chat as read
+void ChatsController::markRead(const drogon::HttpRequestPtr& req,
+                                std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "INSERT INTO chat_last_read (user_id, chat_id, last_read_msg_id, read_at) "
+        "SELECT $1, $2, COALESCE(MAX(m.id), 0), NOW() FROM messages m WHERE m.chat_id = $2 "
+        "ON CONFLICT (user_id, chat_id) DO UPDATE SET "
+        "  last_read_msg_id = GREATEST(chat_last_read.last_read_msg_id, EXCLUDED.last_read_msg_id), "
+        "  read_at = NOW()",
+        [cb](const drogon::orm::Result&) mutable {
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k204NoContent);
+            cb(resp);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "markRead: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, me, chatId);
 }
 
 // GET /chats/by-name/{publicName} (public endpoint, no AuthFilter)

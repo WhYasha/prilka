@@ -81,7 +81,10 @@ const authStore = useAuthStore()
 const chatsStore = useChatsStore()
 const settingsStore = useSettingsStore()
 const { showToast } = useToast()
-const { connect, disconnect } = useWebSocket()
+const { connect, disconnect, sendTyping } = useWebSocket()
+
+// Provide sendTyping to child components (ChatPanel → Composer)
+provide('sendTyping', sendTyping)
 
 const drawerOpen = ref(false)
 const newChatModalOpen = ref(false)

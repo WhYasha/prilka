@@ -236,6 +236,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
 }
 .chat-item-time { font-size: .72rem; color: var(--sidebar-txt); flex-shrink: 0; }
+.unread-badge {
+  background: var(--accent); color: #fff; font-size: .7rem; font-weight: 700;
+  min-width: 1.25rem; height: 1.25rem; border-radius: .625rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 .35rem; flex-shrink: 0;
+}
+.mute-icon { font-size: .75rem; margin-left: .25rem; opacity: .5; }
 .chat-item-preview {
   font-size: .825rem; color: var(--sidebar-txt);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -284,6 +291,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .chat-header-sub { font-size: .78rem; color: var(--text-muted); }
+.chat-header-sub.typing-text { color: var(--accent); }
 
 /* Back button – visible only on mobile */
 .back-btn { display: none; color: var(--accent); }

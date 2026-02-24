@@ -178,11 +178,13 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
             ctx->userId = claims->userId;
             ctx->authed = true;
 
-            // Update last_activity for admin dashboard metrics
+            // Update last_activity and fetch username for typing indicators
             auto db = drogon::app().getDbClient();
             db->execSqlAsync(
-                "UPDATE users SET last_activity = NOW() WHERE id = $1",
-                [](const drogon::orm::Result&) {},
+                "UPDATE users SET last_activity = NOW() WHERE id = $1 RETURNING username",
+                [ctx](const drogon::orm::Result& r) {
+                    if (!r.empty()) ctx->username = r[0]["username"].as<std::string>();
+                },
                 [](const drogon::orm::DrogonDbException&) {},
                 ctx->userId);
 
@@ -241,6 +243,24 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                     sendError(conn, "Internal error");
                 },
                 chatId, userId);
+            return;
+        }
+
+        // ── typing ──────────────────────────────────────────────────────
+        if (type == "typing") {
+            long long chatId = msg["chat_id"].asInt64();
+            if (chatId <= 0) { sendError(conn, "Invalid chat_id"); return; }
+
+            // Build typing payload with sender info
+            Json::Value payload;
+            payload["type"]    = "typing";
+            payload["chat_id"] = Json::Int64(chatId);
+            payload["user_id"] = Json::Int64(ctx->userId);
+            if (!ctx->username.empty())
+                payload["username"] = ctx->username;
+
+            // Publish via Redis so all nodes get it
+            WsDispatch::publishMessage(chatId, payload);
             return;
         }
 

@@ -9,7 +9,7 @@
     />
     <div class="chat-header-info" @click="handleProfileClick">
       <div class="chat-header-name">{{ displayName }}</div>
-      <div class="chat-header-sub">{{ subtitle }}</div>
+      <div class="chat-header-sub" :class="{ 'typing-text': isTyping }">{{ subtitle }}</div>
     </div>
   </header>
 </template>
@@ -35,7 +35,22 @@ const displayName = computed(() => {
   return c.other_display_name || c.other_username || c.title || c.name || 'Chat'
 })
 
+const typingNames = computed(() => {
+  if (!chat.value) return []
+  return chatsStore.getTypingUsernames(chat.value.id)
+})
+
+const isTyping = computed(() => typingNames.value.length > 0)
+
 const subtitle = computed(() => {
+  // Show typing indicator if someone is typing
+  if (typingNames.value.length === 1) {
+    return `${typingNames.value[0]} is typing...`
+  }
+  if (typingNames.value.length > 1) {
+    return `${typingNames.value.length} people typing...`
+  }
+
   const c = chat.value
   if (!c) return ''
   if (c.type === 'channel') return 'Channel'

@@ -50,6 +50,7 @@
         @send="handleSendText"
         @toggle-stickers="stickerPickerOpen = !stickerPickerOpen"
         @start-recording="startRec"
+        @typing="handleTyping"
       />
 
       <!-- Recording bar -->
@@ -95,6 +96,7 @@ const messagesStore = useMessagesStore()
 const { showToast } = useToast()
 const recorderComposable = useRecorder()
 const stickers = inject<{ value: Sticker[] }>('stickers', ref([]))
+const sendTyping = inject<(chatId: number) => void>('sendTyping', () => {})
 
 const msgListRef = ref<HTMLElement | null>(null)
 const stickerPickerOpen = ref(false)
@@ -201,6 +203,12 @@ function scrollToBottomIfNear() {
     nextTick(() => {
       el.scrollTop = el.scrollHeight
     })
+  }
+}
+
+function handleTyping() {
+  if (chatsStore.activeChatId) {
+    sendTyping(chatsStore.activeChatId)
   }
 }
 

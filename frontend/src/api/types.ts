@@ -31,6 +31,7 @@ export interface Chat {
   other_avatar_url?: string | null
   is_favorite: boolean
   is_muted: boolean
+  unread_count: number
   last_message?: string
   last_at?: string
   updated_at: string

@@ -14,7 +14,7 @@
       rows="1"
       maxlength="4000"
       @keydown.enter.exact.prevent="send"
-      @input="autoResize"
+      @input="onInput"
     />
     <button
       class="icon-btn composer-btn record-btn"
@@ -42,10 +42,12 @@ const emit = defineEmits<{
   send: [content: string]
   toggleStickers: []
   startRecording: []
+  typing: []
 }>()
 
 const text = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
+let typingThrottle = 0
 
 function send() {
   const content = text.value.trim()
@@ -53,6 +55,16 @@ function send() {
   emit('send', content)
   text.value = ''
   autoResize()
+}
+
+function onInput() {
+  autoResize()
+  // Throttle typing events to once per 2 seconds
+  const now = Date.now()
+  if (now - typingThrottle > 2000 && text.value.trim().length > 0) {
+    typingThrottle = now
+    emit('typing')
+  }
 }
 
 function autoResize() {

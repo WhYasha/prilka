@@ -10,12 +10,14 @@
 ///   Client → Server:
 ///     { "type": "auth",      "token": "<access-jwt>" }
 ///     { "type": "subscribe", "chat_id": 42 }
+///     { "type": "typing",    "chat_id": 42 }
 ///     { "type": "ping" }
 ///
 ///   Server → Client:
 ///     { "type": "pong" }
 ///     { "type": "error", "message": "..." }
 ///     { "type": "message", "chat_id": 42, "sender_id": 7, "content": "hi", "id": 99, "created_at": "..." }
+///     { "type": "typing",  "chat_id": 42, "user_id": 7, "username": "alice" }
 ///     { "type": "presence", "user_id": 7, "status": "online" }
 ///
 /// Fan-out uses Redis Pub/Sub channel "chat:<chat_id>"
@@ -42,6 +44,7 @@ private:
     struct ConnCtx {
         long long userId   = 0;
         bool      authed   = false;
+        std::string username;
         std::vector<long long> subscriptions;
     };
 

@@ -46,3 +46,7 @@ export async function unmuteChat(id: number): Promise<void> {
 export async function leaveChat(id: number): Promise<void> {
   await api.delete(`/chats/${id}/leave`)
 }
+
+export async function markRead(id: number): Promise<void> {
+  await api.post(`/chats/${id}/read`)
+}

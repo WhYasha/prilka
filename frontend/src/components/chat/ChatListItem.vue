@@ -14,6 +14,7 @@
           {{ displayName }}
           <span v-if="chat.is_muted" class="mute-icon" title="Muted">&#128276;</span>
         </span>
+        <span v-if="chat.unread_count > 0" class="unread-badge">{{ chat.unread_count > 99 ? '99+' : chat.unread_count }}</span>
         <span class="chat-item-time">{{ formatTime(chat.last_at || chat.updated_at) }}</span>
       </div>
       <div class="chat-item-preview">{{ chat.last_message || '' }}</div>
