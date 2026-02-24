@@ -516,6 +516,78 @@ else:
     check("DELETE unpin message -> 204", False, "skipped")
     check("GET pinned-message -> null after unpin", False, "skipped")
 
+# ── 16. Forward messages ──────────────────────────────────────────────────
+print("\n[16] Forward messages")
+
+# Send a message to direct chat so we have something to forward
+FWD_MSG = "Message to forward"
+s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
+           {"content": FWD_MSG, "type": "text"}, token=token)
+fwd_source_msg_id = b.get("id") if s == 201 else None
+
+if fwd_source_msg_id and group_id:
+    # Forward from direct chat to group chat
+    s, b = req("POST", "/chats/" + str(group_id) + "/messages/forward",
+               {"from_chat_id": chat_id, "message_ids": [fwd_source_msg_id]}, token=token)
+    check("POST forward messages -> 200", s == 200 and isinstance(b, list),
+          str(len(b)) + " forwarded" if isinstance(b, list) else "status=" + str(s))
+    if isinstance(b, list) and b:
+        fwd_msg = b[0]
+        check("Forwarded msg has forwarded_from fields",
+              fwd_msg.get("forwarded_from_chat_id") == chat_id
+              and fwd_msg.get("forwarded_from_message_id") == fwd_source_msg_id,
+              "from_chat=" + str(fwd_msg.get("forwarded_from_chat_id"))
+              + " from_msg=" + str(fwd_msg.get("forwarded_from_message_id")))
+    else:
+        check("Forwarded msg has forwarded_from fields", False, "no messages returned")
+else:
+    check("POST forward messages -> 200", False, "no source msg or group")
+    check("Forwarded msg has forwarded_from fields", False, "skipped")
+
+# ── 17. Privacy settings ─────────────────────────────────────────────────
+print("\n[17] Privacy settings")
+
+# PUT settings with last_seen_visibility = approx_only
+s, b = req("PUT", "/settings", {"last_seen_visibility": "approx_only"}, token=token)
+check("PUT /settings -> 204", s == 204, "status=" + str(s))
+
+# GET settings and verify round-trip
+s, b = req("GET", "/settings", token=token)
+check("GET /settings -> 200 with approx_only",
+      s == 200 and b.get("last_seen_visibility") == "approx_only",
+      "last_seen_visibility=" + str(b.get("last_seen_visibility")) if isinstance(b, dict) else "")
+
+# Restore to default
+req("PUT", "/settings", {"last_seen_visibility": "everyone"}, token=token)
+
+# ── 18. Privacy enforcement ──────────────────────────────────────────────
+print("\n[18] Privacy enforcement")
+
+# Register user A (privacy_test user)
+PRIV_USER = "smoketest_privacy"
+PRIV_EMAIL = "smoketest_privacy@example.com"
+s, b = req("POST", "/auth/register", {"username": PRIV_USER, "email": PRIV_EMAIL, "password": PASS})
+# Login as user A
+s, b = req("POST", "/auth/login", {"username": PRIV_USER, "password": PASS})
+token_priv = b.get("access_token", "")
+priv_user_id = b.get("user_id", 0)
+
+if token_priv and priv_user_id:
+    # Set user A's visibility to 'nobody'
+    s, b = req("PUT", "/settings", {"last_seen_visibility": "nobody"}, token=token_priv)
+    check("Set privacy user to 'nobody' -> 204", s == 204, "status=" + str(s))
+
+    # As user B (smoketest_e2e, non-admin), GET /users/{A.id}
+    s, b = req("GET", "/users/" + str(priv_user_id), token=token)
+    last_act = b.get("last_activity") if isinstance(b, dict) else "ERR"
+    is_online = b.get("is_online") if isinstance(b, dict) else "ERR"
+    check("GET user with 'nobody' -> no exact last_activity",
+          s == 200 and (last_act is None or last_act == ""),
+          "last_activity=" + str(last_act) + " is_online=" + str(is_online))
+else:
+    check("Set privacy user to 'nobody' -> 204", False, "could not create privacy user")
+    check("GET user with 'nobody' -> no exact last_activity", False, "skipped")
+
 # ── 13. Metrics ────────────────────────────────────────────────────────────
 print("\n[13] Metrics")
 try:
