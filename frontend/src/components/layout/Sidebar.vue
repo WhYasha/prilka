@@ -25,6 +25,21 @@
         </div>
       </template>
       <template v-else>
+        <!-- Pinned section -->
+        <div v-if="pinned.length > 0" class="chat-section-label">Pinned</div>
+        <ChatListItem
+          v-for="chat in pinned"
+          :key="chat.id"
+          :chat="chat"
+          :active="chat.id === chatsStore.activeChatId"
+          @select="emit('selectChat', chat.id)"
+          @toggle-favorite="chatsStore.toggleFavorite(chat.id)"
+          @toggle-pin="chatsStore.togglePin(chat.id)"
+          @toggle-mute="chatsStore.toggleMute(chat.id)"
+          @toggle-archive="chatsStore.toggleArchive(chat.id)"
+          @contextmenu="showContextMenu($event, chat.id)"
+        />
+
         <!-- Starred section -->
         <div v-if="favorites.length > 0" class="chat-section-label">Starred</div>
         <ChatListItem
@@ -34,10 +49,13 @@
           :active="chat.id === chatsStore.activeChatId"
           @select="emit('selectChat', chat.id)"
           @toggle-favorite="chatsStore.toggleFavorite(chat.id)"
+          @toggle-pin="chatsStore.togglePin(chat.id)"
+          @toggle-mute="chatsStore.toggleMute(chat.id)"
+          @toggle-archive="chatsStore.toggleArchive(chat.id)"
           @contextmenu="showContextMenu($event, chat.id)"
         />
 
-        <div v-if="favorites.length > 0 && rest.length > 0" class="chat-section-label">
+        <div v-if="(pinned.length > 0 || favorites.length > 0) && rest.length > 0" class="chat-section-label">
           All chats
         </div>
         <ChatListItem
@@ -47,6 +65,9 @@
           :active="chat.id === chatsStore.activeChatId"
           @select="emit('selectChat', chat.id)"
           @toggle-favorite="chatsStore.toggleFavorite(chat.id)"
+          @toggle-pin="chatsStore.togglePin(chat.id)"
+          @toggle-mute="chatsStore.toggleMute(chat.id)"
+          @toggle-archive="chatsStore.toggleArchive(chat.id)"
           @contextmenu="showContextMenu($event, chat.id)"
         />
       </template>
@@ -70,16 +91,18 @@ const searchQuery = ref('')
 
 const filteredChats = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  if (!q) return chatsStore.sortedChats
-  return chatsStore.sortedChats.filter((c) => {
+  const nonArchived = chatsStore.sortedChats.filter((c) => !c.is_archived)
+  if (!q) return nonArchived
+  return nonArchived.filter((c) => {
     const name = chatDisplayName(c).toLowerCase()
     const uname = (c.other_username || '').toLowerCase()
     return name.includes(q) || uname.includes(q)
   })
 })
 
-const favorites = computed(() => filteredChats.value.filter((c) => c.is_favorite))
-const rest = computed(() => filteredChats.value.filter((c) => !c.is_favorite))
+const pinned = computed(() => filteredChats.value.filter((c) => c.is_pinned && !c.is_favorite))
+const favorites = computed(() => filteredChats.value.filter((c) => c.is_favorite && !c.is_pinned))
+const rest = computed(() => filteredChats.value.filter((c) => !c.is_favorite && !c.is_pinned))
 
 function chatDisplayName(c: { type: string; title?: string | null; name?: string | null; other_display_name?: string; other_username?: string }): string {
   if (c.type === 'channel' || c.type === 'group') return c.title || c.name || 'Untitled'
