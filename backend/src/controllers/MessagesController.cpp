@@ -175,16 +175,16 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                     std::string sql;
                     if (resolvedStickerId > 0) {
                         sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, sticker_id, reply_to_message_id) "
-                              "VALUES ($1, $2, $3, $4, $5, NULLIF($6, 0)) RETURNING id, created_at";
+                              "VALUES ($1, $2, $3, $4, $5, NULLIF($6::BIGINT, 0)) RETURNING id, created_at";
                     } else if (resolvedFileId > 0 && durationSecs > 0) {
                         sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id, duration_seconds, reply_to_message_id) "
-                              "VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, 0)) RETURNING id, created_at";
+                              "VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7::BIGINT, 0)) RETURNING id, created_at";
                     } else if (resolvedFileId > 0) {
                         sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id, reply_to_message_id) "
-                              "VALUES ($1, $2, $3, $4, $5, NULLIF($6, 0)) RETURNING id, created_at";
+                              "VALUES ($1, $2, $3, $4, $5, NULLIF($6::BIGINT, 0)) RETURNING id, created_at";
                     } else {
                         sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, reply_to_message_id) "
-                              "VALUES ($1, $2, $3, $4, NULLIF($5, 0)) RETURNING id, created_at";
+                              "VALUES ($1, $2, $3, $4, NULLIF($5::BIGINT, 0)) RETURNING id, created_at";
                     }
 
                     auto onInserted = [=, cbPtr](const drogon::orm::Result& r) mutable {
