@@ -83,21 +83,32 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                     [cb, members, me, type, title](const drogon::orm::Result& r2) mutable {
                         long long chatId = r2[0]["id"].as<long long>();
                         auto db3 = drogon::app().getDbClient();
-                        for (auto uid : members) {
-                            std::string role = (uid == me) ? "owner" : "member";
-                            db3->execSqlAsync(
-                                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                                [](const drogon::orm::Result&) {},
-                                [](const drogon::orm::DrogonDbException& e) {
-                                    LOG_WARN << "member insert: " << e.base().what();
-                                }, chatId, uid, role);
-                        }
-                        Json::Value resp;
-                        resp["id"]   = Json::Int64(chatId);
-                        resp["type"] = type;
-                        auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
-                        respObj->setStatusCode(drogon::k201Created);
-                        cb(respObj);
+                        // Insert creator as owner first, wait for completion before responding
+                        db3->execSqlAsync(
+                            "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING",
+                            [cb, members, me, type, chatId](const drogon::orm::Result&) mutable {
+                                // Insert other member fire-and-forget
+                                auto db4 = drogon::app().getDbClient();
+                                for (auto uid : members) {
+                                    if (uid == me) continue;
+                                    db4->execSqlAsync(
+                                        "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING",
+                                        [](const drogon::orm::Result&) {},
+                                        [](const drogon::orm::DrogonDbException& e) {
+                                            LOG_WARN << "member insert: " << e.base().what();
+                                        }, chatId, uid);
+                                }
+                                Json::Value resp;
+                                resp["id"]   = Json::Int64(chatId);
+                                resp["type"] = type;
+                                auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
+                                respObj->setStatusCode(drogon::k201Created);
+                                cb(respObj);
+                            },
+                            [cb](const drogon::orm::DrogonDbException& e) mutable {
+                                LOG_ERROR << "creator member insert (direct): " << e.base().what();
+                                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                            }, chatId, me);
                     },
                     [cb](const drogon::orm::DrogonDbException& e) mutable {
                         LOG_ERROR << "createChat direct: " << e.base().what();
@@ -119,22 +130,35 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
         [cb, members, me, type, title](const drogon::orm::Result& r) mutable {
             long long chatId = r[0]["id"].as<long long>();
             auto db2 = drogon::app().getDbClient();
-            for (auto uid : members) {
-                std::string role = (uid == me) ? "owner" : "member";
-                db2->execSqlAsync(
-                    "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-                    [](const drogon::orm::Result&) {},
-                    [](const drogon::orm::DrogonDbException& e) {
-                        LOG_WARN << "member insert: " << e.base().what();
-                    }, chatId, uid, role);
-            }
-            Json::Value resp;
-            resp["id"]   = Json::Int64(chatId);
-            resp["type"] = type;
-            if (!title.empty()) resp["title"] = title;
-            auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
-            respObj->setStatusCode(drogon::k201Created);
-            cb(respObj);
+            // Insert creator as owner first, wait for completion before responding
+            db2->execSqlAsync(
+                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING",
+                [cb, members, me, type, title, chatId](const drogon::orm::Result&) mutable {
+                    // Fire-and-forget remaining members
+                    if (members.size() > 1) {
+                        auto db3 = drogon::app().getDbClient();
+                        for (auto uid : members) {
+                            if (uid == me) continue;
+                            db3->execSqlAsync(
+                                "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING",
+                                [](const drogon::orm::Result&) {},
+                                [](const drogon::orm::DrogonDbException& e) {
+                                    LOG_WARN << "member insert: " << e.base().what();
+                                }, chatId, uid);
+                        }
+                    }
+                    Json::Value resp;
+                    resp["id"]   = Json::Int64(chatId);
+                    resp["type"] = type;
+                    if (!title.empty()) resp["title"] = title;
+                    auto respObj = drogon::HttpResponse::newHttpJsonResponse(resp);
+                    respObj->setStatusCode(drogon::k201Created);
+                    cb(respObj);
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "creator member insert: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, chatId, me);
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             std::string what = e.base().what();
@@ -417,8 +441,10 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
 
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(
-                "SELECT u.id, u.username, u.display_name, cm.role "
+                "SELECT u.id, u.username, u.display_name, cm.role, cm.joined_at, "
+                "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
                 "FROM chat_members cm JOIN users u ON u.id = cm.user_id "
+                "LEFT JOIN files f ON f.id = u.avatar_file_id "
                 "WHERE cm.chat_id = $1",
                 [cb, chat = std::move(chat), me](const drogon::orm::Result& mr) mutable {
                     Json::Value members(Json::arrayValue);
@@ -428,6 +454,11 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
                         mem["username"]     = m["username"].as<std::string>();
                         mem["display_name"] = m["display_name"].isNull() ? Json::Value() : Json::Value(m["display_name"].as<std::string>());
                         mem["role"]         = m["role"].as<std::string>();
+                        mem["joined_at"]    = m["joined_at"].isNull() ? Json::Value() : Json::Value(m["joined_at"].as<std::string>());
+                        std::string avBucket = m["avatar_bucket"].isNull() ? "" : m["avatar_bucket"].as<std::string>();
+                        std::string avKey    = m["avatar_key"].isNull()    ? "" : m["avatar_key"].as<std::string>();
+                        std::string url = avatarUrl(avBucket, avKey);
+                        mem["avatar_url"]   = url.empty() ? Json::Value() : Json::Value(url);
                         members.append(mem);
                         if (m["id"].as<long long>() == me)
                             chat["my_role"] = m["role"].as<std::string>();
@@ -583,4 +614,263 @@ void ChatsController::unarchiveChat(const drogon::HttpRequestPtr& req,
             LOG_ERROR << "unarchiveChat: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, me, chatId);
+}
+
+// PATCH /chats/{id} — update title, description, public_name (owner/admin only)
+void ChatsController::updateChat(const drogon::HttpRequestPtr& req,
+                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                  long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto body = req->getJsonObject();
+    if (!body) return cb(jsonErr("Invalid JSON", drogon::k400BadRequest));
+
+    auto db = drogon::app().getDbClient();
+    // Check membership and role
+    db->execSqlAsync(
+        "SELECT cm.role FROM chat_members cm WHERE cm.chat_id = $1 AND cm.user_id = $2",
+        [cb, chatId, body](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
+            std::string role = r[0]["role"].as<std::string>();
+            if (role != "owner" && role != "admin")
+                return cb(jsonErr("Only owner or admin can update chat", drogon::k403Forbidden));
+
+            // Build dynamic SET clause
+            std::vector<std::string> setClauses;
+            std::vector<std::string> params;
+            int paramIdx = 1;
+
+            // chatId is always $1
+            params.push_back(std::to_string(chatId));
+
+            if ((*body).isMember("title")) {
+                paramIdx++;
+                setClauses.push_back("title = $" + std::to_string(paramIdx));
+                params.push_back((*body)["title"].asString());
+            }
+            if ((*body).isMember("description")) {
+                paramIdx++;
+                setClauses.push_back("description = $" + std::to_string(paramIdx));
+                params.push_back((*body)["description"].asString());
+            }
+            if ((*body).isMember("public_name")) {
+                paramIdx++;
+                setClauses.push_back("public_name = NULLIF($" + std::to_string(paramIdx) + ", '')");
+                params.push_back((*body)["public_name"].asString());
+            }
+
+            if (setClauses.empty())
+                return cb(jsonErr("No fields to update", drogon::k400BadRequest));
+
+            std::string sql = "UPDATE chats SET ";
+            for (size_t i = 0; i < setClauses.size(); i++) {
+                if (i > 0) sql += ", ";
+                sql += setClauses[i];
+            }
+            sql += ", updated_at = NOW() WHERE id = $1 "
+                   "RETURNING id, type, name, title, description, public_name";
+
+            auto db2 = drogon::app().getDbClient();
+            // Use parameterized query based on param count
+            if (paramIdx == 2) {
+                db2->execSqlAsync(sql,
+                    [cb](const drogon::orm::Result& r2) mutable {
+                        if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
+                        const auto row = r2[0];
+                        Json::Value resp;
+                        resp["id"]          = Json::Int64(row["id"].as<long long>());
+                        resp["type"]        = row["type"].as<std::string>();
+                        resp["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
+                        resp["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
+                        resp["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
+                        resp["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
+                        cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                    },
+                    [cb](const drogon::orm::DrogonDbException& e) mutable {
+                        std::string what = e.base().what();
+                        if (what.find("unique") != std::string::npos ||
+                            what.find("duplicate") != std::string::npos)
+                            return cb(jsonErr("public_name already taken", drogon::k409Conflict));
+                        LOG_ERROR << "updateChat: " << what;
+                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                    }, chatId, params[1]);
+            } else if (paramIdx == 3) {
+                db2->execSqlAsync(sql,
+                    [cb](const drogon::orm::Result& r2) mutable {
+                        if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
+                        const auto row = r2[0];
+                        Json::Value resp;
+                        resp["id"]          = Json::Int64(row["id"].as<long long>());
+                        resp["type"]        = row["type"].as<std::string>();
+                        resp["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
+                        resp["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
+                        resp["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
+                        resp["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
+                        cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                    },
+                    [cb](const drogon::orm::DrogonDbException& e) mutable {
+                        std::string what = e.base().what();
+                        if (what.find("unique") != std::string::npos ||
+                            what.find("duplicate") != std::string::npos)
+                            return cb(jsonErr("public_name already taken", drogon::k409Conflict));
+                        LOG_ERROR << "updateChat: " << what;
+                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                    }, chatId, params[1], params[2]);
+            } else {
+                db2->execSqlAsync(sql,
+                    [cb](const drogon::orm::Result& r2) mutable {
+                        if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
+                        const auto row = r2[0];
+                        Json::Value resp;
+                        resp["id"]          = Json::Int64(row["id"].as<long long>());
+                        resp["type"]        = row["type"].as<std::string>();
+                        resp["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
+                        resp["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
+                        resp["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
+                        resp["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
+                        cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                    },
+                    [cb](const drogon::orm::DrogonDbException& e) mutable {
+                        std::string what = e.base().what();
+                        if (what.find("unique") != std::string::npos ||
+                            what.find("duplicate") != std::string::npos)
+                            return cb(jsonErr("public_name already taken", drogon::k409Conflict));
+                        LOG_ERROR << "updateChat: " << what;
+                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                    }, chatId, params[1], params[2], params[3]);
+            }
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "updateChat role check: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, chatId, me);
+}
+
+// POST /chats/{id}/avatar — set chat avatar from file_id (owner only)
+void ChatsController::setChatAvatar(const drogon::HttpRequestPtr& req,
+                                     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                     long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto body = req->getJsonObject();
+    if (!body || !(*body).isMember("file_id"))
+        return cb(jsonErr("file_id is required", drogon::k400BadRequest));
+
+    long long fileId = (*body)["file_id"].asInt64();
+
+    auto db = drogon::app().getDbClient();
+    // Check that requester is owner
+    db->execSqlAsync(
+        "SELECT cm.role FROM chat_members cm WHERE cm.chat_id = $1 AND cm.user_id = $2",
+        [cb, chatId, fileId](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
+            std::string role = r[0]["role"].as<std::string>();
+            if (role != "owner")
+                return cb(jsonErr("Only owner can set chat avatar", drogon::k403Forbidden));
+
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "UPDATE chats SET avatar_file_id = $1, updated_at = NOW() WHERE id = $2 "
+                "RETURNING id",
+                [cb, fileId](const drogon::orm::Result& r2) mutable {
+                    if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
+
+                    // Get presigned URL for the avatar
+                    auto db3 = drogon::app().getDbClient();
+                    db3->execSqlAsync(
+                        "SELECT f.bucket, f.object_key FROM files f WHERE f.id = $1",
+                        [cb](const drogon::orm::Result& r3) mutable {
+                            Json::Value resp;
+                            if (!r3.empty()) {
+                                std::string url = avatarUrl(
+                                    r3[0]["bucket"].as<std::string>(),
+                                    r3[0]["object_key"].as<std::string>());
+                                resp["avatar_url"] = url.empty() ? Json::Value() : Json::Value(url);
+                            } else {
+                                resp["avatar_url"] = Json::Value();
+                            }
+                            cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                        },
+                        [cb](const drogon::orm::DrogonDbException& e) mutable {
+                            LOG_ERROR << "setChatAvatar file lookup: " << e.base().what();
+                            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                        }, fileId);
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "setChatAvatar update: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, fileId, chatId);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "setChatAvatar role check: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, chatId, me);
+}
+
+// POST /chats/{id}/members/{userId}/promote — set role='admin' (owner only)
+void ChatsController::promoteMember(const drogon::HttpRequestPtr& req,
+                                     std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                     long long chatId, long long userId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT cm.role FROM chat_members cm WHERE cm.chat_id = $1 AND cm.user_id = $2",
+        [cb, chatId, userId](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
+            std::string role = r[0]["role"].as<std::string>();
+            if (role != "owner")
+                return cb(jsonErr("Only owner can promote members", drogon::k403Forbidden));
+
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "UPDATE chat_members SET role = 'admin' WHERE chat_id = $1 AND user_id = $2 AND role = 'member' "
+                "RETURNING user_id",
+                [cb](const drogon::orm::Result& r2) mutable {
+                    if (r2.empty()) return cb(jsonErr("User not found or already admin/owner", drogon::k404NotFound));
+                    Json::Value resp;
+                    resp["role"] = "admin";
+                    cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "promoteMember: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, chatId, userId);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "promoteMember role check: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, chatId, me);
+}
+
+// POST /chats/{id}/members/{userId}/demote — set role='member' (owner only)
+void ChatsController::demoteMember(const drogon::HttpRequestPtr& req,
+                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                    long long chatId, long long userId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT cm.role FROM chat_members cm WHERE cm.chat_id = $1 AND cm.user_id = $2",
+        [cb, chatId, userId](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
+            std::string role = r[0]["role"].as<std::string>();
+            if (role != "owner")
+                return cb(jsonErr("Only owner can demote members", drogon::k403Forbidden));
+
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "UPDATE chat_members SET role = 'member' WHERE chat_id = $1 AND user_id = $2 AND role = 'admin' "
+                "RETURNING user_id",
+                [cb](const drogon::orm::Result& r2) mutable {
+                    if (r2.empty()) return cb(jsonErr("User not found or not an admin", drogon::k404NotFound));
+                    Json::Value resp;
+                    resp["role"] = "member";
+                    cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "demoteMember: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, chatId, userId);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "demoteMember role check: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, chatId, me);
 }

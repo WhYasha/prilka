@@ -18,6 +18,10 @@ public:
     ADD_METHOD_TO(ChatsController::unpinChat,      "/chats/{1}/pin",      drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(ChatsController::archiveChat,    "/chats/{1}/archive",  drogon::Post,   "AuthFilter");
     ADD_METHOD_TO(ChatsController::unarchiveChat,  "/chats/{1}/archive",  drogon::Delete, "AuthFilter");
+    ADD_METHOD_TO(ChatsController::updateChat,     "/chats/{1}",          drogon::Patch,  "AuthFilter");
+    ADD_METHOD_TO(ChatsController::setChatAvatar,  "/chats/{1}/avatar",   drogon::Post,   "AuthFilter");
+    ADD_METHOD_TO(ChatsController::promoteMember,  "/chats/{1}/members/{2}/promote", drogon::Post, "AuthFilter");
+    ADD_METHOD_TO(ChatsController::demoteMember,   "/chats/{1}/members/{2}/demote",  drogon::Post, "AuthFilter");
     METHOD_LIST_END
 
     void createChat(const drogon::HttpRequestPtr& req,
@@ -73,4 +77,20 @@ public:
     void unarchiveChat(const drogon::HttpRequestPtr& req,
                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                        long long chatId);
+
+    void updateChat(const drogon::HttpRequestPtr& req,
+                    std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                    long long chatId);
+
+    void setChatAvatar(const drogon::HttpRequestPtr& req,
+                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                       long long chatId);
+
+    void promoteMember(const drogon::HttpRequestPtr& req,
+                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                       long long chatId, long long userId);
+
+    void demoteMember(const drogon::HttpRequestPtr& req,
+                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                      long long chatId, long long userId);
 };

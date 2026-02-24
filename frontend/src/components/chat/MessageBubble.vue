@@ -81,6 +81,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
+import linkifyStr from 'linkify-string'
 import Badge from '@/components/ui/Badge.vue'
 import type { Message, Sticker } from '@/api/types'
 import { useSelectionStore } from '@/stores/selection'
@@ -173,22 +174,20 @@ const replyQuoteText = computed(() => {
 })
 
 const renderedContent = computed(() => {
-  const text = escHtml(props.message.content || '')
-  // Process @mentions
+  const text = linkifyStr(props.message.content || '', {
+    defaultProtocol: 'https',
+    target: '_blank',
+    rel: 'noopener noreferrer',
+  })
+  // Process @mentions — skip @ signs inside <a ...>...</a> tags
   return text.replace(
-    /@(\w{1,30})/g,
-    '<span class="mention" data-u="$1" onclick="window.dispatchEvent(new CustomEvent(\'mention-click\', {detail:\'$1\'}))">@$1</span>',
+    /(<a\s[^>]*>.*?<\/a>)|@(\w{1,30})/g,
+    (match, anchorTag, username) => {
+      if (anchorTag) return anchorTag
+      return `<span class="mention" data-u="${username}" onclick="window.dispatchEvent(new CustomEvent('mention-click', {detail:'${username}'}))">@${username}</span>`
+    },
   )
 })
-
-function escHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
 
 function formatTime(isoStr: string): string {
   if (!isoStr) return ''

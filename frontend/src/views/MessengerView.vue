@@ -52,6 +52,12 @@
       v-if="downloadModalOpen"
       @close="downloadModalOpen = false"
     />
+    <InvitePreviewModal
+      v-if="inviteToken"
+      :token="inviteToken"
+      @close="inviteToken = null"
+      @joined="handleInviteJoined"
+    />
 
     <!-- Context Menu -->
     <ContextMenu />
@@ -80,6 +86,7 @@ import NewChatModal from '@/components/modals/NewChatModal.vue'
 import ProfileModal from '@/components/modals/ProfileModal.vue'
 import UserProfileModal from '@/components/modals/UserProfileModal.vue'
 import DownloadModal from '@/components/modals/DownloadModal.vue'
+import InvitePreviewModal from '@/components/modals/InvitePreviewModal.vue'
 import ContextMenu from '@/components/chat/ContextMenu.vue'
 
 const route = useRoute()
@@ -101,6 +108,7 @@ const profileModalOpen = ref(false)
 const profileInitialTab = ref<'profile' | 'settings'>('profile')
 const downloadModalOpen = ref(false)
 const userProfileTarget = ref<string | null>(null)
+const inviteToken = ref<string | null>(null)
 const stickers = ref<Sticker[]>([])
 
 // Pending scroll-to message for deep links
@@ -298,9 +306,41 @@ async function handleChatCreated(chatId: number) {
   chatsStore.setActiveChat(chatId)
 }
 
+async function handleInviteJoined(chatId: number) {
+  inviteToken.value = null
+  await chatsStore.loadChats()
+  chatsStore.setActiveChat(chatId)
+}
+
+// Intercept clicks on invite links within the messenger
+function handleInviteLinkClick(e: MouseEvent) {
+  const target = (e.target as HTMLElement)?.closest('a')
+  if (!target) return
+  const href = target.getAttribute('href')
+  if (!href) return
+
+  // Match /join/{token} paths (relative or absolute with same origin)
+  let match: RegExpMatchArray | null = null
+  try {
+    const url = new URL(href, window.location.origin)
+    if (url.origin === window.location.origin) {
+      match = url.pathname.match(/^\/join\/([^/]+)$/)
+    }
+  } catch {
+    match = href.match(/^\/join\/([^/]+)$/)
+  }
+
+  if (match) {
+    e.preventDefault()
+    e.stopPropagation()
+    inviteToken.value = match[1]
+  }
+}
+
 // Global ESC handler
 function handleEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
+  if (inviteToken.value) { inviteToken.value = null; return }
   if (selectionStore.selectionMode) { selectionStore.exitSelectionMode(); return }
   if (userProfileTarget.value) { userProfileTarget.value = null; return }
   if (newChatModalOpen.value) { newChatModalOpen.value = false; return }
@@ -310,6 +350,12 @@ function handleEsc(e: KeyboardEvent) {
   if (chatsStore.activeChatId !== null) { handleBack(); return }
 }
 
-onMounted(() => document.addEventListener('keydown', handleEsc))
-onUnmounted(() => document.removeEventListener('keydown', handleEsc))
+onMounted(() => {
+  document.addEventListener('keydown', handleEsc)
+  document.addEventListener('click', handleInviteLinkClick, true)
+})
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleEsc)
+  document.removeEventListener('click', handleInviteLinkClick, true)
+})
 </script>

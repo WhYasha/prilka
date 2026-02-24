@@ -104,9 +104,6 @@
         <button class="icon-btn rec-cancel" title="Cancel" @click="cancelRec">&#10005;</button>
       </div>
 
-      <!-- Invite management -->
-      <InviteSection v-if="showInviteSection" :chat-id="chatsStore.activeChatId!" />
-
       <!-- Message context menu (desktop right-click) -->
       <MessageContextMenu />
 
@@ -170,7 +167,6 @@ import MessageBubble from '@/components/chat/MessageBubble.vue'
 import Composer from '@/components/chat/Composer.vue'
 import StickerPicker from '@/components/chat/StickerPicker.vue'
 import Spinner from '@/components/ui/Spinner.vue'
-import InviteSection from '@/components/chat/InviteSection.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import MessageContextMenu from '@/components/chat/MessageContextMenu.vue'
 import SelectionBar from '@/components/chat/SelectionBar.vue'
@@ -201,7 +197,6 @@ let olderObserver: IntersectionObserver | null = null
 const stickerPickerOpen = ref(false)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
-const showInviteSection = ref(false)
 const channelInfoModalOpen = ref(false)
 
 // New messages indicator state
@@ -397,7 +392,6 @@ watch(
       try {
         const detail = await getChat(chatId)
         myRole.value = detail.my_role || 'member'
-        showInviteSection.value = myRole.value === 'owner' || myRole.value === 'admin'
       } catch {
         // ignore
       }
