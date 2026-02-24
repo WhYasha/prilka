@@ -3,27 +3,27 @@
     <div class="modal">
       <div class="modal-header">
         <h2 class="modal-title">New Conversation</h2>
-        <button class="icon-btn" @click="emit('close')">&#10005;</button>
+        <button class="icon-btn" @click="emit('close')"><X :size="20" /></button>
       </div>
       <div class="modal-body">
         <!-- Step 1: Type selection -->
         <div v-if="step === 'select'" class="chat-type-cards">
           <button class="chat-type-card" @click="step = 'direct'">
-            <span class="chat-type-icon">&#128100;</span>
+            <span class="chat-type-icon"><UserIcon :size="24" /></span>
             <div>
               <div class="chat-type-label">Direct Chat</div>
               <div class="chat-type-desc">Private 1-on-1 conversation</div>
             </div>
           </button>
           <button class="chat-type-card" @click="step = 'group'">
-            <span class="chat-type-icon">&#128101;</span>
+            <span class="chat-type-icon"><Users :size="24" /></span>
             <div>
               <div class="chat-type-label">Group Chat</div>
               <div class="chat-type-desc">Chat with multiple people</div>
             </div>
           </button>
           <button class="chat-type-card" @click="step = 'channel'">
-            <span class="chat-type-icon">&#128226;</span>
+            <span class="chat-type-icon"><Megaphone :size="24" /></span>
             <div>
               <div class="chat-type-label">Channel</div>
               <div class="chat-type-desc">Broadcast to subscribers</div>
@@ -34,7 +34,7 @@
         <!-- Step 2a: Direct - user search -->
         <div v-if="step === 'direct'" class="new-chat-form">
           <button class="btn btn-ghost btn-sm new-chat-back-btn" @click="step = 'select'">
-            &#8592; Back
+            <ArrowLeft :size="16" /> Back
           </button>
           <input
             v-model="userQuery"
@@ -65,7 +65,7 @@
         <!-- Step 2b: Group -->
         <div v-if="step === 'group'" class="new-chat-form">
           <button class="btn btn-ghost btn-sm new-chat-back-btn" @click="step = 'select'">
-            &#8592; Back
+            <ArrowLeft :size="16" /> Back
           </button>
           <div class="form-group">
             <label class="form-label">Group name</label>
@@ -95,7 +95,7 @@
                 <Avatar :name="u.display_name || u.username" :url="u.avatar_url" size="sm" />
                 <div>
                   <div class="user-pick-name">
-                    {{ selectedMemberIds.has(u.id) ? '&#10003; ' : '' }}{{ u.display_name || u.username }}
+                    <Check v-if="selectedMemberIds.has(u.id)" :size="14" style="margin-right: 4px" />{{ u.display_name || u.username }}
                   </div>
                   <div class="user-pick-handle">@{{ u.username }}</div>
                 </div>
@@ -112,7 +112,7 @@
         <!-- Step 2c: Channel -->
         <div v-if="step === 'channel'" class="new-chat-form">
           <button class="btn btn-ghost btn-sm new-chat-back-btn" @click="step = 'select'">
-            &#8592; Back
+            <ArrowLeft :size="16" /> Back
           </button>
           <div class="form-group">
             <label class="form-label">Channel name</label>
@@ -140,6 +140,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { X, User as UserIcon, Users, Megaphone, ArrowLeft, Check } from 'lucide-vue-next'
 import { searchUsers } from '@/api/users'
 import { createChat } from '@/api/chats'
 import { useAuthStore } from '@/stores/auth'

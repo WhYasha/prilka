@@ -1,7 +1,7 @@
 <template>
   <aside class="sidebar">
     <header class="sidebar-header">
-      <button class="icon-btn" aria-label="Menu" @click="emit('openDrawer')">&#9776;</button>
+      <button class="icon-btn" aria-label="Menu" @click="emit('openDrawer')"><Menu :size="20" /></button>
       <div class="search-wrap">
         <input
           v-model="searchQuery"
@@ -15,13 +15,13 @@
         aria-label="New chat"
         title="New chat"
         @click="emit('openNewChat')"
-      >&#9998;</button>
+      ><SquarePen :size="20" /></button>
     </header>
 
     <div class="chat-list">
       <template v-if="filteredChats.length === 0">
         <div class="empty-state-small">
-          No conversations yet.<br />Click &#9998; to start one.
+          No conversations yet.<br />Click the pencil icon to start one.
         </div>
       </template>
       <template v-else>
@@ -56,6 +56,7 @@
 
 <script setup lang="ts">
 import { ref, computed, provide } from 'vue'
+import { Menu, SquarePen } from 'lucide-vue-next'
 import { useChatsStore } from '@/stores/chats'
 import ChatListItem from '@/components/chat/ChatListItem.vue'
 
