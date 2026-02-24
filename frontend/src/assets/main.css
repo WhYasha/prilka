@@ -192,15 +192,17 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   background: var(--drawer-bg);
   display: flex; flex-direction: column;
   transform: translateX(-100%);
-  transition: transform .25s ease;
+  transition: transform var(--transition-normal) ease;
+  will-change: transform;
   box-shadow: 4px 0 24px rgba(0,0,0,.3);
 }
 .drawer.open { transform: translateX(0); }
 .drawer-overlay {
   display: none; position: fixed; inset: 0; z-index: 199;
-  background: rgba(0,0,0,.4);
+  background: var(--modal-backdrop);
+  opacity: 0; transition: opacity var(--transition-normal) ease;
 }
-.drawer-overlay.visible { display: block; }
+.drawer-overlay.visible { display: block; opacity: 1; }
 
 .drawer-header {
   display: flex; align-items: center; gap: .5rem;
@@ -1008,11 +1010,31 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   .modal { max-height: 85vh; max-height: 85dvh; }
   .modal-body { overflow-y: auto; }
   .user-profile-body { text-align: center; padding: 1.5rem 1rem; }
+
+  /* Profile modal: near-full-screen on mobile */
   .profile-modal {
     width: 100%; max-width: 100vw; height: 100vh; height: 100dvh;
     border-radius: 0; max-height: none;
+    animation: none;
   }
   .profile-modal-body { padding: 3rem 1.25rem 1.5rem; }
+  .profile-modal--self {
+    width: 100%; max-width: 100vw; height: 100vh; height: 100dvh;
+    border-radius: 0; max-height: none;
+  }
+  .profile-avatar-section .avatar-xxl,
+  .profile-avatar-section .avatar-wrap.avatar-xxl .avatar {
+    width: var(--profile-avatar-size-sm);
+    height: var(--profile-avatar-size-sm);
+    font-size: 1.4rem;
+  }
+  .profile-name { font-size: 1.2rem; }
+
+  /* Drawer: full-width on small screens */
+  .drawer { width: 85vw; max-width: 320px; }
+
+  /* Menu items: larger touch targets on mobile */
+  .drawer-nav-item { padding: .85rem 1.25rem; font-size: 1rem; }
 }
 
 /* ── Desktop (>768px) ───────────────────────────────────────── */
