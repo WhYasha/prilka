@@ -46,6 +46,13 @@ void WebController::serveRegister(const drogon::HttpRequestPtr& req,
     cb(serveHtml("./www/index.html"));
 }
 
+void WebController::serveMessageDeepLink(const drogon::HttpRequestPtr& req,
+                                          std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                          const std::string& /*chatId*/,
+                                          const std::string& /*messageId*/) {
+    cb(serveHtml("./www/index.html"));
+}
+
 void WebController::serveAdmin(const drogon::HttpRequestPtr& req,
                                 std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
     cb(serveHtml("./www/index.html"));
