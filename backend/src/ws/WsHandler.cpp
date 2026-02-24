@@ -2,6 +2,7 @@
 #include "../services/JwtService.h"
 #include "../services/MetricsService.h"
 #include <drogon/nosql/RedisClient.h>
+#include <drogon/nosql/RedisSubscriber.h>
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
 #include <json/json.h>
@@ -11,6 +12,11 @@
 std::mutex WsHandler::s_mu;
 std::unordered_map<long long, std::vector<drogon::WebSocketConnectionPtr>> WsHandler::s_subs;
 std::unordered_map<long long, bool> WsHandler::s_redisSubs;
+
+// Keep Redis subscriber objects alive so callbacks remain valid
+static std::mutex s_redisSubMu;
+static std::unordered_map<long long,
+       std::shared_ptr<drogon::nosql::RedisSubscriber>> s_redisSubPtrs;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -46,12 +52,20 @@ static void sendError(const drogon::WebSocketConnectionPtr& conn,
 // ── Broadcast to local subscribers ────────────────────────────────────────
 
 void WsHandler::broadcast(long long chatId, const Json::Value& payload) {
-    std::lock_guard<std::mutex> lk(s_mu);
-    auto it = s_subs.find(chatId);
-    if (it == s_subs.end()) return;
-    std::string msg = toJsonStr(payload);
-    for (auto& conn : it->second) {
-        if (conn && !conn->disconnected()) conn->send(msg);
+    try {
+        std::lock_guard<std::mutex> lk(s_mu);
+        auto it = s_subs.find(chatId);
+        if (it == s_subs.end()) return;
+        std::string msg = toJsonStr(payload);
+        for (auto& conn : it->second) {
+            try {
+                if (conn && !conn->disconnected()) conn->send(msg);
+            } catch (const std::exception& e) {
+                LOG_ERROR << "WS broadcast send error: " << e.what();
+            }
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR << "WS broadcast error for chat " << chatId << ": " << e.what();
     }
 }
 
@@ -71,130 +85,173 @@ void WsHandler::subscribeToRedis(long long chatId) {
         return;
     }
 
-    // Subscribe to Redis channel; when a message arrives, broadcast locally.
-    redis->newSubscriber()->subscribe(
-        channel,
-        [chatId](const std::string& /*channel*/, const std::string& msg) {
-            auto payload = parseJson(msg);
-            WsHandler::broadcast(chatId, payload);
+    try {
+        // Store the subscriber so its callback remains valid for the process lifetime
+        auto subscriber = redis->newSubscriber();
+        subscriber->subscribe(
+            channel,
+            [chatId](const std::string& /*channel*/, const std::string& msg) {
+                try {
+                    auto payload = parseJson(msg);
+                    WsHandler::broadcast(chatId, payload);
+                } catch (const std::exception& e) {
+                    LOG_ERROR << "Redis subscribe callback error for chat "
+                              << chatId << ": " << e.what();
+                }
+            }
+        );
+        {
+            std::lock_guard<std::mutex> lk(s_redisSubMu);
+            s_redisSubPtrs[chatId] = std::move(subscriber);
         }
-    );
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Failed to subscribe to Redis channel " << channel
+                  << ": " << e.what();
+        std::lock_guard<std::mutex> lk(s_mu);
+        s_redisSubs.erase(chatId);
+    }
 }
 
 // ── WebSocket lifecycle ────────────────────────────────────────────────────
 
 void WsHandler::handleNewConnection(const drogon::HttpRequestPtr& req,
                                     const drogon::WebSocketConnectionPtr& conn) {
-    MetricsService::instance().wsConnect();
-    auto ctx = std::make_shared<ConnCtx>();
-    conn->setContext(ctx);
-    LOG_INFO << "WebSocket opened from " << conn->peerAddr().toIpPort();
+    try {
+        MetricsService::instance().wsConnect();
+        auto ctx = std::make_shared<ConnCtx>();
+        conn->setContext(ctx);
+        LOG_INFO << "WebSocket opened from " << conn->peerAddr().toIpPort();
+    } catch (const std::exception& e) {
+        LOG_ERROR << "WS handleNewConnection error: " << e.what();
+        try { conn->forceClose(); } catch (...) {}
+    } catch (...) {
+        LOG_ERROR << "WS handleNewConnection unknown error";
+        try { conn->forceClose(); } catch (...) {}
+    }
 }
 
 void WsHandler::handleConnectionClosed(const drogon::WebSocketConnectionPtr& conn) {
-    MetricsService::instance().wsDisconnect();
-    auto ctx = conn->getContext<ConnCtx>();
-    if (ctx) {
-        std::lock_guard<std::mutex> lk(s_mu);
-        for (long long chatId : ctx->subscriptions) {
-            auto& vec = s_subs[chatId];
-            vec.erase(std::remove(vec.begin(), vec.end(), conn), vec.end());
+    try {
+        MetricsService::instance().wsDisconnect();
+        auto ctx = conn->getContext<ConnCtx>();
+        if (ctx) {
+            std::lock_guard<std::mutex> lk(s_mu);
+            for (long long chatId : ctx->subscriptions) {
+                auto& vec = s_subs[chatId];
+                vec.erase(std::remove(vec.begin(), vec.end(), conn), vec.end());
+            }
         }
+        LOG_INFO << "WebSocket closed";
+    } catch (const std::exception& e) {
+        LOG_ERROR << "WS handleConnectionClosed error: " << e.what();
+    } catch (...) {
+        LOG_ERROR << "WS handleConnectionClosed unknown error";
     }
-    LOG_INFO << "WebSocket closed";
 }
 
 void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                                   std::string&&                         rawMsg,
                                   const drogon::WebSocketMessageType&   msgType) {
-    if (msgType == drogon::WebSocketMessageType::Ping) {
-        conn->send("", drogon::WebSocketMessageType::Pong);
-        return;
-    }
-    if (msgType != drogon::WebSocketMessageType::Text) return;
-
-    auto msg = parseJson(rawMsg);
-    if (msg.isNull()) { sendError(conn, "Invalid JSON"); return; }
-
-    std::string type = msg["type"].asString();
-    auto ctx = conn->getContext<ConnCtx>();
-    if (!ctx) { conn->forceClose(); return; }
-
-    // ── auth ───────────────────────────────────────────────────────────────
-    if (type == "auth") {
-        std::string token = msg["token"].asString();
-        auto claims = JwtService::instance().verify(token);
-        if (!claims || claims->tokenType != "access") {
-            sendError(conn, "Invalid or expired access token");
-            conn->forceClose();
+    try {
+        if (msgType == drogon::WebSocketMessageType::Ping) {
+            conn->send("", drogon::WebSocketMessageType::Pong);
             return;
         }
-        ctx->userId = claims->userId;
-        ctx->authed = true;
+        if (msgType != drogon::WebSocketMessageType::Text) return;
 
-        // Update last_activity for admin dashboard metrics
-        auto db = drogon::app().getDbClient();
-        db->execSqlAsync(
-            "UPDATE users SET last_activity = NOW() WHERE id = $1",
-            [](const drogon::orm::Result&) {},
-            [](const drogon::orm::DrogonDbException&) {},
-            ctx->userId);
+        auto msg = parseJson(rawMsg);
+        if (msg.isNull()) { sendError(conn, "Invalid JSON"); return; }
 
-        Json::Value ok;
-        ok["type"]    = "auth_ok";
-        ok["user_id"] = Json::Int64(ctx->userId);
-        sendJson(conn, ok);
-        return;
-    }
+        std::string type = msg["type"].asString();
+        auto ctx = conn->getContext<ConnCtx>();
+        if (!ctx) { conn->forceClose(); return; }
 
-    if (!ctx->authed) { sendError(conn, "Not authenticated"); return; }
+        // ── auth ───────────────────────────────────────────────────────────
+        if (type == "auth") {
+            std::string token = msg["token"].asString();
+            auto claims = JwtService::instance().verify(token);
+            if (!claims || claims->tokenType != "access") {
+                sendError(conn, "Invalid or expired access token");
+                conn->forceClose();
+                return;
+            }
+            ctx->userId = claims->userId;
+            ctx->authed = true;
 
-    // ── ping ───────────────────────────────────────────────────────────────
-    if (type == "ping") {
-        Json::Value pong; pong["type"] = "pong";
-        sendJson(conn, pong);
-        return;
-    }
+            // Update last_activity for admin dashboard metrics
+            auto db = drogon::app().getDbClient();
+            db->execSqlAsync(
+                "UPDATE users SET last_activity = NOW() WHERE id = $1",
+                [](const drogon::orm::Result&) {},
+                [](const drogon::orm::DrogonDbException&) {},
+                ctx->userId);
 
-    // ── subscribe ──────────────────────────────────────────────────────────
-    if (type == "subscribe") {
-        long long chatId = msg["chat_id"].asInt64();
-        if (chatId <= 0) { sendError(conn, "Invalid chat_id"); return; }
+            Json::Value ok;
+            ok["type"]    = "auth_ok";
+            ok["user_id"] = Json::Int64(ctx->userId);
+            sendJson(conn, ok);
+            return;
+        }
 
-        long long userId = ctx->userId;
-        auto db = drogon::app().getDbClient();
-        db->execSqlAsync(
-            "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
-            [this, conn, ctx, chatId](const drogon::orm::Result& r) {
-                if (conn->disconnected()) return;
-                if (r.empty()) {
-                    sendError(conn, "Not a member of this chat");
-                    return;
-                }
-                {
-                    std::lock_guard<std::mutex> lk(s_mu);
-                    auto& vec = s_subs[chatId];
-                    if (std::find(vec.begin(), vec.end(), conn) == vec.end()) {
-                        vec.push_back(conn);
-                        ctx->subscriptions.push_back(chatId);
+        if (!ctx->authed) { sendError(conn, "Not authenticated"); return; }
+
+        // ── ping ───────────────────────────────────────────────────────────
+        if (type == "ping") {
+            Json::Value pong; pong["type"] = "pong";
+            sendJson(conn, pong);
+            return;
+        }
+
+        // ── subscribe ──────────────────────────────────────────────────────
+        if (type == "subscribe") {
+            long long chatId = msg["chat_id"].asInt64();
+            if (chatId <= 0) { sendError(conn, "Invalid chat_id"); return; }
+
+            long long userId = ctx->userId;
+            auto db = drogon::app().getDbClient();
+            db->execSqlAsync(
+                "SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+                [this, conn, ctx, chatId](const drogon::orm::Result& r) {
+                    try {
+                        if (conn->disconnected()) return;
+                        if (r.empty()) {
+                            sendError(conn, "Not a member of this chat");
+                            return;
+                        }
+                        {
+                            std::lock_guard<std::mutex> lk(s_mu);
+                            auto& vec = s_subs[chatId];
+                            if (std::find(vec.begin(), vec.end(), conn) == vec.end()) {
+                                vec.push_back(conn);
+                                ctx->subscriptions.push_back(chatId);
+                            }
+                        }
+                        subscribeToRedis(chatId);
+                        Json::Value ok;
+                        ok["type"]    = "subscribed";
+                        ok["chat_id"] = Json::Int64(chatId);
+                        sendJson(conn, ok);
+                    } catch (const std::exception& e) {
+                        LOG_ERROR << "WS subscribe callback error: " << e.what();
                     }
-                }
-                subscribeToRedis(chatId);
-                Json::Value ok;
-                ok["type"]    = "subscribed";
-                ok["chat_id"] = Json::Int64(chatId);
-                sendJson(conn, ok);
-            },
-            [conn](const drogon::orm::DrogonDbException& e) {
-                if (conn->disconnected()) return;
-                LOG_ERROR << "WS subscribe membership check: " << e.base().what();
-                sendError(conn, "Internal error");
-            },
-            chatId, userId);
-        return;
-    }
+                },
+                [conn](const drogon::orm::DrogonDbException& e) {
+                    if (conn->disconnected()) return;
+                    LOG_ERROR << "WS subscribe membership check: " << e.base().what();
+                    sendError(conn, "Internal error");
+                },
+                chatId, userId);
+            return;
+        }
 
-    sendError(conn, "Unknown message type: " + type);
+        sendError(conn, "Unknown message type: " + type);
+    } catch (const std::exception& e) {
+        LOG_ERROR << "WS handleNewMessage error: " << e.what();
+        try { conn->forceClose(); } catch (...) {}
+    } catch (...) {
+        LOG_ERROR << "WS handleNewMessage unknown error";
+        try { conn->forceClose(); } catch (...) {}
+    }
 }
 
 // ── Static helper called from MessagesController after DB insert ───────────
