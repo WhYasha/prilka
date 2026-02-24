@@ -408,3 +408,159 @@ void MessagesController::deleteMessage(const drogon::HttpRequestPtr& req,
             messageId, chatId, me);
     });
 }
+
+// POST /chats/{targetChatId}/forward
+void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
+                                          std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                          long long targetChatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto body = req->getJsonObject();
+    if (!body) return cb(jsonErr("Invalid JSON", drogon::k400BadRequest));
+
+    long long fromChatId = (*body).get("from_chat_id", Json::Value(0)).asInt64();
+    if (fromChatId <= 0)
+        return cb(jsonErr("from_chat_id required", drogon::k400BadRequest));
+
+    auto& msgIdsVal = (*body)["message_ids"];
+    if (!msgIdsVal.isArray() || msgIdsVal.empty())
+        return cb(jsonErr("message_ids array required", drogon::k400BadRequest));
+    if (msgIdsVal.size() > 100)
+        return cb(jsonErr("Maximum 100 messages per forward", drogon::k400BadRequest));
+
+    std::vector<long long> messageIds;
+    messageIds.reserve(msgIdsVal.size());
+    for (const auto& v : msgIdsVal) {
+        messageIds.push_back(v.asInt64());
+    }
+
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    // Check membership in source chat
+    requireMember(fromChatId, me, [=](bool isMemberSource) {
+        if (!isMemberSource)
+            return (*cbPtr)(jsonErr("Not a member of source chat", drogon::k403Forbidden));
+
+        // Check membership in target chat
+        requireMember(targetChatId, me, [=](bool isMemberTarget) {
+            if (!isMemberTarget)
+                return (*cbPtr)(jsonErr("Not a member of target chat", drogon::k403Forbidden));
+
+            // Build IN clause for message IDs
+            std::string inClause;
+            for (size_t i = 0; i < messageIds.size(); ++i) {
+                if (i > 0) inClause += ",";
+                inClause += std::to_string(messageIds[i]);
+            }
+
+            // Fetch original messages
+            auto db = drogon::app().getDbClient();
+            std::string fetchSql =
+                "SELECT id, content, message_type, sender_id, file_id, sticker_id, duration_seconds "
+                "FROM messages WHERE id IN (" + inClause + ") AND chat_id = $1 AND is_deleted = false "
+                "ORDER BY id ASC";
+
+            db->execSqlAsync(fetchSql,
+                [=](const drogon::orm::Result& origRows) {
+                    if (origRows.empty())
+                        return (*cbPtr)(jsonErr("No valid messages found", drogon::k404NotFound));
+
+                    // Build bulk insert for forwarded messages
+                    std::string insertSql =
+                        "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id, sticker_id, "
+                        "duration_seconds, forwarded_from_chat_id, forwarded_from_message_id) VALUES ";
+
+                    std::vector<std::string> valueSets;
+                    int paramIdx = 1;
+                    // We'll build parameterized values manually using literal embedding
+                    // for safety with the async API. Use a CTE approach instead.
+
+                    // Actually, build a single multi-row INSERT with literal values
+                    // is risky. Let's use a simpler approach: iterate and insert one by one,
+                    // collecting results.
+
+                    auto newMessages = std::make_shared<Json::Value>(Json::arrayValue);
+                    auto remaining = std::make_shared<int>(static_cast<int>(origRows.size()));
+                    auto hasError = std::make_shared<bool>(false);
+
+                    for (const auto& row : origRows) {
+                        long long origId = row["id"].as<long long>();
+                        std::string content = row["content"].isNull() ? "" : row["content"].as<std::string>();
+                        std::string msgType = row["message_type"].as<std::string>();
+                        long long fileId = row["file_id"].isNull() ? 0 : row["file_id"].as<long long>();
+                        long long stickerId = row["sticker_id"].isNull() ? 0 : row["sticker_id"].as<long long>();
+                        int duration = row["duration_seconds"].isNull() ? 0 : row["duration_seconds"].as<int>();
+
+                        auto db2 = drogon::app().getDbClient();
+                        db2->execSqlAsync(
+                            "INSERT INTO messages (chat_id, sender_id, content, message_type, "
+                            "file_id, sticker_id, duration_seconds, "
+                            "forwarded_from_chat_id, forwarded_from_message_id) "
+                            "VALUES ($1, $2, $3, $4, "
+                            "NULLIF($5, 0), NULLIF($6, 0), NULLIF($7, 0), $8, $9) "
+                            "RETURNING id, created_at",
+                            [=](const drogon::orm::Result& ir) {
+                                long long newId = ir[0]["id"].as<long long>();
+                                std::string createdAt = ir[0]["created_at"].as<std::string>();
+
+                                Json::Value msg;
+                                msg["id"] = Json::Int64(newId);
+                                msg["chat_id"] = Json::Int64(targetChatId);
+                                msg["sender_id"] = Json::Int64(me);
+                                msg["content"] = content;
+                                msg["message_type"] = msgType;
+                                msg["created_at"] = createdAt;
+                                msg["forwarded_from_chat_id"] = Json::Int64(fromChatId);
+                                msg["forwarded_from_message_id"] = Json::Int64(origId);
+
+                                // Broadcast via WS
+                                Json::Value wsMsg;
+                                wsMsg["type"] = "message";
+                                wsMsg["id"] = Json::Int64(newId);
+                                wsMsg["chat_id"] = Json::Int64(targetChatId);
+                                wsMsg["sender_id"] = Json::Int64(me);
+                                wsMsg["content"] = content;
+                                wsMsg["message_type"] = msgType;
+                                wsMsg["created_at"] = createdAt;
+                                wsMsg["forwarded_from_chat_id"] = Json::Int64(fromChatId);
+                                wsMsg["forwarded_from_message_id"] = Json::Int64(origId);
+                                WsDispatch::publishMessage(targetChatId, wsMsg);
+
+                                newMessages->append(msg);
+
+                                int left = --(*remaining);
+                                if (left == 0 && !*hasError) {
+                                    // Update target chat updated_at
+                                    auto db3 = drogon::app().getDbClient();
+                                    db3->execSqlAsync(
+                                        "UPDATE chats SET updated_at = NOW() WHERE id = $1",
+                                        [](const drogon::orm::Result&) {},
+                                        [](const drogon::orm::DrogonDbException& e) {
+                                            LOG_WARN << "forward chat updated_at: " << e.base().what();
+                                        }, targetChatId);
+
+                                    auto resp = drogon::HttpResponse::newHttpJsonResponse(*newMessages);
+                                    resp->setStatusCode(drogon::k200OK);
+                                    (*cbPtr)(resp);
+                                }
+                            },
+                            [=](const drogon::orm::DrogonDbException& e) {
+                                LOG_ERROR << "forwardMessages insert: " << e.base().what();
+                                if (!*hasError) {
+                                    *hasError = true;
+                                    (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                                }
+                            },
+                            targetChatId, me, content, msgType,
+                            fileId, stickerId, (long long)duration,
+                            fromChatId, origId);
+                    }
+                },
+                [cbPtr](const drogon::orm::DrogonDbException& e) {
+                    LOG_ERROR << "forwardMessages fetch: " << e.base().what();
+                    (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+                },
+                fromChatId);
+        });
+    });
+}
