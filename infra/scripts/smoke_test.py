@@ -188,8 +188,27 @@ if file_id:
     check("GET /files/{id}/download -> redirect/200",
           dl_status in (200, 302, 307), "status=" + str(dl_status))
 
-# ── 10. WebSocket ──────────────────────────────────────────────────────────
-print("\n[10] WebSocket")
+# ── 10. Presigned URL ─────────────────────────────────────────────────────
+print("\n[10] Presigned URL")
+s, b = req("GET", "/stickers", token=token)
+check("GET /stickers -> 200", s == 200, str(len(b)) + " sticker(s)")
+if isinstance(b, list) and b:
+    sticker_url = b[0].get("url", "")
+    has_encoded_cred = "%2F" in sticker_url or "%2f" in sticker_url
+    check("Presigned URL has %2F encoding", has_encoded_cred, sticker_url[:80])
+    try:
+        r = urllib.request.Request(sticker_url, method="GET")
+        with urllib.request.urlopen(r, timeout=10) as resp:
+            ps = resp.status
+            ct = resp.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as e:
+        ps = e.code
+        ct = ""
+    check("Presigned sticker fetch -> 200", ps == 200,
+          "status=" + str(ps) + " type=" + ct)
+
+# ── 11. WebSocket ──────────────────────────────────────────────────────────
+print("\n[11] WebSocket")
 ws_code = "\n".join([
     "import asyncio, json, sys",
     "try:",
@@ -227,8 +246,8 @@ out = r.stdout.strip()
 check("WebSocket connect -> accepted", "CONNECTED" in out, out[:80])
 check("WebSocket recv (msg or timeout)", "RECV:" in out, out[:80])
 
-# ── 11. Metrics ────────────────────────────────────────────────────────────
-print("\n[11] Metrics")
+# ── 12. Metrics ────────────────────────────────────────────────────────────
+print("\n[12] Metrics")
 try:
     with urllib.request.urlopen(BASE + "/metrics", timeout=5) as resp:
         ms  = resp.status
