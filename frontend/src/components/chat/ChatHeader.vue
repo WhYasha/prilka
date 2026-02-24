@@ -23,6 +23,7 @@ import Avatar from '@/components/ui/Avatar.vue'
 const emit = defineEmits<{
   back: []
   openUserProfile: [username: string]
+  openChannelInfo: []
 }>()
 
 const chatsStore = useChatsStore()
@@ -60,16 +61,26 @@ const subtitle = computed(() => {
 
   const c = chat.value
   if (!c) return ''
-  if (c.type === 'channel') return 'Channel'
-  if (c.type === 'group') return 'Group'
+  if (c.type === 'channel') {
+    const count = c.member_count ?? 0
+    return `${count} subscriber${count !== 1 ? 's' : ''}`
+  }
+  if (c.type === 'group') {
+    const count = c.member_count ?? 0
+    return `${count} member${count !== 1 ? 's' : ''}`
+  }
   // For DMs: show "online" or @username
   if (isOnline.value) return 'online'
   return c.other_username ? '@' + c.other_username : ''
 })
 
 function handleProfileClick() {
-  if (chat.value?.type === 'direct' && chat.value.other_username) {
-    emit('openUserProfile', chat.value.other_username)
+  const c = chat.value
+  if (!c) return
+  if (c.type === 'channel' || c.type === 'group') {
+    emit('openChannelInfo')
+  } else if (c.type === 'direct' && c.other_username) {
+    emit('openUserProfile', c.other_username)
   }
 }
 </script>
