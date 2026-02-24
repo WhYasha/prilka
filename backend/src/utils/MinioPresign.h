@@ -20,6 +20,25 @@ static inline std::string toHex(const unsigned char* d, size_t len) {
     return ss.str();
 }
 
+// S3-style URI encoding: encode all characters except unreserved
+// (A-Z, a-z, 0-9, '-', '_', '.', '~').  When encodeSlash is false,
+// '/' is also preserved (use for URI path components).
+static inline std::string uriEncode(const std::string& s, bool encodeSlash = true) {
+    std::ostringstream enc;
+    for (unsigned char c : s) {
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+            enc << c;
+        } else if (c == '/' && !encodeSlash) {
+            enc << '/';
+        } else {
+            enc << '%' << std::hex << std::uppercase
+                << std::setw(2) << std::setfill('0') << (int)c;
+        }
+    }
+    return enc.str();
+}
+
 static inline std::string sha256Hex(const std::string& s) {
     unsigned char h[SHA256_DIGEST_LENGTH];
     SHA256(reinterpret_cast<const unsigned char*>(s.data()), s.size(), h);
@@ -80,14 +99,17 @@ inline std::string generatePresignedUrl(const std::string& endpoint,
     std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%dT%H%M%SZ", utc);
     std::string date(dateBuf), datetime(timeBuf);
 
-    std::string uri = "/" + bucket + "/" + key;
+    // Canonical URI: encode path components but preserve '/'
+    std::string uri = "/" + uriEncode(bucket + "/" + key, /*encodeSlash=*/false);
 
     std::string credScope = date + "/" + region + "/" + service + "/aws4_request";
     std::string credential = accessKey + "/" + credScope;
 
+    // Query params must be URI-encoded per S3 SigV4 spec
+    // ('/' in credential → %2F)
     std::ostringstream qs;
     qs << "X-Amz-Algorithm=AWS4-HMAC-SHA256"
-       << "&X-Amz-Credential=" << credential
+       << "&X-Amz-Credential=" << uriEncode(credential)
        << "&X-Amz-Date=" << datetime
        << "&X-Amz-Expires=" << ttlSeconds
        << "&X-Amz-SignedHeaders=host";
