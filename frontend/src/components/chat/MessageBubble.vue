@@ -3,6 +3,7 @@
     class="msg-row"
     :data-message-id="message.id"
     :class="[isMine ? 'mine' : 'theirs', { selected: isSelected }]"
+    :data-message-id="message.id"
     @contextmenu.prevent="onContextMenu"
     v-bind="longPressHandlers"
     @click="onRowClick"
@@ -19,6 +20,19 @@
     </div>
 
     <div class="msg-content-wrap">
+      <!-- Reply quote -->
+      <div
+        v-if="message.reply_to_message_id"
+        class="msg-reply-quote"
+        @click.stop="emit('replyClick', message.reply_to_message_id!)"
+      >
+        <div class="msg-reply-quote-bar" />
+        <div>
+          <div class="msg-reply-quote-name">{{ message.reply_to_sender_name || message.reply_to_sender_username || 'Unknown' }}</div>
+          <div class="msg-reply-quote-text">{{ replyQuoteText }}</div>
+        </div>
+      </div>
+
       <!-- Sticker -->
       <template v-if="message.message_type === 'sticker'">
         <div class="msg-bubble sticker-bubble">
@@ -83,6 +97,7 @@ const emit = defineEmits<{
   mentionClick: [username: string]
   openEmojiPicker: [messageId: number, x: number, y: number]
   toggleReaction: [messageId: number, emoji: string]
+  replyClick: [messageId: number]
 }>()
 
 const selectionStore = useSelectionStore()
@@ -146,6 +161,15 @@ const stickerUrl = computed(() => {
 
 const voiceSrc = computed(() => {
   return props.message.attachment_url || ''
+})
+
+const replyQuoteText = computed(() => {
+  const rt = props.message.reply_to_type
+  if (rt === 'sticker') return '\u{1F3A8} Sticker'
+  if (rt === 'voice') return '\u{1F3A4} Voice message'
+  if (rt === 'file') return '\u{1F4CE} File'
+  const text = props.message.reply_to_content || ''
+  return text.length > 80 ? text.slice(0, 80) + '...' : text
 })
 
 const renderedContent = computed(() => {

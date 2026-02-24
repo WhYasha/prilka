@@ -118,6 +118,41 @@ else:
                {"content": SMOKE_MSG, "type": "text"}, token=token)
     check("POST /chats/{id}/messages -> 201", s == 201, "msg_id=" + str(b.get("id")))
 
+# ── 8b. Reply to message ──────────────────────────────────────────────────
+print("\n[8b] Reply to message")
+# Find the last message to reply to
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=1", token=token)
+reply_target_id = None
+if s == 200 and isinstance(b, list) and b:
+    reply_target_id = b[0].get("id")
+
+if reply_target_id:
+    REPLY_MSG = "Reply from smoke test"
+    s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
+               {"content": REPLY_MSG, "type": "text",
+                "reply_to_message_id": reply_target_id}, token=token)
+    check("POST reply message -> 201", s == 201 and b.get("reply_to_message_id") == reply_target_id,
+          "reply_to=" + str(b.get("reply_to_message_id")))
+    reply_msg_id = b.get("id")
+
+    # Fetch messages and verify enrichment
+    s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=5", token=token)
+    reply_msg = None
+    for m in (b if isinstance(b, list) else []):
+        if m.get("id") == reply_msg_id:
+            reply_msg = m
+            break
+    if reply_msg:
+        has_reply_fields = (reply_msg.get("reply_to_message_id") == reply_target_id
+                            and reply_msg.get("reply_to_sender_name") is not None)
+        check("GET reply msg -> enriched reply fields", has_reply_fields,
+              "sender=" + str(reply_msg.get("reply_to_sender_name")))
+    else:
+        check("GET reply msg -> enriched reply fields", False, "reply msg not found in list")
+else:
+    check("POST reply message -> 201", False, "no message to reply to")
+    check("GET reply msg -> enriched reply fields", False, "skipped")
+
 # ── 9. File upload / download ──────────────────────────────────────────────
 print("\n[9] File upload / download")
 

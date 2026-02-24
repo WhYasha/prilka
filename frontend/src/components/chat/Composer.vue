@@ -69,8 +69,9 @@ export interface EditTarget {
   fullText: string
 }
 
-defineProps<{
+const props = defineProps<{
   stickerPickerOpen: boolean
+  replyTo?: Message | null
 }>()
 
 const emit = defineEmits<{
@@ -86,6 +87,16 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const replyTarget = ref<ReplyTarget | null>(null)
 const editTarget = ref<EditTarget | null>(null)
 let typingThrottle = 0
+
+const replyPreviewText = computed(() => {
+  if (!props.replyTo) return ''
+  const t = props.replyTo.message_type
+  if (t === 'sticker') return '\u{1F3A8} Sticker'
+  if (t === 'voice') return '\u{1F3A4} Voice message'
+  if (t === 'file') return '\u{1F4CE} File'
+  const content = props.replyTo.content || ''
+  return content.length > 100 ? content.slice(0, 100) + '...' : content
+})
 
 function send() {
   const content = text.value.trim()
@@ -178,6 +189,11 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('reply-to-message', onReplyToMessage)
   window.removeEventListener('edit-message', onEditMessage)
+})
+
+// Focus input when reply is set
+watch(() => props.replyTo, (val) => {
+  if (val) inputRef.value?.focus()
 })
 
 defineExpose({ focus: () => inputRef.value?.focus() })

@@ -42,6 +42,7 @@
               @mention-click="(u) => emit('openUserProfile', u)"
               @open-emoji-picker="onOpenEmojiPicker"
               @toggle-reaction="onToggleReaction"
+              @reply-click="scrollToMessage"
             />
           </template>
         </template>
@@ -66,6 +67,7 @@
         v-if="!isChannelReadonly"
         v-show="!isRecording"
         :sticker-picker-open="stickerPickerOpen"
+        :reply-to="replyToMessage"
         @send="handleSendText"
         @edit-message="handleEditMessage"
         @toggle-stickers="stickerPickerOpen = !stickerPickerOpen"
@@ -202,6 +204,9 @@ const deleteModalVisible = ref(false)
 const deleteMessageIds = ref<number[]>([])
 const canDeleteForEveryone = ref(false)
 
+// Reply state
+const replyToMessage = ref<Message | null>(null)
+
 // Polling timer for messages
 let msgPollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -312,6 +317,8 @@ function handleTyping() {
 
 async function handleSendText(content: string, replyTo?: { messageId: number; senderName: string; snippet: string }) {
   if (!chatsStore.activeChatId || !content.trim()) return
+  const replyId = replyToMessage.value?.id
+  replyToMessage.value = null
   try {
     // Include reply context if present (content-only for now; backend reply_to may need future work)
     const extra = replyTo ? { reply_to_message_id: replyTo.messageId } : undefined
@@ -577,6 +584,13 @@ function handleEsc(e: KeyboardEvent) {
   }
 }
 
+function onReplyMessage(e: CustomEvent) {
+  const { messageId, chatId: eChatId } = e.detail
+  if (!messageId || eChatId !== chatsStore.activeChatId) return
+  const msg = messages.value.find((m) => m.id === messageId)
+  if (msg) replyToMessage.value = msg
+}
+
 // Listen for custom events from MessageContextMenu and other components
 onMounted(() => {
   window.addEventListener('forward-messages', onForwardMessages as EventListener)
@@ -606,11 +620,12 @@ watch(
   },
 )
 
-// Clear selection when chat changes
+// Clear selection and reply when chat changes
 watch(
   () => chatsStore.activeChatId,
   () => {
     selectionStore.exitSelectionMode()
+    replyToMessage.value = null
   },
 )
 

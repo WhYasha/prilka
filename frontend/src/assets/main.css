@@ -1191,6 +1191,23 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   100% { background: inherit; }
 }
 
+/* ── Reply quote inside message bubble ─────────────────────── */
+.msg-reply-quote { display: flex; gap: 6px; padding: 6px 8px; margin: -2px -4px 6px -4px; border-radius: 8px; background: rgba(0,0,0,.04); cursor: pointer; }
+.msg-reply-quote:hover { background: rgba(0,0,0,.08); }
+.mine .msg-reply-quote { background: rgba(0,0,0,.06); }
+.msg-reply-quote-bar { width: 3px; min-height: 100%; border-radius: 2px; background: var(--accent); flex-shrink: 0; }
+.msg-reply-quote-name { font-size: .72rem; font-weight: 600; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-reply-quote-text { font-size: .78rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+
+/* ── Reply preview above composer ─────────────────────────── */
+.composer-wrap { flex-shrink: 0; }
+.reply-preview { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border); }
+.reply-preview-bar { width: 3px; height: 32px; border-radius: 2px; background: var(--accent); flex-shrink: 0; }
+.reply-preview-name { font-size: .78rem; font-weight: 600; color: var(--accent); }
+.reply-preview-text { font-size: .78rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-preview-close { background: none; border: none; font-size: 1.2rem; color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: 50%; flex-shrink: 0; }
+.reply-preview-close:hover { background: var(--input-bg); }
+
 /* ── Forwarded message indicator ───────────────────────────── */
 .msg-forwarded-label {
   font-size: .72rem; color: var(--accent); font-weight: 600;
@@ -1703,3 +1720,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 [data-theme="dark"] .delete-confirm-check input[type="checkbox"] {
   accent-color: #ef4444;
 }
+[data-theme="dark"] .msg-reply-quote { background: rgba(255,255,255,.06); }
+[data-theme="dark"] .msg-reply-quote:hover { background: rgba(255,255,255,.1); }
+[data-theme="dark"] .mine .msg-reply-quote { background: rgba(255,255,255,.08); }

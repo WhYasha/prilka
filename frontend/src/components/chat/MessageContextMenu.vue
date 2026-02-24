@@ -161,6 +161,16 @@ async function handleCopyLink() {
   }
 }
 
+function handleReply() {
+  hide()
+  if (!messageId.value || !chatId.value) return
+  window.dispatchEvent(
+    new CustomEvent('reply-message', {
+      detail: { messageId: messageId.value, chatId: chatId.value },
+    }),
+  )
+}
+
 function handleForward() {
   hide()
   if (!messageId.value || !chatId.value) return

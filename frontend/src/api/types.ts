@@ -69,6 +69,11 @@ export interface Message {
   file_id?: number
   forwarded_from_chat_id?: number
   forwarded_from_message_id?: number
+  reply_to_message_id?: number
+  reply_to_content?: string
+  reply_to_type?: string
+  reply_to_sender_username?: string
+  reply_to_sender_name?: string
   created_at: string
   reactions?: ReactionGroup[]
 }

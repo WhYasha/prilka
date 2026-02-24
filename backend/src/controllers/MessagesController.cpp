@@ -90,6 +90,17 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
         msg["forwarded_from_message_id"] = Json::Value();
     }
 
+    // Reply-to fields
+    if (!row["reply_to_message_id"].isNull()) {
+        msg["reply_to_message_id"] = Json::Int64(row["reply_to_message_id"].as<long long>());
+        msg["reply_to_content"] = row["reply_to_content"].isNull() ? Json::Value() : Json::Value(row["reply_to_content"].as<std::string>());
+        msg["reply_to_type"] = row["reply_to_type"].isNull() ? Json::Value() : Json::Value(row["reply_to_type"].as<std::string>());
+        msg["reply_to_sender_username"] = row["reply_to_sender_username"].isNull() ? Json::Value() : Json::Value(row["reply_to_sender_username"].as<std::string>());
+        msg["reply_to_sender_name"] = row["reply_to_sender_name"].isNull() ? Json::Value() : Json::Value(row["reply_to_sender_name"].as<std::string>());
+    } else {
+        msg["reply_to_message_id"] = Json::Value();
+    }
+
     return msg;
 }
 
@@ -98,19 +109,26 @@ static const char* kEnrichedMsgSelect =
     "SELECT m.id, m.chat_id, m.sender_id, m.content, m.message_type, m.created_at, "
     "       m.duration_seconds, "
     "       m.forwarded_from_chat_id, m.forwarded_from_message_id, "
+    "       m.reply_to_message_id, "
     "       u.username AS sender_username, "
     "       COALESCE(u.display_name, u.username) AS sender_display_name, "
     "       u.is_admin AS sender_is_admin, "
     "       av.bucket AS sender_avatar_bucket, av.object_key AS sender_avatar_key, "
     "       s.label  AS sticker_label, "
     "       sf.bucket AS sticker_bucket, sf.object_key AS sticker_key, "
-    "       af.bucket AS att_bucket,    af.object_key  AS att_key "
+    "       af.bucket AS att_bucket,    af.object_key  AS att_key, "
+    "       rm.content AS reply_to_content, "
+    "       rm.message_type AS reply_to_type, "
+    "       ru.username AS reply_to_sender_username, "
+    "       COALESCE(ru.display_name, ru.username) AS reply_to_sender_name "
     "FROM messages m "
     "JOIN users u ON u.id = m.sender_id "
     "LEFT JOIN files av ON av.id = u.avatar_file_id "
     "LEFT JOIN stickers s  ON s.id = m.sticker_id "
     "LEFT JOIN files sf ON sf.id = s.file_id "
-    "LEFT JOIN files af ON af.id = m.file_id ";
+    "LEFT JOIN files af ON af.id = m.file_id "
+    "LEFT JOIN messages rm ON rm.id = m.reply_to_message_id "
+    "LEFT JOIN users ru ON ru.id = rm.sender_id ";
 
 // POST /chats/{id}/messages
 void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
@@ -125,6 +143,7 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
     long long   fileId       = (*body).get("file_id",   Json::Value(0)).asInt64();
     long long   stickerId    = (*body).get("sticker_id", Json::Value(0)).asInt64();
     int         durationSecs = (*body).get("duration_seconds", Json::Value(0)).asInt();
+    long long   replyToMsgId = (*body).get("reply_to_message_id", Json::Value(0)).asInt64();
 
     if (content.empty() && fileId == 0 && stickerId == 0)
         return cb(jsonErr("content, file_id or sticker_id required", drogon::k400BadRequest));
@@ -155,17 +174,17 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                     auto db = drogon::app().getDbClient();
                     std::string sql;
                     if (resolvedStickerId > 0) {
-                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, sticker_id) "
-                              "VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at";
+                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, sticker_id, reply_to_message_id) "
+                              "VALUES ($1, $2, $3, $4, $5, NULLIF($6::BIGINT, 0)) RETURNING id, created_at";
                     } else if (resolvedFileId > 0 && durationSecs > 0) {
-                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id, duration_seconds) "
-                              "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at";
+                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id, duration_seconds, reply_to_message_id) "
+                              "VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7::BIGINT, 0)) RETURNING id, created_at";
                     } else if (resolvedFileId > 0) {
-                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id) "
-                              "VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at";
+                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, file_id, reply_to_message_id) "
+                              "VALUES ($1, $2, $3, $4, $5, NULLIF($6::BIGINT, 0)) RETURNING id, created_at";
                     } else {
-                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type) "
-                              "VALUES ($1, $2, $3, $4) RETURNING id, created_at";
+                        sql = "INSERT INTO messages (chat_id, sender_id, content, message_type, reply_to_message_id) "
+                              "VALUES ($1, $2, $3, $4, NULLIF($5::BIGINT, 0)) RETURNING id, created_at";
                     }
 
                     auto onInserted = [=, cbPtr](const drogon::orm::Result& r) mutable {
@@ -188,6 +207,8 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                         wsMsg["content"]      = content;
                         wsMsg["message_type"] = msgType;
                         wsMsg["created_at"]   = createdAt;
+                        if (replyToMsgId > 0)
+                            wsMsg["reply_to_message_id"] = Json::Int64(replyToMsgId);
                         WsDispatch::publishMessage(chatId, wsMsg);
 
                         Json::Value resp;
@@ -202,6 +223,8 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                             resp["sticker_id"] = Json::Int64(resolvedStickerId);
                         if (durationSecs > 0)
                             resp["duration_seconds"] = durationSecs;
+                        if (replyToMsgId > 0)
+                            resp["reply_to_message_id"] = Json::Int64(replyToMsgId);
                         auto httpResp = drogon::HttpResponse::newHttpJsonResponse(resp);
                         httpResp->setStatusCode(drogon::k201Created);
                         (*cbPtr)(httpResp);
@@ -214,16 +237,16 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
 
                     if (resolvedStickerId > 0)
                         db->execSqlAsync(sql, std::move(onInserted), std::move(onErr),
-                                         chatId, me, content, msgType, resolvedStickerId);
+                                         chatId, me, content, msgType, resolvedStickerId, replyToMsgId);
                     else if (resolvedFileId > 0 && durationSecs > 0)
                         db->execSqlAsync(sql, std::move(onInserted), std::move(onErr),
-                                         chatId, me, content, msgType, resolvedFileId, (long long)durationSecs);
+                                         chatId, me, content, msgType, resolvedFileId, (long long)durationSecs, replyToMsgId);
                     else if (resolvedFileId > 0)
                         db->execSqlAsync(sql, std::move(onInserted), std::move(onErr),
-                                         chatId, me, content, msgType, resolvedFileId);
+                                         chatId, me, content, msgType, resolvedFileId, replyToMsgId);
                     else
                         db->execSqlAsync(sql, std::move(onInserted), std::move(onErr),
-                                         chatId, me, content, msgType);
+                                         chatId, me, content, msgType, replyToMsgId);
                 };
 
                 if (stickerId > 0) {
