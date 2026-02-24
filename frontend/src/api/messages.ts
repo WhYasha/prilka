@@ -22,3 +22,15 @@ export async function sendMessage(
   const { data } = await api.post<Message>(`/chats/${chatId}/messages`, payload)
   return data
 }
+
+export async function deleteMessage(chatId: number, messageId: number): Promise<void> {
+  await api.delete(`/chats/${chatId}/messages/${messageId}`)
+}
+
+export async function forwardMessages(
+  toChatId: number,
+  payload: { from_chat_id: number; message_ids: number[] },
+): Promise<Message[]> {
+  const { data } = await api.post<Message[]>(`/chats/${toChatId}/messages/forward`, payload)
+  return data
+}
