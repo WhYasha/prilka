@@ -47,7 +47,12 @@ void InvitesController::createInvite(const drogon::HttpRequestPtr& req,
                 return cb(jsonErr("Only owner or admin can create invites", drogon::k403Forbidden));
 
             // Insert invite
-            auto db2 = drogon::app().getDbClient();
+            drogon::orm::DbClientPtr db2;
+            try { db2 = drogon::app().getDbClient(); }
+            catch (const std::exception& ex) {
+                LOG_ERROR << "createInvite inner getDbClient: " << ex.what();
+                return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }
             db2->execSqlAsync(
                 "INSERT INTO invites (chat_id, created_by) VALUES ($1, $2) "
                 "RETURNING token, chat_id, created_by, created_at",
@@ -107,7 +112,12 @@ void InvitesController::listInvites(const drogon::HttpRequestPtr& req,
             if (role != "owner" && role != "admin")
                 return cb(jsonErr("Only owner or admin can list invites", drogon::k403Forbidden));
 
-            auto db2 = drogon::app().getDbClient();
+            drogon::orm::DbClientPtr db2;
+            try { db2 = drogon::app().getDbClient(); }
+            catch (const std::exception& ex) {
+                LOG_ERROR << "listInvites inner getDbClient: " << ex.what();
+                return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }
             db2->execSqlAsync(
                 "SELECT token, chat_id, created_by, created_at FROM invites "
                 "WHERE chat_id = $1 AND revoked_at IS NULL "
@@ -169,7 +179,12 @@ void InvitesController::revokeInvite(const drogon::HttpRequestPtr& req,
             if (role != "owner" && role != "admin")
                 return cb(jsonErr("Only owner or admin can revoke invites", drogon::k403Forbidden));
 
-            auto db2 = drogon::app().getDbClient();
+            drogon::orm::DbClientPtr db2;
+            try { db2 = drogon::app().getDbClient(); }
+            catch (const std::exception& ex) {
+                LOG_ERROR << "revokeInvite inner getDbClient: " << ex.what();
+                return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }
             db2->execSqlAsync(
                 "UPDATE invites SET revoked_at = NOW() WHERE token = $1",
                 [cb = std::move(cb)](const drogon::orm::Result&) mutable {
@@ -260,7 +275,12 @@ void InvitesController::joinInvite(const drogon::HttpRequestPtr& req,
             long long chatId = row["chat_id"].as<long long>();
 
             // Check if already a member
-            auto db2 = drogon::app().getDbClient();
+            drogon::orm::DbClientPtr db2;
+            try { db2 = drogon::app().getDbClient(); }
+            catch (const std::exception& ex) {
+                LOG_ERROR << "joinInvite inner getDbClient: " << ex.what();
+                return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            }
             db2->execSqlAsync(
                 "SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2",
                 [cb = std::move(cb), chatId, me](const drogon::orm::Result& mr) mutable {
@@ -273,7 +293,12 @@ void InvitesController::joinInvite(const drogon::HttpRequestPtr& req,
                         return;
                     }
 
-                    auto db3 = drogon::app().getDbClient();
+                    drogon::orm::DbClientPtr db3;
+                    try { db3 = drogon::app().getDbClient(); }
+                    catch (const std::exception& ex) {
+                        LOG_ERROR << "joinInvite inner getDbClient(3): " << ex.what();
+                        return cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                    }
                     db3->execSqlAsync(
                         "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member') "
                         "ON CONFLICT DO NOTHING",
