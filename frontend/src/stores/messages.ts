@@ -152,7 +152,11 @@ export const useMessagesStore = defineStore('messages', () => {
     if (!messagesByChat.value[chatId]) {
       messagesByChat.value[chatId] = []
     }
-    messagesByChat.value[chatId].push(msg)
+    // Dedup: WS or polling may have already delivered this message
+    const existingIds = new Set(messagesByChat.value[chatId].map((m) => m.id))
+    if (!existingIds.has(msg.id)) {
+      messagesByChat.value[chatId].push(msg)
+    }
     lastMsgId.value[chatId] = Math.max(lastMsgId.value[chatId] || 0, msg.id)
     return msg
   }
