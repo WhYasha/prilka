@@ -54,3 +54,14 @@ export async function getPinnedMessage(chatId: number) {
   const { data } = await api.get(`/chats/${chatId}/pinned-message`)
   return data
 }
+
+export async function searchMessages(
+  chatId: number,
+  q: string,
+  params?: { limit?: number; before_id?: number },
+): Promise<Message[]> {
+  const { data } = await api.get<Message[]>(`/chats/${chatId}/messages/search`, {
+    params: { q, ...params },
+  })
+  return data
+}

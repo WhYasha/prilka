@@ -13,6 +13,7 @@
       <div class="chat-header-name">{{ displayName }}</div>
       <div v-if="subtitle" class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}</div>
     </div>
+    <button class="icon-btn search-btn" aria-label="Search messages" @click="emit('openSearch')">&#128269;</button>
   </header>
 </template>
 
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   back: []
   openUserProfile: [username: string]
   openChannelInfo: []
+  openSearch: []
 }>()
 
 const chatsStore = useChatsStore()

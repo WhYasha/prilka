@@ -12,6 +12,7 @@ public:
     ADD_METHOD_TO(MessagesController::pinMessage,      "/chats/{1}/messages/{2}/pin", drogon::Post,   "AuthFilter");
     ADD_METHOD_TO(MessagesController::unpinMessage,     "/chats/{1}/messages/{2}/pin", drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(MessagesController::getPinnedMessage, "/chats/{1}/pinned-message",   drogon::Get,    "AuthFilter");
+    ADD_METHOD_TO(MessagesController::searchMessages,   "/chats/{1}/messages/search",  drogon::Get,    "AuthFilter");
     METHOD_LIST_END
 
     void sendMessage(const drogon::HttpRequestPtr& req,
@@ -45,4 +46,8 @@ public:
     void getPinnedMessage(const drogon::HttpRequestPtr& req,
                           std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                           long long chatId);
+
+    void searchMessages(const drogon::HttpRequestPtr& req,
+                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                        long long chatId);
 };

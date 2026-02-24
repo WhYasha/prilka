@@ -1777,3 +1777,19 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   background: var(--accent-dark);
   box-shadow: 0 6px 20px rgba(0,0,0,.25);
 }
+
+/* ── In-chat search bar ──────────────────────────────────────── */
+.search-bar { flex-shrink: 0; display: flex; flex-direction: column; background: var(--surface); border-bottom: 1px solid var(--border); }
+.search-bar-header { display: flex; align-items: center; gap: .5rem; padding: .4rem .75rem; min-height: 48px; }
+.search-bar-input { flex: 1; border: none; outline: none; background: var(--input-bg); padding: .45rem .75rem; border-radius: 18px; font-size: .9rem; color: var(--text); }
+.search-results { max-height: 320px; overflow-y: auto; border-top: 1px solid var(--border); }
+.search-result-item { padding: .6rem .75rem; cursor: pointer; border-bottom: 1px solid var(--border); }
+.search-result-item:hover { background: var(--input-bg); }
+.search-result-sender { font-size: .78rem; font-weight: 600; color: var(--accent); }
+.search-result-snippet { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-result-snippet mark { background: rgba(43,154,243,.25); color: inherit; border-radius: 2px; }
+.search-result-date { font-size: .7rem; color: var(--text-muted); margin-top: 2px; }
+.search-loading, .search-empty { padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: .85rem; }
+.search-btn { color: var(--text-muted); font-size: 1rem; margin-left: auto; }
+[data-theme="dark"] .search-bar { border-color: var(--border); }
+[data-theme="dark"] .search-result-snippet mark { background: rgba(43,154,243,.35); }

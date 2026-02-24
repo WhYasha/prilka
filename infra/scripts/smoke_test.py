@@ -588,6 +588,34 @@ else:
     check("Set privacy user to 'nobody' -> 204", False, "could not create privacy user")
     check("GET user with 'nobody' -> no exact last_activity", False, "skipped")
 
+# ── 19. Message Search ───────────────────────────────────────────────────
+print("\n[19] Message Search")
+
+# Search for a term that should match (smoke test messages contain "smoke")
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages/search?q=smoke", token=token)
+check("GET /messages/search?q=smoke -> 200", s == 200 and isinstance(b, list),
+      str(len(b)) + " result(s)" if isinstance(b, list) else "status=" + str(s))
+if isinstance(b, list) and b:
+    has_enriched = "sender_username" in b[0] and "sender_display_name" in b[0]
+    check("Search results have enriched fields", has_enriched,
+          "sender=" + str(b[0].get("sender_username")))
+else:
+    check("Search results have enriched fields", False, "no results")
+
+# Search for nonexistent term
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages/search?q=zzz_nonexistent_zzz", token=token)
+check("GET /messages/search?q=nonexistent -> 200 empty", s == 200 and isinstance(b, list) and len(b) == 0,
+      str(len(b)) + " result(s)" if isinstance(b, list) else "status=" + str(s))
+
+# Missing q parameter
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages/search", token=token)
+check("GET /messages/search (no q) -> 400", s == 400, "status=" + str(s))
+
+# Cursor pagination: before_id
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages/search?q=smoke&before_id=999999999", token=token)
+check("GET /messages/search?before_id -> 200", s == 200 and isinstance(b, list),
+      str(len(b)) + " result(s)" if isinstance(b, list) else "status=" + str(s))
+
 # ── 13. Metrics ────────────────────────────────────────────────────────────
 print("\n[13] Metrics")
 try:

@@ -333,7 +333,7 @@ function handleInviteLinkClick(e: MouseEvent) {
   if (match) {
     e.preventDefault()
     e.stopPropagation()
-    inviteToken.value = match[1]
+    inviteToken.value = match[1] ?? null
   }
 }
 

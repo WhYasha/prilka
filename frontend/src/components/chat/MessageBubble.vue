@@ -182,7 +182,7 @@ const renderedContent = computed(() => {
   // Process @mentions — skip @ signs inside <a ...>...</a> tags
   return text.replace(
     /(<a\s[^>]*>.*?<\/a>)|@(\w{1,30})/g,
-    (match, anchorTag, username) => {
+    (_match: string, anchorTag: string, username: string) => {
       if (anchorTag) return anchorTag
       return `<span class="mention" data-u="${username}" onclick="window.dispatchEvent(new CustomEvent('mention-click', {detail:'${username}'}))">@${username}</span>`
     },

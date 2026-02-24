@@ -14,11 +14,18 @@
         @delete="onSelectionDelete"
       />
 
+      <SearchBar
+        v-if="searchMode && chatsStore.activeChatId"
+        :chat-id="chatsStore.activeChatId"
+        @close="searchMode = false"
+        @jump-to-message="onSearchJump"
+      />
       <ChatHeader
-        v-show="!selectionStore.selectionMode"
+        v-show="!selectionStore.selectionMode && !searchMode"
         @back="emit('back')"
         @open-user-profile="(u) => emit('openUserProfile', u)"
         @open-channel-info="channelInfoModalOpen = true"
+        @open-search="searchMode = true"
       />
 
       <!-- Pinned message bar -->
@@ -174,6 +181,7 @@ import BottomSheet from '@/components/ui/BottomSheet.vue'
 import ForwardDialog from '@/components/modals/ForwardDialog.vue'
 import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
 import ChannelInfoModal from '@/components/chat/ChannelInfoModal.vue'
+import SearchBar from '@/components/chat/SearchBar.vue'
 import { useSelectionStore } from '@/stores/selection'
 
 const emit = defineEmits<{
@@ -198,6 +206,7 @@ const stickerPickerOpen = ref(false)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
 const channelInfoModalOpen = ref(false)
+const searchMode = ref(false)
 
 // New messages indicator state
 const isNearBottom = ref(true)
@@ -361,7 +370,6 @@ watch(
   async (chatId) => {
     stickerPickerOpen.value = false
     myRole.value = 'member'
-    showInviteSection.value = false
     newMessageCount.value = 0
     isNearBottom.value = true
     teardownOlderObserver()
@@ -718,9 +726,19 @@ async function scrollToMessage(messageId: number) {
   }
 }
 
-// ESC handler for channel info modal
+function onSearchJump(messageId: number) {
+  searchMode.value = false
+  scrollToMessage(messageId)
+}
+
+// ESC handler for search mode and channel info modal
 function handleEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
+  if (searchMode.value) {
+    searchMode.value = false
+    e.stopPropagation()
+    return
+  }
   if (channelInfoModalOpen.value) {
     channelInfoModalOpen.value = false
     e.stopPropagation()
@@ -761,12 +779,13 @@ watch(
   },
 )
 
-// Clear selection and reply when chat changes
+// Clear selection, reply, and search when chat changes
 watch(
   () => chatsStore.activeChatId,
   () => {
     selectionStore.exitSelectionMode()
     replyToMessage.value = null
+    searchMode.value = false
   },
 )
 

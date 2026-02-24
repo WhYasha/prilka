@@ -733,6 +733,73 @@ void MessagesController::getPinnedMessage(const drogon::HttpRequestPtr& req,
     });
 }
 
+// GET /chats/{id}/messages/search?q=text&limit=20&before_id=N
+void MessagesController::searchMessages(const drogon::HttpRequestPtr& req,
+                                         std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                         long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+
+    std::string q = req->getParameter("q");
+    if (q.empty())
+        return cb(jsonErr("q parameter required", drogon::k400BadRequest));
+    if (q.size() > 200)
+        return cb(jsonErr("q too long (max 200)", drogon::k400BadRequest));
+
+    long long limit = 20;
+    {
+        std::string lp = req->getParameter("limit");
+        if (!lp.empty()) {
+            int l = std::stoi(lp);
+            limit = static_cast<long long>(std::max(1, std::min(l, 50)));
+        }
+    }
+
+    std::string beforeIdStr = req->getParameter("before_id");
+
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    requireMember(chatId, me, [=](bool isMember) {
+        if (!isMember) return (*cbPtr)(jsonErr("Not a member of this chat", drogon::k403Forbidden));
+
+        std::string searchPattern = "%" + q + "%";
+
+        const std::string deletedFilter =
+            "AND m.is_deleted = FALSE "
+            "AND NOT EXISTS (SELECT 1 FROM deleted_messages dm WHERE dm.message_id = m.id AND dm.user_id = $1) ";
+
+        auto handleRows = [cbPtr](const drogon::orm::Result& r) {
+            Json::Value arr(Json::arrayValue);
+            for (auto& row : r)
+                arr.append(buildMsgJson(row));
+            (*cbPtr)(drogon::HttpResponse::newHttpJsonResponse(arr));
+        };
+
+        auto onErr = [cbPtr](const drogon::orm::DrogonDbException& e) {
+            LOG_ERROR << "searchMessages: " << e.base().what();
+            (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+        };
+
+        auto db = drogon::app().getDbClient();
+
+        if (!beforeIdStr.empty()) {
+            long long beforeId = std::stoll(beforeIdStr);
+            std::string sql = std::string(kEnrichedMsgSelect) +
+                "WHERE m.chat_id = $2 AND m.message_type = 'text' AND m.content ILIKE $3 "
+                "AND m.id < $4 " + deletedFilter +
+                "ORDER BY m.created_at DESC LIMIT $5";
+            db->execSqlAsync(sql, std::move(handleRows), std::move(onErr),
+                             me, chatId, searchPattern, beforeId, limit);
+        } else {
+            std::string sql = std::string(kEnrichedMsgSelect) +
+                "WHERE m.chat_id = $2 AND m.message_type = 'text' AND m.content ILIKE $3 " + deletedFilter +
+                "ORDER BY m.created_at DESC LIMIT $4";
+            db->execSqlAsync(sql, std::move(handleRows), std::move(onErr),
+                             me, chatId, searchPattern, limit);
+        }
+    });
+}
+
 // POST /chats/{targetChatId}/forward
 void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                                           std::function<void(const drogon::HttpResponsePtr&)>&& cb,
