@@ -148,6 +148,12 @@ import { useToast } from '@/composables/useToast'
 import Avatar from '@/components/ui/Avatar.vue'
 import type { User } from '@/api/types'
 
+const props = withDefaults(defineProps<{
+  initialStep?: 'select' | 'direct' | 'group' | 'channel'
+}>(), {
+  initialStep: 'select',
+})
+
 const emit = defineEmits<{
   close: []
   chatCreated: [chatId: number]
@@ -156,7 +162,7 @@ const emit = defineEmits<{
 const authStore = useAuthStore()
 const { showToast } = useToast()
 
-const step = ref<'select' | 'direct' | 'group' | 'channel'>('select')
+const step = ref<'select' | 'direct' | 'group' | 'channel'>(props.initialStep)
 const creating = ref(false)
 
 // Direct chat

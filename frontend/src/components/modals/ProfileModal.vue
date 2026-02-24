@@ -1,7 +1,9 @@
 <template>
   <div class="modal-backdrop profile-backdrop" @click.self="emit('close')">
     <div class="modal profile-modal profile-modal--self">
-      <button class="icon-btn profile-close-btn" @click="emit('close')">&#10005;</button>
+      <button class="icon-btn profile-close-btn" aria-label="Close" @click="emit('close')">
+        <X :size="20" :stroke-width="2" />
+      </button>
 
       <!-- Tabs -->
       <div class="profile-tabs">
@@ -29,7 +31,7 @@
                 size="xxl"
               />
               <div class="profile-avatar-overlay">
-                <span class="profile-avatar-overlay-icon">&#128247;</span>
+                <Camera :size="24" :stroke-width="1.8" class="profile-avatar-overlay-icon" />
               </div>
             </div>
             <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="handleAvatarChange" />
@@ -118,6 +120,7 @@ import { updateUser, uploadAvatar } from '@/api/users'
 import { uploadFile } from '@/api/files'
 import { useToast } from '@/composables/useToast'
 import Avatar from '@/components/ui/Avatar.vue'
+import { X, Camera } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{ initialTab?: 'profile' | 'settings' }>(), {
   initialTab: 'profile',

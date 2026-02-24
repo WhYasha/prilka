@@ -20,7 +20,7 @@
     <!-- Sidebar -->
     <Sidebar
       @open-drawer="drawerOpen = true"
-      @open-new-chat="newChatModalOpen = true"
+      @open-new-chat="newChatInitialStep = 'select'; newChatModalOpen = true"
       @select-chat="handleSelectChat"
     />
 
@@ -33,6 +33,7 @@
     <!-- Modals -->
     <NewChatModal
       v-if="newChatModalOpen"
+      :initial-step="newChatInitialStep"
       @close="newChatModalOpen = false"
       @chat-created="handleChatCreated"
     />
@@ -93,6 +94,7 @@ provide('sendTyping', sendTyping)
 
 const drawerOpen = ref(false)
 const newChatModalOpen = ref(false)
+const newChatInitialStep = ref<'select' | 'direct' | 'group' | 'channel'>('select')
 const profileModalOpen = ref(false)
 const profileInitialTab = ref<'profile' | 'settings'>('profile')
 const downloadModalOpen = ref(false)
@@ -230,11 +232,13 @@ function openSettingsModal() {
 
 function handleOpenNewGroup() {
   drawerOpen.value = false
+  newChatInitialStep.value = 'group'
   newChatModalOpen.value = true
 }
 
 function handleOpenNewChannel() {
   drawerOpen.value = false
+  newChatInitialStep.value = 'channel'
   newChatModalOpen.value = true
 }
 

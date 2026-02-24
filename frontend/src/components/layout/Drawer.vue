@@ -22,43 +22,52 @@
     </div>
 
     <nav class="drawer-nav">
-      <MenuItem :icon="UserIcon" label="My Profile" @click="emit('openProfile')" />
-      <MenuItem :icon="UsersIcon" label="Create Group" @click="emit('openNewGroup')" />
-      <MenuItem :icon="MegaphoneIcon" label="Create Channel" @click="emit('openNewChannel')" />
-      <MenuItem :icon="StarIcon" label="Favorites" @click="emit('openFavorites')" />
-      <MenuItem :icon="SettingsIcon" label="Settings" @click="emit('openSettings')" />
+      <template v-for="item in visibleMenuItems" :key="item.id">
+        <div v-if="item.separator" class="drawer-divider" />
 
-      <div class="drawer-divider" />
+        <!-- Night mode toggle has special rendering -->
+        <div v-if="item.rightSlot === 'toggle'" class="menu-item menu-item--toggle" @click="handleAction(item.action)">
+          <component :is="iconMap[item.icon]" class="menu-item__icon" :size="24" :stroke-width="1.8" />
+          <span class="menu-item__label">{{ item.label }}</span>
+          <span
+            class="toggle-switch"
+            :class="{ 'toggle-switch--on': settingsStore.theme === 'dark' }"
+            role="switch"
+            :aria-checked="settingsStore.theme === 'dark'"
+          >
+            <span class="toggle-switch__thumb" />
+          </span>
+        </div>
 
-      <div class="menu-item menu-item--toggle" @click="toggleNightMode">
-        <MoonIcon class="menu-item__icon" :size="24" :stroke-width="1.8" />
-        <span class="menu-item__label">Night Mode</span>
-        <span
-          class="toggle-switch"
-          :class="{ 'toggle-switch--on': settingsStore.theme === 'dark' }"
-          role="switch"
-          :aria-checked="settingsStore.theme === 'dark'"
-        >
-          <span class="toggle-switch__thumb" />
-        </span>
-      </div>
+        <!-- Logout gets danger styling -->
+        <MenuItem
+          v-else-if="item.id === 'logout'"
+          :icon="iconMap[item.icon]"
+          :label="item.label"
+          danger
+          @click="handleAction(item.action)"
+        />
 
-      <MenuItem :icon="DownloadIcon" label="Download App" @click="emit('openDownload')" />
+        <!-- Regular menu items -->
+        <MenuItem
+          v-else
+          :icon="iconMap[item.icon]"
+          :label="item.label"
+          @click="handleAction(item.action)"
+        />
+      </template>
     </nav>
-
-    <div class="drawer-bottom">
-      <div class="drawer-divider" />
-      <MenuItem :icon="LogOutIcon" label="Log out" danger @click="handleLogout" />
-    </div>
 
     <div class="drawer-footer">Simple Messenger v2</div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import { getVisibleMenuItems, type MenuContext } from '@/config/menuConfig'
 import Avatar from '@/components/ui/Avatar.vue'
 import MenuItem from '@/components/layout/MenuItem.vue'
 import {
@@ -71,6 +80,7 @@ import {
   Moon as MoonIcon,
   Download as DownloadIcon,
   LogOut as LogOutIcon,
+  Bookmark as BookmarkIcon,
 } from 'lucide-vue-next'
 
 defineProps<{ open: boolean }>()
@@ -89,15 +99,49 @@ const router = useRouter()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 
-function toggleNightMode() {
-  const newTheme = settingsStore.theme === 'dark' ? 'light' : 'dark'
-  settingsStore.applyTheme(newTheme)
-  settingsStore.saveSettings({ theme: newTheme })
+// Icon mapping from menuConfig string names to Lucide components
+const iconMap: Record<string, Component> = {
+  user: UserIcon,
+  users: UsersIcon,
+  megaphone: MegaphoneIcon,
+  bookmark: BookmarkIcon,
+  settings: SettingsIcon,
+  moon: MoonIcon,
+  download: DownloadIcon,
+  'log-out': LogOutIcon,
+  star: StarIcon,
 }
 
-function handleLogout() {
-  authStore.logout()
-  router.push('/login')
+const menuContext = computed<MenuContext>(() => ({
+  isAuthenticated: !!authStore.user,
+  isDesktop: true,
+}))
+
+const visibleMenuItems = computed(() => getVisibleMenuItems(menuContext.value))
+
+// Action handlers mapped by action name
+const actionHandlers: Record<string, () => void> = {
+  openProfile: () => emit('openProfile'),
+  createGroup: () => emit('openNewGroup'),
+  createChannel: () => emit('openNewChannel'),
+  openFavorites: () => emit('openFavorites'),
+  openSettings: () => emit('openSettings'),
+  toggleNightMode: () => {
+    const newTheme = settingsStore.theme === 'dark' ? 'light' : 'dark'
+    settingsStore.applyTheme(newTheme)
+    settingsStore.saveSettings({ theme: newTheme })
+  },
+  openDownload: () => emit('openDownload'),
+  logout: () => {
+    authStore.logout()
+    router.push('/login')
+  },
+}
+
+function handleAction(action?: string) {
+  if (action && actionHandlers[action]) {
+    actionHandlers[action]()
+  }
 }
 </script>
 

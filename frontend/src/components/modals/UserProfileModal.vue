@@ -1,7 +1,9 @@
 <template>
   <div class="modal-backdrop profile-backdrop" @click.self="emit('close')">
     <div class="modal profile-modal">
-      <button class="icon-btn profile-close-btn" @click="emit('close')">&#10005;</button>
+      <button class="icon-btn profile-close-btn" aria-label="Close" @click="emit('close')">
+        <X :size="20" :stroke-width="2" />
+      </button>
 
       <div class="profile-modal-body">
         <template v-if="loading">
@@ -32,20 +34,12 @@
           </div>
 
           <!-- Action buttons row -->
-          <div class="profile-actions-row">
-            <button class="profile-action-btn" @click="emit('message', user!.username)">
-              <span class="profile-action-icon">&#9998;</span>
-              <span class="profile-action-label">Message</span>
-            </button>
-            <button class="profile-action-btn" @click="handleMute">
-              <span class="profile-action-icon">{{ isMuted ? '&#128264;' : '&#128263;' }}</span>
-              <span class="profile-action-label">{{ isMuted ? 'Unmute' : 'Mute' }}</span>
-            </button>
-            <button class="profile-action-btn profile-action-btn--danger" @click="handleBlock">
-              <span class="profile-action-icon">&#128683;</span>
-              <span class="profile-action-label">{{ user.is_blocked ? 'Unblock' : 'Block' }}</span>
-            </button>
-          </div>
+          <ProfileActionButtons
+            :muted="isMuted"
+            :show-more="false"
+            @message="emit('message', user!.username)"
+            @mute="handleMute"
+          />
 
           <!-- Divider -->
           <div class="profile-divider" />
@@ -83,6 +77,8 @@ import { useChatsStore } from '@/stores/chats'
 import { useToast } from '@/composables/useToast'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
+import ProfileActionButtons from '@/components/profile/ProfileActionButtons.vue'
+import { X } from 'lucide-vue-next'
 import type { User } from '@/api/types'
 
 const props = defineProps<{ username: string }>()
@@ -117,10 +113,5 @@ onMounted(async () => {
 function handleMute() {
   isMuted.value = !isMuted.value
   showToast(isMuted.value ? 'User muted' : 'User unmuted')
-}
-
-function handleBlock() {
-  if (!user.value) return
-  showToast(user.value.is_blocked ? 'User unblocked' : 'User blocked')
 }
 </script>
