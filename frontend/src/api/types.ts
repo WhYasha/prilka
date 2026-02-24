@@ -102,6 +102,7 @@ export interface Invite {
 }
 
 export interface InvitePreview {
+  chat_id: number
   title: string
   type: string
   description: string

@@ -68,8 +68,8 @@ export async function unarchiveChat(id: number): Promise<void> {
 }
 
 export async function getChatMembers(id: number): Promise<ChatMember[]> {
-  const { data } = await api.get<ChatMember[]>(`/chats/${id}/members`)
-  return data
+  const { data } = await api.get<Chat & { members: ChatMember[] }>(`/chats/${id}`)
+  return data.members ?? []
 }
 
 export async function deleteChat(id: number): Promise<void> {
