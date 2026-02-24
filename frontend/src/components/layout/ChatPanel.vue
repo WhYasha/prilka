@@ -90,6 +90,8 @@
       <!-- Bottom sheet (mobile long-press) -->
       <BottomSheet :visible="bottomSheetVisible" @close="bottomSheetVisible = false">
         <button class="ctx-item" @click="bottomSheetAction('reply')">Reply</button>
+        <button v-if="isBottomSheetOwnMessage" class="ctx-item" @click="bottomSheetAction('edit')">Edit</button>
+        <button class="ctx-item" disabled aria-label="Coming soon — requires V14 migration">Pin</button>
         <button class="ctx-item" @click="bottomSheetAction('copy')">Copy text</button>
         <button class="ctx-item" @click="bottomSheetAction('copyLink')">Copy link</button>
         <button class="ctx-item" @click="bottomSheetAction('forward')">Forward</button>
@@ -184,6 +186,11 @@ const selectionStore = useSelectionStore()
 const bottomSheetVisible = ref(false)
 const bottomSheetMessageId = ref<number | null>(null)
 const bottomSheetMessageText = ref('')
+const isBottomSheetOwnMessage = computed(() => {
+  if (!bottomSheetMessageId.value || !authStore.user) return false
+  const msg = messages.value.find((m) => m.id === bottomSheetMessageId.value)
+  return msg?.sender_id === authStore.user.id
+})
 
 // Forward dialog state
 const forwardDialogVisible = ref(false)
@@ -479,6 +486,16 @@ function bottomSheetAction(action: string) {
           messageId: msgId,
           senderName: msg?.sender_display_name || msg?.sender_username || 'Unknown',
           text: msg?.content || '',
+        },
+      }))
+      break
+    }
+    case 'edit': {
+      window.dispatchEvent(new CustomEvent('edit-message', {
+        detail: {
+          messageId: msgId,
+          chatId,
+          text: bottomSheetMessageText.value,
         },
       }))
       break
