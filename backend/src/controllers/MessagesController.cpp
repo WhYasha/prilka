@@ -78,6 +78,18 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
         msg["duration_seconds"] = Json::Value();
     }
 
+    // Forwarded-from fields
+    if (!row["forwarded_from_chat_id"].isNull()) {
+        msg["forwarded_from_chat_id"] = Json::Int64(row["forwarded_from_chat_id"].as<long long>());
+    } else {
+        msg["forwarded_from_chat_id"] = Json::Value();
+    }
+    if (!row["forwarded_from_message_id"].isNull()) {
+        msg["forwarded_from_message_id"] = Json::Int64(row["forwarded_from_message_id"].as<long long>());
+    } else {
+        msg["forwarded_from_message_id"] = Json::Value();
+    }
+
     return msg;
 }
 
@@ -85,6 +97,7 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
 static const char* kEnrichedMsgSelect =
     "SELECT m.id, m.chat_id, m.sender_id, m.content, m.message_type, m.created_at, "
     "       m.duration_seconds, "
+    "       m.forwarded_from_chat_id, m.forwarded_from_message_id, "
     "       u.username AS sender_username, "
     "       COALESCE(u.display_name, u.username) AS sender_display_name, "
     "       u.is_admin AS sender_is_admin, "
@@ -272,33 +285,38 @@ void MessagesController::listMessages(const drogon::HttpRequestPtr& req,
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         };
 
+        // Soft-delete and per-user delete filter fragment
+        const std::string deletedFilter =
+            "AND m.is_deleted = FALSE "
+            "AND NOT EXISTS (SELECT 1 FROM deleted_messages dm WHERE dm.message_id = m.id AND dm.user_id = $1) ";
+
         if (!afterStr.empty()) {
             // Polling: return messages AFTER this id, oldest-first
             long long afterId = std::stoll(afterStr);
             std::string sql = std::string(kEnrichedMsgSelect) +
-                "WHERE m.chat_id = $1 AND m.id > $2 "
-                "ORDER BY m.created_at ASC LIMIT $3";
+                "WHERE m.chat_id = $2 AND m.id > $3 " + deletedFilter +
+                "ORDER BY m.created_at ASC LIMIT $4";
             db->execSqlAsync(sql, std::move(handleRows), std::move(onErr),
-                             chatId, afterId, limit);
+                             me, chatId, afterId, limit);
         } else if (!beforeStr.empty()) {
             // Older messages pagination: return N messages BEFORE this id, oldest-first
             long long before = std::stoll(beforeStr);
             std::string sql = std::string(
                 "SELECT * FROM (") + kEnrichedMsgSelect +
-                "WHERE m.chat_id = $1 AND m.id < $2 "
-                "ORDER BY m.created_at DESC LIMIT $3) sub "
+                "WHERE m.chat_id = $2 AND m.id < $3 " + deletedFilter +
+                "ORDER BY m.created_at DESC LIMIT $4) sub "
                 "ORDER BY created_at ASC";
             db->execSqlAsync(sql, std::move(handleRows), std::move(onErr),
-                             chatId, before, limit);
+                             me, chatId, before, limit);
         } else {
             // Initial load: latest N messages in chronological order
             std::string sql = std::string(
                 "SELECT * FROM (") + kEnrichedMsgSelect +
-                "WHERE m.chat_id = $1 "
-                "ORDER BY m.created_at DESC LIMIT $2) sub "
+                "WHERE m.chat_id = $2 " + deletedFilter +
+                "ORDER BY m.created_at DESC LIMIT $3) sub "
                 "ORDER BY created_at ASC";
             db->execSqlAsync(sql, std::move(handleRows), std::move(onErr),
-                             chatId, limit);
+                             me, chatId, limit);
         }
     });
 }
