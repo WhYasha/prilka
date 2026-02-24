@@ -38,15 +38,28 @@ void WebController::serveDeepLink(const drogon::HttpRequestPtr& req,
 
 void WebController::serveLogin(const drogon::HttpRequestPtr& req,
                                 std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-    cb(serveHtml("./www/login.html"));
+    cb(serveHtml("./www/index.html"));
 }
 
 void WebController::serveRegister(const drogon::HttpRequestPtr& req,
                                    std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-    cb(serveHtml("./www/register.html"));
+    cb(serveHtml("./www/index.html"));
 }
 
 void WebController::serveAdmin(const drogon::HttpRequestPtr& req,
                                 std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-    cb(serveHtml("./www/admin/index.html"));
+    cb(serveHtml("./www/index.html"));
+}
+
+void WebController::serveAdminSub(const drogon::HttpRequestPtr& req,
+                                   std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                   const std::string& /*sub1*/) {
+    cb(serveHtml("./www/index.html"));
+}
+
+void WebController::serveAdminSubSub(const drogon::HttpRequestPtr& req,
+                                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                      const std::string& /*sub1*/,
+                                      const std::string& /*sub2*/) {
+    cb(serveHtml("./www/index.html"));
 }

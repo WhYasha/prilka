@@ -15,8 +15,10 @@ public:
     ADD_METHOD_TO(WebController::serveDeepLink, "/dm/{1}",   drogon::Get);
     ADD_METHOD_TO(WebController::serveDeepLink, "/join/{1}", drogon::Get);
     ADD_METHOD_TO(WebController::serveDeepLink, "/c/{1}",    drogon::Get);
-    // Admin SPA
-    ADD_METHOD_TO(WebController::serveAdmin, "/admin",     drogon::Get);
+    // Admin SPA (all sub-routes serve index.html for Vue Router)
+    ADD_METHOD_TO(WebController::serveAdmin,         "/admin",          drogon::Get);
+    ADD_METHOD_TO(WebController::serveAdminSub,      "/admin/{1}",      drogon::Get);
+    ADD_METHOD_TO(WebController::serveAdminSubSub,   "/admin/{1}/{2}",  drogon::Get);
     METHOD_LIST_END
 
     void serveApp(const drogon::HttpRequestPtr& req,
@@ -35,4 +37,13 @@ public:
 
     void serveAdmin(const drogon::HttpRequestPtr& req,
                     std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+
+    void serveAdminSub(const drogon::HttpRequestPtr& req,
+                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                       const std::string& sub1);
+
+    void serveAdminSubSub(const drogon::HttpRequestPtr& req,
+                          std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                          const std::string& sub1,
+                          const std::string& sub2);
 };

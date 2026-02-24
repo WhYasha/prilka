@@ -33,6 +33,11 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = await authApi.getMe()
     } catch {
       user.value = null
+      // Clear stale token so isLoggedIn reflects reality
+      accessToken.value = null
+      refreshTokenValue.value = null
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
     }
   }
 
