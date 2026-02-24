@@ -35,8 +35,17 @@
         <span class="readonly-text">Only admins can send messages in this channel.</span>
       </div>
 
+      <!-- New messages indicator -->
+      <button
+        v-if="newMessageCount > 0"
+        class="new-messages-pill"
+        @click="onNewMessagesPillClick"
+      >
+        {{ newMessageCount }} new message{{ newMessageCount > 1 ? 's' : '' }} &#8595;
+      </button>
+
       <!-- Messages -->
-      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker">
+      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
           <!-- Sentinel for loading older messages -->
@@ -195,6 +204,34 @@ const myRole = ref<string>('member')
 const showInviteSection = ref(false)
 const channelInfoModalOpen = ref(false)
 
+// New messages indicator state
+const isNearBottom = ref(true)
+const newMessageCount = ref(0)
+let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null
+
+function checkIsNearBottom(): boolean {
+  if (!msgListRef.value) return true
+  const el = msgListRef.value
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - 100
+}
+
+function onMsgListScroll() {
+  if (scrollThrottleTimer) return
+  scrollThrottleTimer = setTimeout(() => {
+    scrollThrottleTimer = null
+    isNearBottom.value = checkIsNearBottom()
+    if (isNearBottom.value) {
+      newMessageCount.value = 0
+    }
+  }, 100)
+}
+
+function onNewMessagesPillClick() {
+  scrollToBottom()
+  newMessageCount.value = 0
+  isNearBottom.value = true
+}
+
 // Emoji picker state
 const emojiPickerVisible = ref(false)
 const emojiPickerX = ref(0)
@@ -330,6 +367,8 @@ watch(
     stickerPickerOpen.value = false
     myRole.value = 'member'
     showInviteSection.value = false
+    newMessageCount.value = 0
+    isNearBottom.value = true
     teardownOlderObserver()
 
     // Stop previous polling
@@ -368,7 +407,7 @@ watch(
     msgPollTimer = setInterval(() => {
       if (chatsStore.activeChatId === chatId) {
         messagesStore.loadNewer(chatId).then((msgs) => {
-          if (msgs.length > 0) scrollToBottomIfNear()
+          if (msgs.length > 0) scrollToBottomIfNear(msgs.length)
         })
       }
     }, 2500)
@@ -381,14 +420,16 @@ function scrollToBottom() {
   }
 }
 
-function scrollToBottomIfNear() {
+function scrollToBottomIfNear(newCount = 1) {
   if (!msgListRef.value) return
   const el = msgListRef.value
-  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
   if (atBottom) {
     nextTick(() => {
       el.scrollTop = el.scrollHeight
     })
+  } else {
+    newMessageCount.value += newCount
   }
 }
 
