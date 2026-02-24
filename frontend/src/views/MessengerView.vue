@@ -5,6 +5,10 @@
       :open="drawerOpen"
       @close="drawerOpen = false"
       @open-profile="openProfileModal"
+      @open-settings="openSettingsModal"
+      @open-new-group="handleOpenNewGroup"
+      @open-new-channel="handleOpenNewChannel"
+      @open-favorites="handleOpenFavorites"
       @open-download="downloadModalOpen = true"
     />
     <div
@@ -34,6 +38,7 @@
     />
     <ProfileModal
       v-if="profileModalOpen"
+      :initial-tab="profileInitialTab"
       @close="profileModalOpen = false"
     />
     <UserProfileModal
@@ -89,6 +94,7 @@ provide('sendTyping', sendTyping)
 const drawerOpen = ref(false)
 const newChatModalOpen = ref(false)
 const profileModalOpen = ref(false)
+const profileInitialTab = ref<'profile' | 'settings'>('profile')
 const downloadModalOpen = ref(false)
 const userProfileTarget = ref<string | null>(null)
 const stickers = ref<Sticker[]>([])
@@ -212,7 +218,28 @@ function handleBack() {
 
 function openProfileModal() {
   drawerOpen.value = false
+  profileInitialTab.value = 'profile'
   profileModalOpen.value = true
+}
+
+function openSettingsModal() {
+  drawerOpen.value = false
+  profileInitialTab.value = 'settings'
+  profileModalOpen.value = true
+}
+
+function handleOpenNewGroup() {
+  drawerOpen.value = false
+  newChatModalOpen.value = true
+}
+
+function handleOpenNewChannel() {
+  drawerOpen.value = false
+  newChatModalOpen.value = true
+}
+
+function handleOpenFavorites() {
+  drawerOpen.value = false
 }
 
 function openUserProfileModal(username: string) {

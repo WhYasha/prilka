@@ -119,13 +119,17 @@ import { uploadFile } from '@/api/files'
 import { useToast } from '@/composables/useToast'
 import Avatar from '@/components/ui/Avatar.vue'
 
+const props = withDefaults(defineProps<{ initialTab?: 'profile' | 'settings' }>(), {
+  initialTab: 'profile',
+})
+
 const emit = defineEmits<{ close: [] }>()
 
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
 const { showToast } = useToast()
 
-const activeTab = ref<'profile' | 'settings'>('profile')
+const activeTab = ref<'profile' | 'settings'>(props.initialTab)
 const displayName = ref('')
 const username = ref('')
 const bio = ref('')

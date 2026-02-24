@@ -23,10 +23,10 @@
 
     <nav class="drawer-nav">
       <MenuItem :icon="UserIcon" label="My Profile" @click="emit('openProfile')" />
-      <MenuItem :icon="UsersIcon" label="Create Group" disabled />
-      <MenuItem :icon="MegaphoneIcon" label="Create Channel" disabled />
-      <MenuItem :icon="StarIcon" label="Favorites" disabled />
-      <MenuItem :icon="SettingsIcon" label="Settings" @click="emit('openProfile')" />
+      <MenuItem :icon="UsersIcon" label="Create Group" @click="emit('openNewGroup')" />
+      <MenuItem :icon="MegaphoneIcon" label="Create Channel" @click="emit('openNewChannel')" />
+      <MenuItem :icon="StarIcon" label="Favorites" @click="emit('openFavorites')" />
+      <MenuItem :icon="SettingsIcon" label="Settings" @click="emit('openSettings')" />
 
       <div class="drawer-divider" />
 
@@ -78,6 +78,10 @@ defineProps<{ open: boolean }>()
 const emit = defineEmits<{
   close: []
   openProfile: []
+  openSettings: []
+  openNewGroup: []
+  openNewChannel: []
+  openFavorites: []
   openDownload: []
 }>()
 
