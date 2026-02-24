@@ -35,14 +35,14 @@ const router = createRouter({
       meta: { auth: true },
     },
     {
-      path: '/c/:name',
-      name: 'channel',
+      path: '/c/:chatIdOrName/:messageId',
+      name: 'channelMessage',
       component: () => import('@/views/MessengerView.vue'),
       meta: { auth: true },
     },
     {
-      path: '/c/:chatId/m/:messageId',
-      name: 'messageDeepLink',
+      path: '/c/:chatIdOrName',
+      name: 'channel',
       component: () => import('@/views/MessengerView.vue'),
       meta: { auth: true },
     },

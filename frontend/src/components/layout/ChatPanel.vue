@@ -18,6 +18,7 @@
         v-show="!selectionStore.selectionMode"
         @back="emit('back')"
         @open-user-profile="(u) => emit('openUserProfile', u)"
+        @open-channel-info="channelInfoModalOpen = true"
       />
 
       <!-- Channel read-only bar -->
@@ -68,7 +69,7 @@
         :sticker-picker-open="stickerPickerOpen"
         :reply-to="replyToMessage"
         @send="handleSendText"
-        @cancel-reply="replyToMessage = null"
+        @edit-message="handleEditMessage"
         @toggle-stickers="stickerPickerOpen = !stickerPickerOpen"
         @start-recording="startRec"
         @typing="handleTyping"
@@ -91,6 +92,8 @@
       <!-- Bottom sheet (mobile long-press) -->
       <BottomSheet :visible="bottomSheetVisible" @close="bottomSheetVisible = false">
         <button class="ctx-item" @click="bottomSheetAction('reply')">Reply</button>
+        <button v-if="isBottomSheetOwnMessage" class="ctx-item" @click="bottomSheetAction('edit')">Edit</button>
+        <button class="ctx-item" disabled aria-label="Coming soon — requires V14 migration">Pin</button>
         <button class="ctx-item" @click="bottomSheetAction('copy')">Copy text</button>
         <button class="ctx-item" @click="bottomSheetAction('copyLink')">Copy link</button>
         <button class="ctx-item" @click="bottomSheetAction('forward')">Forward</button>
@@ -115,6 +118,13 @@
         @close="deleteModalVisible = false"
         @confirm="onDeleteConfirm"
       />
+
+      <!-- Channel info modal -->
+      <ChannelInfoModal
+        v-if="channelInfoModalOpen"
+        :chat-id="String(chatsStore.activeChatId)"
+        @close="channelInfoModalOpen = false"
+      />
     </div>
   </main>
 </template>
@@ -128,7 +138,8 @@ import { useRecorder } from '@/composables/useRecorder'
 import { useToast } from '@/composables/useToast'
 import { getChat } from '@/api/chats'
 import { uploadFile } from '@/api/files'
-import type { Message, Sticker } from '@/api/types'
+import * as messagesApi from '@/api/messages'
+import type { Sticker } from '@/api/types'
 
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
@@ -142,6 +153,7 @@ import SelectionBar from '@/components/chat/SelectionBar.vue'
 import BottomSheet from '@/components/ui/BottomSheet.vue'
 import ForwardDialog from '@/components/modals/ForwardDialog.vue'
 import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
+import ChannelInfoModal from '@/components/chat/ChannelInfoModal.vue'
 import { useSelectionStore } from '@/stores/selection'
 
 const emit = defineEmits<{
@@ -163,6 +175,7 @@ const stickerPickerOpen = ref(false)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
 const showInviteSection = ref(false)
+const channelInfoModalOpen = ref(false)
 
 // Emoji picker state
 const emojiPickerVisible = ref(false)
@@ -176,6 +189,11 @@ const selectionStore = useSelectionStore()
 const bottomSheetVisible = ref(false)
 const bottomSheetMessageId = ref<number | null>(null)
 const bottomSheetMessageText = ref('')
+const isBottomSheetOwnMessage = computed(() => {
+  if (!bottomSheetMessageId.value || !authStore.user) return false
+  const msg = messages.value.find((m) => m.id === bottomSheetMessageId.value)
+  return msg?.sender_id === authStore.user.id
+})
 
 // Forward dialog state
 const forwardDialogVisible = ref(false)
@@ -297,12 +315,13 @@ function handleTyping() {
   }
 }
 
-async function handleSendText(content: string) {
+async function handleSendText(content: string, replyTo?: { messageId: number; senderName: string; snippet: string }) {
   if (!chatsStore.activeChatId || !content.trim()) return
   const replyId = replyToMessage.value?.id
   replyToMessage.value = null
   try {
-    const extra = replyId ? { reply_to_message_id: replyId } : undefined
+    // Include reply context if present (content-only for now; backend reply_to may need future work)
+    const extra = replyTo ? { reply_to_message_id: replyTo.messageId } : undefined
     const msg = await messagesStore.sendMessage(chatsStore.activeChatId, content.trim(), 'text', extra)
     // Enrich locally
     if (authStore.user) {
@@ -315,6 +334,21 @@ async function handleSendText(content: string) {
     chatsStore.loadChats()
   } catch {
     showToast('Failed to send message')
+  }
+}
+
+async function handleEditMessage(messageId: number, content: string) {
+  if (!chatsStore.activeChatId || !content.trim()) return
+  try {
+    await messagesApi.editMessage(chatsStore.activeChatId, messageId, content.trim())
+    // Update local message
+    const msg = messages.value.find((m) => m.id === messageId)
+    if (msg) {
+      msg.content = content.trim()
+    }
+    showToast('Message edited')
+  } catch {
+    showToast('Failed to edit message')
   }
 }
 
@@ -455,7 +489,23 @@ function bottomSheetAction(action: string) {
   switch (action) {
     case 'reply': {
       const msg = messages.value.find((m) => m.id === msgId)
-      if (msg) replyToMessage.value = msg
+      window.dispatchEvent(new CustomEvent('reply-to-message', {
+        detail: {
+          messageId: msgId,
+          senderName: msg?.sender_display_name || msg?.sender_username || 'Unknown',
+          text: msg?.content || '',
+        },
+      }))
+      break
+    }
+    case 'edit': {
+      window.dispatchEvent(new CustomEvent('edit-message', {
+        detail: {
+          messageId: msgId,
+          chatId,
+          text: bottomSheetMessageText.value,
+        },
+      }))
       break
     }
     case 'copy':
@@ -465,7 +515,7 @@ function bottomSheetAction(action: string) {
       )
       break
     case 'copyLink':
-      navigator.clipboard.writeText(`${window.location.origin}/c/${chatId}/m/${msgId}`).then(
+      navigator.clipboard.writeText(`${window.location.origin}/c/${chatId}/${msgId}`).then(
         () => showToast('Link copied'),
         () => showToast('Failed to copy link'),
       )
@@ -483,13 +533,54 @@ function bottomSheetAction(action: string) {
   }
 }
 
-function scrollToMessage(messageId: number) {
+async function scrollToMessage(messageId: number) {
   if (!msgListRef.value) return
-  const el = msgListRef.value.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+  const chatId = chatsStore.activeChatId
+  if (!chatId) return
+
+  // Try to find the message element in DOM
+  let el = msgListRef.value.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+
+  if (!el) {
+    // Message not loaded yet — fetch messages around the target ID
+    try {
+      const afterId = Math.max(0, messageId - 25)
+      const msgs = await messagesApi.listMessages(chatId, {
+        after_id: afterId,
+        limit: 50,
+      })
+      // Check if target message exists in fetched results
+      const found = msgs.find((m) => m.id === messageId)
+      if (!found) {
+        showToast('Message not found')
+        return
+      }
+      // Replace loaded messages with the fetched range
+      messagesStore.messagesByChat[chatId] = msgs
+      if (msgs.length > 0) {
+        messagesStore.lastMsgId[chatId] = Math.max(...msgs.map((m) => m.id))
+      }
+      await nextTick()
+      el = msgListRef.value?.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null
+    } catch {
+      showToast('Message not found')
+      return
+    }
+  }
+
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     el.classList.add('highlight-message')
-    setTimeout(() => el.classList.remove('highlight-message'), 2000)
+    setTimeout(() => el!.classList.remove('highlight-message'), 2000)
+  }
+}
+
+// ESC handler for channel info modal
+function handleEsc(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (channelInfoModalOpen.value) {
+    channelInfoModalOpen.value = false
+    e.stopPropagation()
   }
 }
 
@@ -505,14 +596,14 @@ onMounted(() => {
   window.addEventListener('forward-messages', onForwardMessages as EventListener)
   window.addEventListener('select-message', onSelectMessage as EventListener)
   window.addEventListener('delete-message', onDeleteMessage as EventListener)
-  window.addEventListener('reply-message', onReplyMessage as EventListener)
+  document.addEventListener('keydown', handleEsc)
 })
 
 onUnmounted(() => {
   window.removeEventListener('forward-messages', onForwardMessages as EventListener)
   window.removeEventListener('select-message', onSelectMessage as EventListener)
   window.removeEventListener('delete-message', onDeleteMessage as EventListener)
-  window.removeEventListener('reply-message', onReplyMessage as EventListener)
+  document.removeEventListener('keydown', handleEsc)
 })
 
 // Handle pending scroll-to message from deep links

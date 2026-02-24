@@ -43,7 +43,8 @@ function close() {
   max-width: 480px;
   max-height: 80vh;
   overflow-y: auto;
-  padding: 8px 16px 24px;
+  overflow-x: hidden;
+  padding: 8px 16px calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
 .bottom-sheet-handle {

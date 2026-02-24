@@ -38,6 +38,7 @@ export interface Chat {
   last_at?: string
   updated_at: string
   member_count?: number
+  avatar_url?: string | null
   my_role?: string
 }
 
@@ -113,6 +114,15 @@ export interface FileUploadResult {
 
 export interface AvatarResult {
   avatar_url: string
+}
+
+export interface ChatMember {
+  id: number
+  username: string
+  display_name: string
+  avatar_url: string | null
+  role: 'owner' | 'admin' | 'member'
+  joined_at: string
 }
 
 // Admin types

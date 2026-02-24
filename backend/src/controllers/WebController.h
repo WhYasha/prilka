@@ -15,7 +15,7 @@ public:
     ADD_METHOD_TO(WebController::serveDeepLink, "/dm/{1}",   drogon::Get);
     ADD_METHOD_TO(WebController::serveDeepLink, "/join/{1}", drogon::Get);
     ADD_METHOD_TO(WebController::serveDeepLink, "/c/{1}",    drogon::Get);
-    ADD_METHOD_TO(WebController::serveMessageDeepLink, "/c/{1}/m/{2}", drogon::Get);
+    ADD_METHOD_TO(WebController::serveMessageDeepLink, "/c/{1}/{2}", drogon::Get);
     // Admin SPA (all sub-routes serve index.html for Vue Router)
     ADD_METHOD_TO(WebController::serveAdmin,         "/admin",          drogon::Get);
     ADD_METHOD_TO(WebController::serveAdminSub,      "/admin/{1}",      drogon::Get);
@@ -43,7 +43,7 @@ public:
                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                        const std::string& sub1);
 
-    // Message deep-link: /c/{chatId}/m/{messageId} — serves index.html
+    // Message deep-link: /c/{chatId}/{messageId} — serves index.html
     void serveMessageDeepLink(const drogon::HttpRequestPtr& req,
                               std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                               const std::string& chatId,

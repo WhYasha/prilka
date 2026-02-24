@@ -1031,6 +1031,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   }
   .profile-name { font-size: 1.2rem; }
 
+  /* Touch targets: minimum 44px on mobile */
+  .ctx-item { min-height: 44px; padding: .75rem 1rem; }
+  .channel-info-menu-item { min-height: 44px; }
+
+  /* Prevent horizontal overflow on mobile */
+  .profile-modal-body { overflow-x: hidden; }
+
   /* Drawer: full-width on small screens */
   .drawer { width: 85vw; max-width: 320px; }
 
