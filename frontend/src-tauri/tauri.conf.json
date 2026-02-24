@@ -11,6 +11,7 @@
     "windows": [
       {
         "title": "Simple Messenger",
+        "url": "https://behappy.rest",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -20,18 +21,24 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' https://behappy.rest; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://behappy.rest; style-src 'self' 'unsafe-inline' https://behappy.rest; img-src 'self' https://behappy.rest https://behappy.rest/minio/ data:; connect-src 'self' https://behappy.rest wss://behappy.rest; font-src 'self' https://behappy.rest data:"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "dmg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

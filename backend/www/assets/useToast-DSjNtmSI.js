@@ -1,1 +1,0 @@
-import{aJ as a}from"./runtime-core.esm-bundler-DriOm3-t.js";const s=a(""),e=a(!1);let t=null;function r(){function o(u,l=3e3){s.value=u,e.value=!0,t&&clearTimeout(t),t=setTimeout(()=>{e.value=!1},l)}return{message:s,visible:e,showToast:o}}export{r as u};

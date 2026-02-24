@@ -6,12 +6,7 @@
   <title>Simple Messenger</title>
 </head>
 <body data-theme="light">
-  <div id="app">Loading HTML...</div>
-  <script>
-    window.onerror=function(m,s,l,c,e){document.getElementById('app').innerHTML='<pre style="color:red;padding:2rem">onerror: '+m+'\n'+s+':'+l+':'+c+'\n'+(e&&e.stack||'')+'</pre>';};
-    window.addEventListener('unhandledrejection',function(ev){document.getElementById('app').innerHTML='<pre style="color:red;padding:2rem">unhandledrejection: '+ev.reason+'\n'+(ev.reason&&ev.reason.stack||'')+'</pre>';});
-    document.getElementById('app').textContent='HTML OK. Waiting for JS module...';
-  </script>
+  <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
