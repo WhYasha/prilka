@@ -176,15 +176,22 @@ async function handleDeepLink() {
   } else if (path.startsWith('/dm/')) {
     const target = route.params.id as string
     if (target) await openDM(target)
-  } else if (route.name === 'messageDeepLink') {
-    const chatId = parseInt(route.params.chatId as string)
-    const messageId = parseInt(route.params.messageId as string)
-    if (chatId && messageId) {
-      await openChatAndScrollToMessage(chatId, messageId)
-    }
   } else if (path.startsWith('/c/')) {
-    const name = route.params.name as string
-    if (name) await openChannelByName(name)
+    const chatIdOrName = (route.params.chatIdOrName || route.params.name) as string
+    const messageId = route.params.messageId ? parseInt(route.params.messageId as string) : null
+    if (chatIdOrName) {
+      const isNumeric = /^\d+$/.test(chatIdOrName)
+      if (isNumeric) {
+        const chatId = parseInt(chatIdOrName)
+        if (messageId) {
+          await openChatAndScrollToMessage(chatId, messageId)
+        } else {
+          chatsStore.setActiveChat(chatId)
+        }
+      } else {
+        await openChannelByName(chatIdOrName)
+      }
+    }
   }
 }
 
