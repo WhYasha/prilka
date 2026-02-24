@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as messagesApi from '@/api/messages'
 import * as reactionsApi from '@/api/reactions'
-import type { Message, ReactionGroup } from '@/api/types'
+import type { Message } from '@/api/types'
 
 export const useMessagesStore = defineStore('messages', () => {
   const messagesByChat = ref<Record<number, Message[]>>({})

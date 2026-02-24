@@ -3,7 +3,7 @@
     <div class="modal" style="max-width: 420px">
       <div class="modal-header">
         <h2 class="modal-title">Download Simple Messenger</h2>
-        <button class="icon-btn" aria-label="Close" @click="emit('close')">&#10005;</button>
+        <button class="icon-btn" aria-label="Close" @click="emit('close')"><X :size="20" /></button>
       </div>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px">
         <button
@@ -38,6 +38,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { X } from 'lucide-vue-next'
 
 const emit = defineEmits<{ close: [] }>()
 
