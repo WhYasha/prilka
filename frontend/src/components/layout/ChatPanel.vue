@@ -92,7 +92,7 @@
       <!-- Bottom sheet (mobile long-press) -->
       <BottomSheet :visible="bottomSheetVisible" @close="bottomSheetVisible = false">
         <button class="ctx-item" @click="bottomSheetAction('reply')">Reply</button>
-        <button v-if="isBottomSheetOwnMessage" class="ctx-item" @click="bottomSheetAction('edit')">Edit</button>
+        <button v-if="isBottomSheetEditableMessage" class="ctx-item" @click="bottomSheetAction('edit')">Edit</button>
         <button class="ctx-item" disabled aria-label="Coming soon — requires V14 migration">Pin</button>
         <button class="ctx-item" @click="bottomSheetAction('copy')">Copy text</button>
         <button class="ctx-item" @click="bottomSheetAction('copyLink')">Copy link</button>
@@ -139,7 +139,7 @@ import { useToast } from '@/composables/useToast'
 import { getChat } from '@/api/chats'
 import { uploadFile } from '@/api/files'
 import * as messagesApi from '@/api/messages'
-import type { Sticker } from '@/api/types'
+import type { Message, Sticker } from '@/api/types'
 
 import ChatHeader from '@/components/chat/ChatHeader.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
@@ -193,6 +193,12 @@ const isBottomSheetOwnMessage = computed(() => {
   if (!bottomSheetMessageId.value || !authStore.user) return false
   const msg = messages.value.find((m) => m.id === bottomSheetMessageId.value)
   return msg?.sender_id === authStore.user.id
+})
+
+const isBottomSheetEditableMessage = computed(() => {
+  if (!isBottomSheetOwnMessage.value) return false
+  const msg = messages.value.find((m) => m.id === bottomSheetMessageId.value)
+  return msg?.message_type === 'text'
 })
 
 // Forward dialog state
@@ -317,7 +323,6 @@ function handleTyping() {
 
 async function handleSendText(content: string, replyTo?: { messageId: number; senderName: string; snippet: string }) {
   if (!chatsStore.activeChatId || !content.trim()) return
-  const replyId = replyToMessage.value?.id
   replyToMessage.value = null
   try {
     // Include reply context if present (content-only for now; backend reply_to may need future work)
@@ -340,13 +345,7 @@ async function handleSendText(content: string, replyTo?: { messageId: number; se
 async function handleEditMessage(messageId: number, content: string) {
   if (!chatsStore.activeChatId || !content.trim()) return
   try {
-    await messagesApi.editMessage(chatsStore.activeChatId, messageId, content.trim())
-    // Update local message
-    const msg = messages.value.find((m) => m.id === messageId)
-    if (msg) {
-      msg.content = content.trim()
-    }
-    showToast('Message edited')
+    await messagesStore.editMessage(chatsStore.activeChatId, messageId, content.trim())
   } catch {
     showToast('Failed to edit message')
   }
@@ -582,13 +581,6 @@ function handleEsc(e: KeyboardEvent) {
     channelInfoModalOpen.value = false
     e.stopPropagation()
   }
-}
-
-function onReplyMessage(e: CustomEvent) {
-  const { messageId, chatId: eChatId } = e.detail
-  if (!messageId || eChatId !== chatsStore.activeChatId) return
-  const msg = messages.value.find((m) => m.id === messageId)
-  if (msg) replyToMessage.value = msg
 }
 
 // Listen for custom events from MessageContextMenu and other components

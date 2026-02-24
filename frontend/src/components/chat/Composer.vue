@@ -55,7 +55,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import type { Message } from '@/api/types'
 
 export interface ReplyTarget {
   messageId: number
@@ -87,16 +88,6 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const replyTarget = ref<ReplyTarget | null>(null)
 const editTarget = ref<EditTarget | null>(null)
 let typingThrottle = 0
-
-const replyPreviewText = computed(() => {
-  if (!props.replyTo) return ''
-  const t = props.replyTo.message_type
-  if (t === 'sticker') return '\u{1F3A8} Sticker'
-  if (t === 'voice') return '\u{1F3A4} Voice message'
-  if (t === 'file') return '\u{1F4CE} File'
-  const content = props.replyTo.content || ''
-  return content.length > 100 ? content.slice(0, 100) + '...' : content
-})
 
 function send() {
   const content = text.value.trim()

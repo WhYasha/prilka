@@ -1723,3 +1723,14 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 [data-theme="dark"] .msg-reply-quote { background: rgba(255,255,255,.06); }
 [data-theme="dark"] .msg-reply-quote:hover { background: rgba(255,255,255,.1); }
 [data-theme="dark"] .mine .msg-reply-quote { background: rgba(255,255,255,.08); }
+
+/* ── Edit preview above composer ─────────────────────────── */
+.edit-preview { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border); }
+.edit-preview-icon { font-size: 1rem; color: var(--accent); }
+.edit-preview-label { font-size: .78rem; font-weight: 600; color: var(--accent); }
+.edit-preview-text { font-size: .78rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.edit-preview-close { background: none; border: none; font-size: 1rem; color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: 50%; }
+.edit-preview-close:hover { background: var(--input-bg); }
+
+/* ── Edited label on message bubble ──────────────────────── */
+.msg-edited-label { font-size: .65rem; color: var(--text-muted); margin-right: 4px; font-style: italic; }

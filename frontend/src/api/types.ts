@@ -74,6 +74,8 @@ export interface Message {
   reply_to_type?: string
   reply_to_sender_username?: string
   reply_to_sender_name?: string
+  is_edited?: boolean
+  updated_at?: string
   created_at: string
   reactions?: ReactionGroup[]
 }

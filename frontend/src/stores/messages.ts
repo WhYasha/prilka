@@ -180,6 +180,26 @@ export const useMessagesStore = defineStore('messages', () => {
     messagesByChat.value[chatId] = msgs.filter((m) => m.id !== messageId)
   }
 
+  async function editMessage(chatId: number, messageId: number, content: string) {
+    try {
+      const result = await messagesApi.editMessage(chatId, messageId, content)
+      applyMessageUpdate(chatId, messageId, result.content, result.updated_at)
+    } catch (e) {
+      console.error('Failed to edit message', e)
+      throw e
+    }
+  }
+
+  function applyMessageUpdate(chatId: number, messageId: number, content: string, updatedAt?: string) {
+    const msgs = messagesByChat.value[chatId]
+    if (!msgs) return
+    const msg = msgs.find((m) => m.id === messageId)
+    if (!msg) return
+    msg.content = content
+    msg.is_edited = true
+    if (updatedAt) msg.updated_at = updatedAt
+  }
+
   async function forwardMessages(toChatId: number, fromChatId: number, messageIds: number[]) {
     try {
       const msgs = await messagesApi.forwardMessages(toChatId, {
@@ -214,6 +234,8 @@ export const useMessagesStore = defineStore('messages', () => {
     applyReactionUpdate,
     deleteMessage,
     removeMessage,
+    editMessage,
+    applyMessageUpdate,
     forwardMessages,
   }
 })

@@ -3,7 +3,6 @@
     class="msg-row"
     :data-message-id="message.id"
     :class="[isMine ? 'mine' : 'theirs', { selected: isSelected }]"
-    :data-message-id="message.id"
     @contextmenu.prevent="onContextMenu"
     v-bind="longPressHandlers"
     @click="onRowClick"
@@ -76,7 +75,7 @@
       </div>
     </div>
 
-    <div class="msg-time">{{ formatTime(message.created_at) }}</div>
+    <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
   </div>
 </template>
 
@@ -133,6 +132,7 @@ function showContextMenu(x: number, y: number) {
         messageId: props.message.id,
         chatId: chatsStore.activeChatId,
         text: props.message.content || '',
+        messageType: props.message.message_type,
         senderId: props.message.sender_id,
         senderName: props.message.sender_display_name || props.message.sender_username || '',
         x,

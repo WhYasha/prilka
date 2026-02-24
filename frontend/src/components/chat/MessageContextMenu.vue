@@ -10,7 +10,7 @@
       <button class="ctx-item" @click="handleReply">
         Reply
       </button>
-      <button v-if="isOwnMessage" class="ctx-item" @click="handleEdit">
+      <button v-if="isOwnMessage && messageType === 'text'" class="ctx-item" @click="handleEdit">
         Edit
       </button>
       <button class="ctx-item" disabled aria-label="Coming soon — requires V14 migration">
@@ -49,6 +49,7 @@ const posY = ref(0)
 const messageId = ref<number | null>(null)
 const chatId = ref<number | null>(null)
 const messageText = ref('')
+const messageType = ref('')
 const senderName = ref('')
 const senderId = ref<number | null>(null)
 
@@ -66,6 +67,7 @@ function onShowMessageContextMenu(e: CustomEvent) {
   messageId.value = e.detail.messageId
   chatId.value = e.detail.chatId
   messageText.value = e.detail.text || ''
+  messageType.value = e.detail.messageType || 'text'
   senderName.value = e.detail.senderName || ''
   senderId.value = e.detail.senderId ?? null
   posX.value = e.detail.x
@@ -92,6 +94,7 @@ function onClickOutside() {
     messageId.value = null
     chatId.value = null
     messageText.value = ''
+    messageType.value = ''
     senderName.value = ''
     senderId.value = null
   }
@@ -159,16 +162,6 @@ async function handleCopyLink() {
   } catch {
     showToast('Failed to copy link')
   }
-}
-
-function handleReply() {
-  hide()
-  if (!messageId.value || !chatId.value) return
-  window.dispatchEvent(
-    new CustomEvent('reply-message', {
-      detail: { messageId: messageId.value, chatId: chatId.value },
-    }),
-  )
 }
 
 function handleForward() {

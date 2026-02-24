@@ -159,6 +159,14 @@ export function useWebSocket() {
         messagesStore.removeMessage(chatId, messageId)
         break
       }
+      case 'message_updated': {
+        const chatId = data.chat_id as number
+        const messageId = data.message_id as number
+        const content = data.content as string
+        const updatedAt = data.updated_at as string
+        messagesStore.applyMessageUpdate(chatId, messageId, content, updatedAt)
+        break
+      }
       case 'reaction': {
         const chatId = data.chat_id as number
         const messageId = data.message_id as number

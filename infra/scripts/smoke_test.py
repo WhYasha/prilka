@@ -153,6 +153,63 @@ else:
     check("POST reply message -> 201", False, "no message to reply to")
     check("GET reply msg -> enriched reply fields", False, "skipped")
 
+# ── 8c. Edit message ─────────────────────────────────────────────────────
+print("\n[8c] Edit message")
+# Find a text message to edit (from our smoke user)
+s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=10", token=token)
+edit_msg_id = None
+for m in (b if isinstance(b, list) else []):
+    if m.get("message_type") == "text" and m.get("content") == SMOKE_MSG:
+        edit_msg_id = m.get("id")
+        break
+if not edit_msg_id:
+    # Fallback: use any text message
+    for m in (b if isinstance(b, list) else []):
+        if m.get("message_type") == "text":
+            edit_msg_id = m.get("id")
+            break
+
+EDITED_CONTENT = "Hello from smoke test (edited)!"
+if edit_msg_id:
+    # Edit the message
+    s, b = req("PUT", "/chats/" + str(chat_id) + "/messages/" + str(edit_msg_id),
+               {"content": EDITED_CONTENT}, token=token)
+    check("PUT edit message -> 200", s == 200 and b.get("is_edited") == True,
+          "is_edited=" + str(b.get("is_edited")) + " updated_at=" + str(b.get("updated_at", "?"))[:20])
+
+    # Verify via GET
+    s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=10", token=token)
+    edited_msg = None
+    for m in (b if isinstance(b, list) else []):
+        if m.get("id") == edit_msg_id:
+            edited_msg = m
+            break
+    check("GET edited message -> is_edited + new content",
+          edited_msg is not None and edited_msg.get("is_edited") == True
+          and edited_msg.get("content") == EDITED_CONTENT,
+          "content=" + str(edited_msg.get("content", "?"))[:40] if edited_msg else "not found")
+
+    # Try editing a non-owned message (should fail)
+    # Use a message from alice (if any)
+    other_msg_id = None
+    for m in (b if isinstance(b, list) else []):
+        if m.get("sender_id") != b[0].get("sender_id") if b else None:
+            other_msg_id = m.get("id")
+            break
+    if other_msg_id:
+        s, b = req("PUT", "/chats/" + str(chat_id) + "/messages/" + str(other_msg_id),
+                   {"content": "hacked!"}, token=token)
+        check("PUT edit non-owned message -> 403", s == 403, "status=" + str(s))
+    else:
+        # No non-owned message — try editing with invalid ID
+        s, b = req("PUT", "/chats/" + str(chat_id) + "/messages/999999999",
+                   {"content": "hacked!"}, token=token)
+        check("PUT edit non-existent message -> 403", s == 403, "status=" + str(s))
+else:
+    check("PUT edit message -> 200", False, "no text message to edit")
+    check("GET edited message -> is_edited + new content", False, "skipped")
+    check("PUT edit non-owned message -> 403", False, "skipped")
+
 # ── 9. File upload / download ──────────────────────────────────────────────
 print("\n[9] File upload / download")
 

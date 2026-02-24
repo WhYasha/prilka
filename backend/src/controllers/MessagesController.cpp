@@ -42,6 +42,9 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
     msg["content"]      = row["content"].isNull() ? Json::Value() : Json::Value(row["content"].as<std::string>());
     msg["message_type"] = row["message_type"].as<std::string>();
     msg["created_at"]   = row["created_at"].as<std::string>();
+    msg["is_edited"]    = row["is_edited"].as<bool>();
+    if (!row["updated_at"].isNull())
+        msg["updated_at"] = row["updated_at"].as<std::string>();
 
     msg["sender_username"]     = row["sender_username"].isNull() ? Json::Value() : Json::Value(row["sender_username"].as<std::string>());
     msg["sender_display_name"] = row["sender_display_name"].isNull() ? Json::Value() : Json::Value(row["sender_display_name"].as<std::string>());
@@ -107,6 +110,7 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
 // The enriched SELECT used by both list and single-message fetch
 static const char* kEnrichedMsgSelect =
     "SELECT m.id, m.chat_id, m.sender_id, m.content, m.message_type, m.created_at, "
+    "       m.is_edited, m.updated_at, "
     "       m.duration_seconds, "
     "       m.forwarded_from_chat_id, m.forwarded_from_message_id, "
     "       m.reply_to_message_id, "
@@ -447,6 +451,63 @@ void MessagesController::deleteMessage(const drogon::HttpRequestPtr& req,
                 (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
             },
             messageId, chatId, me);
+    });
+}
+
+// PUT /chats/{chatId}/messages/{messageId}
+void MessagesController::editMessage(const drogon::HttpRequestPtr& req,
+                                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                      long long chatId, long long messageId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto body = req->getJsonObject();
+    if (!body) return cb(jsonErr("Invalid JSON", drogon::k400BadRequest));
+
+    std::string content = (*body).get("content", "").asString();
+    if (content.empty())
+        return cb(jsonErr("content required", drogon::k400BadRequest));
+    if (content.size() > 4000)
+        return cb(jsonErr("content too long (max 4000)", drogon::k400BadRequest));
+
+    using CbT = std::function<void(const drogon::HttpResponsePtr&)>;
+    auto cbPtr = std::make_shared<CbT>(std::move(cb));
+
+    requireMember(chatId, me, [=](bool isMember) {
+        if (!isMember) return (*cbPtr)(jsonErr("Not a member of this chat", drogon::k403Forbidden));
+
+        auto db = drogon::app().getDbClient();
+        db->execSqlAsync(
+            "UPDATE messages SET content = $1, is_edited = TRUE, updated_at = NOW() "
+            "WHERE id = $2 AND chat_id = $3 AND sender_id = $4 AND message_type = 'text' "
+            "AND is_deleted = FALSE "
+            "RETURNING id, content, updated_at",
+            [=](const drogon::orm::Result& r) {
+                if (r.empty())
+                    return (*cbPtr)(jsonErr("Message not found or not editable", drogon::k403Forbidden));
+
+                std::string updatedContent = r[0]["content"].as<std::string>();
+                std::string updatedAt      = r[0]["updated_at"].as<std::string>();
+
+                // Broadcast via WebSocket
+                Json::Value wsPayload;
+                wsPayload["type"]       = "message_updated";
+                wsPayload["chat_id"]    = Json::Int64(chatId);
+                wsPayload["message_id"] = Json::Int64(messageId);
+                wsPayload["content"]    = updatedContent;
+                wsPayload["updated_at"] = updatedAt;
+                WsDispatch::publishMessage(chatId, wsPayload);
+
+                Json::Value resp;
+                resp["id"]        = Json::Int64(messageId);
+                resp["content"]   = updatedContent;
+                resp["is_edited"] = true;
+                resp["updated_at"]= updatedAt;
+                (*cbPtr)(drogon::HttpResponse::newHttpJsonResponse(resp));
+            },
+            [cbPtr](const drogon::orm::DrogonDbException& e) {
+                LOG_ERROR << "editMessage: " << e.base().what();
+                (*cbPtr)(jsonErr("Internal error", drogon::k500InternalServerError));
+            },
+            content, messageId, chatId, me);
     });
 }
 
