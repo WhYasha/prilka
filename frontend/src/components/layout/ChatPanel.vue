@@ -153,6 +153,7 @@ const { showToast } = useToast()
 const recorderComposable = useRecorder()
 const stickers = inject<{ value: Sticker[] }>('stickers', ref([]))
 const sendTyping = inject<(chatId: number) => void>('sendTyping', () => {})
+const pendingScrollMessageId = inject<{ value: number | null }>('pendingScrollMessageId', ref(null))
 
 const msgListRef = ref<HTMLElement | null>(null)
 const stickerPickerOpen = ref(false)
@@ -490,6 +491,20 @@ onUnmounted(() => {
   window.removeEventListener('select-message', onSelectMessage as EventListener)
   window.removeEventListener('delete-message', onDeleteMessage as EventListener)
 })
+
+// Handle pending scroll-to message from deep links
+watch(
+  () => pendingScrollMessageId.value,
+  async (messageId) => {
+    if (!messageId) return
+    await nextTick()
+    // Small delay to ensure messages are rendered
+    setTimeout(() => {
+      scrollToMessage(messageId)
+      pendingScrollMessageId.value = null
+    }, 300)
+  },
+)
 
 // Clear selection when chat changes
 watch(

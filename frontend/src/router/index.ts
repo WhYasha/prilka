@@ -41,6 +41,12 @@ const router = createRouter({
       meta: { auth: true },
     },
     {
+      path: '/c/:chatId/m/:messageId',
+      name: 'messageDeepLink',
+      component: () => import('@/views/MessengerView.vue'),
+      meta: { auth: true },
+    },
+    {
       path: '/u/:id',
       name: 'userById',
       component: () => import('@/views/MessengerView.vue'),

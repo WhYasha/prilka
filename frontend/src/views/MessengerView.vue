@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useChatsStore } from '@/stores/chats'
@@ -93,8 +93,12 @@ const downloadModalOpen = ref(false)
 const userProfileTarget = ref<string | null>(null)
 const stickers = ref<Sticker[]>([])
 
-// Provide stickers to child components
+// Pending scroll-to message for deep links
+const pendingScrollMessageId = ref<number | null>(null)
+
+// Provide stickers and pending scroll message to child components
 provide('stickers', stickers)
+provide('pendingScrollMessageId', pendingScrollMessageId)
 
 // Chat polling timer
 let chatsPollTimer: ReturnType<typeof setInterval> | null = null
@@ -155,6 +159,12 @@ async function handleDeepLink() {
   } else if (path.startsWith('/dm/')) {
     const target = route.params.id as string
     if (target) await openDM(target)
+  } else if (route.name === 'messageDeepLink') {
+    const chatId = parseInt(route.params.chatId as string)
+    const messageId = parseInt(route.params.messageId as string)
+    if (chatId && messageId) {
+      await openChatAndScrollToMessage(chatId, messageId)
+    }
   } else if (path.startsWith('/c/')) {
     const name = route.params.name as string
     if (name) await openChannelByName(name)
@@ -199,6 +209,17 @@ async function openChannelByName(name: string) {
   } catch {
     showToast('Channel not found')
   }
+}
+
+async function openChatAndScrollToMessage(chatId: number, messageId: number) {
+  const existing = chatsStore.chats.find((c) => c.id === chatId)
+  if (!existing) {
+    showToast('Chat not found')
+    return
+  }
+  chatsStore.setActiveChat(chatId)
+  await nextTick()
+  pendingScrollMessageId.value = messageId
 }
 
 function handleSelectChat(chatId: number) {
