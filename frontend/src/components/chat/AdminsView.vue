@@ -1,7 +1,9 @@
 <template>
   <div class="admins-view">
     <div class="view-header">
-      <button class="btn btn-sm btn-ghost" @click="emit('back')">← Back</button>
+      <button class="icon-btn" aria-label="Back" @click="emit('back')">
+        <ArrowLeft :size="20" :stroke-width="2" />
+      </button>
       <span class="view-title">Administrators</span>
     </div>
 
@@ -29,6 +31,7 @@
 import { computed } from 'vue'
 import { useChannelStore } from '@/stores/channel'
 import Avatar from '@/components/ui/Avatar.vue'
+import { ArrowLeft } from 'lucide-vue-next'
 
 defineProps<{ chatId: number }>()
 const emit = defineEmits<{ back: [] }>()
@@ -63,7 +66,7 @@ const admins = computed(() =>
 .member-empty {
   padding: 1rem;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .member-list {
@@ -80,7 +83,7 @@ const admins = computed(() =>
 }
 
 .member-item:hover {
-  background: var(--hover);
+  background: var(--input-bg);
 }
 
 .member-info {
@@ -101,14 +104,14 @@ const admins = computed(() =>
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .role-badge--owner {
-  color: var(--accent, #7c3aed);
+  color: var(--accent);
 }
 
 .role-badge--admin {
-  color: var(--primary, #3b82f6);
+  color: var(--accent);
 }
 </style>

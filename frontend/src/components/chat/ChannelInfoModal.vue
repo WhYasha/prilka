@@ -169,26 +169,26 @@ onMounted(async () => {
   padding: 10px 16px;
   border: none;
   background: none;
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 14px;
   cursor: pointer;
   border-radius: 8px;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
   width: 100%;
   text-align: left;
 }
 
 .channel-info-menu-item:hover {
-  background: var(--bg-hover);
+  background: var(--input-bg);
 }
 
 .channel-info-menu-item--danger {
-  color: var(--color-danger, #e53935);
+  color: var(--danger);
 }
 
 .channel-info-menu-count {
   margin-left: auto;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: 13px;
 }
 </style>

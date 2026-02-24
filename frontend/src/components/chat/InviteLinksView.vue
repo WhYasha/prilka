@@ -1,13 +1,15 @@
 <template>
   <div class="invite-links-view">
     <div class="view-header">
-      <button class="btn btn-sm btn-ghost" @click="emit('back')">← Back</button>
+      <button class="icon-btn" aria-label="Back" @click="emit('back')">
+        <ArrowLeft :size="20" :stroke-width="2" />
+      </button>
       <span class="view-title">Invite Links</span>
     </div>
 
     <div style="padding: 0 1rem .5rem">
       <button class="btn btn-sm btn-outline" @click="handleCreate" :disabled="creating">
-        {{ creating ? 'Creating...' : '+ Create Invite Link' }}
+        {{ creating ? 'Creating...' : 'Create Invite Link' }}
       </button>
     </div>
 
@@ -15,7 +17,7 @@
       Loading...
     </div>
 
-    <div v-else-if="store.invites.length === 0" style="padding: 1rem; text-align: center; color: var(--text-secondary)">
+    <div v-else-if="store.invites.length === 0" style="padding: 1rem; text-align: center; color: var(--text-muted)">
       No active invite links
     </div>
 
@@ -26,8 +28,8 @@
           <span class="invite-date">{{ formatDate(invite.created_at) }}</span>
         </div>
         <div class="invite-item-actions">
-          <button class="btn btn-sm btn-outline" title="Copy link" @click="copyLink(invite.token)">
-            &#128203;
+          <button class="icon-btn" title="Copy link" @click="copyLink(invite.token)">
+            <Copy :size="16" :stroke-width="2" />
           </button>
           <button class="btn btn-sm btn-ghost btn-danger" @click="handleRevoke(invite.token)">
             Revoke
@@ -42,6 +44,7 @@
 import { onMounted, ref } from 'vue'
 import { useInvitesStore } from '@/stores/invites'
 import { useToast } from '@/composables/useToast'
+import { ArrowLeft, Copy } from 'lucide-vue-next'
 
 const props = defineProps<{ chatId: number }>()
 const emit = defineEmits<{ back: [] }>()
@@ -141,7 +144,7 @@ onMounted(() => store.loadInvites(props.chatId))
 
 .invite-date {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .invite-item-actions {

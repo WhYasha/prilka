@@ -1,7 +1,9 @@
 <template>
   <div class="subscribers-view">
     <div class="view-header">
-      <button class="btn btn-sm btn-ghost" @click="emit('back')">← Back</button>
+      <button class="icon-btn" aria-label="Back" @click="emit('back')">
+        <ArrowLeft :size="20" :stroke-width="2" />
+      </button>
       <span class="view-title">Subscribers</span>
     </div>
 
@@ -9,7 +11,7 @@
       <input
         v-model="search"
         type="text"
-        class="input"
+        class="form-input"
         placeholder="Search members..."
       />
     </div>
@@ -38,6 +40,7 @@
 import { ref, computed } from 'vue'
 import { useChannelStore } from '@/stores/channel'
 import Avatar from '@/components/ui/Avatar.vue'
+import { ArrowLeft } from 'lucide-vue-next'
 
 defineProps<{ chatId: number }>()
 const emit = defineEmits<{ back: [] }>()
@@ -80,20 +83,14 @@ const filtered = computed(() => {
   padding: 0.5rem 1rem;
 }
 
-.search-bar .input {
+.search-bar .form-input {
   width: 100%;
-  padding: 0.4rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 0.85rem;
-  background: var(--bg-secondary, transparent);
-  color: inherit;
 }
 
 .member-empty {
   padding: 1rem;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .member-list {
@@ -110,7 +107,7 @@ const filtered = computed(() => {
 }
 
 .member-item:hover {
-  background: var(--hover);
+  background: var(--input-bg);
 }
 
 .member-info {
@@ -131,14 +128,14 @@ const filtered = computed(() => {
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-muted);
 }
 
 .role-badge--owner {
-  color: var(--accent, #7c3aed);
+  color: var(--accent);
 }
 
 .role-badge--admin {
-  color: var(--primary, #3b82f6);
+  color: var(--accent);
 }
 </style>

@@ -1,21 +1,32 @@
 <template>
   <div class="danger-zone">
-    <h3 class="danger-title">Danger Zone</h3>
+    <div class="view-header">
+      <button class="icon-btn" aria-label="Back" @click="emit('back')">
+        <ArrowLeft :size="20" :stroke-width="2" />
+      </button>
+      <span class="view-title">Danger Zone</span>
+    </div>
 
-    <button class="btn btn-danger-outline" @click="handleLeave">
-      Leave Channel
-    </button>
+    <div class="danger-zone-body">
+      <button class="btn btn-danger-outline" @click="handleLeave">
+        <LogOut :size="18" :stroke-width="1.8" />
+        Leave Channel
+      </button>
 
-    <button v-if="channelStore.isOwner" class="btn btn-danger" @click="showDeleteConfirm = true">
-      Delete Channel
-    </button>
+      <button v-if="channelStore.isOwner" class="btn btn-danger" @click="showDeleteConfirm = true">
+        <Trash2 :size="18" :stroke-width="1.8" />
+        Delete Channel
+      </button>
+    </div>
 
     <!-- Delete confirmation dialog -->
     <div v-if="showDeleteConfirm" class="modal-backdrop" @click.self="showDeleteConfirm = false">
       <div class="modal modal-sm">
         <div class="modal-header">
           <h2 class="modal-title">Delete Channel</h2>
-          <button class="icon-btn" @click="showDeleteConfirm = false">&#10005;</button>
+          <button class="icon-btn" aria-label="Close" @click="showDeleteConfirm = false">
+            <X :size="20" :stroke-width="2" />
+          </button>
         </div>
         <div class="modal-body">
           <p class="delete-confirm-text">
@@ -26,7 +37,7 @@
         <div class="modal-actions">
           <button class="btn btn-ghost" @click="showDeleteConfirm = false">Cancel</button>
           <button class="btn btn-danger" :disabled="deleting" @click="handleDelete">
-            {{ deleting ? 'Deleting…' : 'Delete' }}
+            {{ deleting ? 'Deleting...' : 'Delete' }}
           </button>
         </div>
       </div>
@@ -38,7 +49,9 @@
 import { ref } from 'vue'
 import { useChatsStore } from '@/stores/chats'
 import { useChannelStore } from '@/stores/channel'
+import { useToast } from '@/composables/useToast'
 import * as chatsApi from '@/api/chats'
+import { ArrowLeft, LogOut, Trash2, X } from 'lucide-vue-next'
 
 const props = defineProps<{
   chatId: number
@@ -52,6 +65,7 @@ const emit = defineEmits<{
 
 const chatsStore = useChatsStore()
 const channelStore = useChannelStore()
+const { showToast } = useToast()
 
 const showDeleteConfirm = ref(false)
 const deleting = ref(false)
@@ -60,8 +74,8 @@ async function handleLeave() {
   try {
     await chatsStore.leave(props.chatId)
     emit('left')
-  } catch (e) {
-    console.error('Failed to leave channel', e)
+  } catch {
+    showToast('Failed to leave channel')
   }
 }
 
@@ -75,8 +89,8 @@ async function handleDelete() {
     }
     showDeleteConfirm.value = false
     emit('deleted')
-  } catch (e) {
-    console.error('Failed to delete channel', e)
+  } catch {
+    showToast('Failed to delete channel')
   } finally {
     deleting.value = false
   }
@@ -85,21 +99,37 @@ async function handleDelete() {
 
 <style scoped>
 .danger-zone {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.view-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.view-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--danger);
+}
+
+.danger-zone-body {
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.danger-title {
-  color: var(--color-danger, #e53935);
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0 0 0.5rem;
-}
-
 .btn-danger {
-  background: var(--color-danger, #e53935);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--danger);
   color: #fff;
   border: none;
   border-radius: 0.5rem;
@@ -110,7 +140,7 @@ async function handleDelete() {
 }
 
 .btn-danger:hover {
-  background: var(--color-danger-hover, #c62828);
+  opacity: 0.9;
 }
 
 .btn-danger:disabled {
@@ -119,9 +149,12 @@ async function handleDelete() {
 }
 
 .btn-danger-outline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: transparent;
-  color: var(--color-danger, #e53935);
-  border: 1px solid var(--color-danger, #e53935);
+  color: var(--danger);
+  border: 1px solid var(--danger);
   border-radius: 0.5rem;
   padding: 0.5rem 1.25rem;
   cursor: pointer;
@@ -139,7 +172,7 @@ async function handleDelete() {
 
 .delete-confirm-text {
   margin: 0;
-  color: var(--text-primary);
+  color: var(--text);
   font-size: 0.95rem;
   line-height: 1.5;
 }
