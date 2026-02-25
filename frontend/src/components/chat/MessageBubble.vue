@@ -2,7 +2,7 @@
   <div
     class="msg-row"
     :data-message-id="message.id"
-    :class="[isMine ? 'mine' : 'theirs', { selected: isSelected }]"
+    :class="[isMine ? 'mine' : 'theirs', { selected: isSelected, 'msg-deleting': isBeingDeleted }]"
     @contextmenu.prevent="onContextMenu"
     v-bind="longPressHandlers"
     @click="onRowClick"
@@ -96,6 +96,7 @@ import { useSelectionStore } from '@/stores/selection'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
 import { useLongPress } from '@/composables/useLongPress'
+import { useMessagesStore } from '@/stores/messages'
 
 const props = defineProps<{
   message: Message
@@ -111,8 +112,10 @@ const emit = defineEmits<{
 
 const selectionStore = useSelectionStore()
 const chatsStore = useChatsStore()
+const messagesStore = useMessagesStore()
 
 const isSelected = computed(() => selectionStore.isSelected(props.message.id))
+const isBeingDeleted = computed(() => messagesStore.deletingMessages.has(props.message.id))
 
 const { onPointerDown, onPointerUp, onPointerMove } = useLongPress({
   delay: 500,
