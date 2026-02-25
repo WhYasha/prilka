@@ -565,9 +565,48 @@ body {
   text-align: right;
 }
 
+/* ── Inline timestamp inside bubble (Telegram-style) ──────── */
 .msg-time {
-  font-size: .7rem; color: var(--text-muted);
-  margin-top: .2rem; padding: 0 .25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  float: right;
+  margin-left: 8px;
+  margin-top: 4px;
+  font-size: .7rem;
+  color: inherit;
+  opacity: 0.55;
+  white-space: nowrap;
+  line-height: 1.6;
+  padding: 0;
+  vertical-align: bottom;
+}
+.msg-edited-label {
+  font-style: italic;
+}
+
+/* Sticker timestamp – semi-transparent pill below sticker */
+.sticker-bubble .msg-time {
+  float: none;
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px 0 0;
+  background: rgba(0,0,0,.45);
+  color: #fff;
+  opacity: 1;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: .65rem;
+  width: fit-content;
+  margin-left: auto;
+}
+
+/* Voice timestamp – inline after controls */
+.voice-player + .msg-time {
+  float: none;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
 }
 
 /* ── Reactions ──────────────────────────────────────────────── */
