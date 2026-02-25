@@ -30,9 +30,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useChatsStore } from '@/stores/chats'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 
 const chatsStore = useChatsStore()
 const { showToast } = useToast()
+const { showConfirm } = useConfirm()
 
 const visible = ref(false)
 const x = ref(0)
@@ -90,7 +92,13 @@ async function handleMute() {
 async function handleLeave() {
   if (!chatId.value) return
   visible.value = false
-  if (!confirm('Leave this chat?')) return
+  const confirmed = await showConfirm({
+    title: 'Leave Chat',
+    message: 'Leave this chat?',
+    confirmLabel: 'Leave',
+    danger: true,
+  })
+  if (!confirmed) return
   try {
     await chatsStore.leave(chatId.value)
     showToast('Left chat')
@@ -102,7 +110,13 @@ async function handleLeave() {
 async function handleDelete() {
   if (!chatId.value) return
   visible.value = false
-  if (!confirm('Delete this chat? All messages will be permanently removed.')) return
+  const confirmed = await showConfirm({
+    title: 'Delete Chat',
+    message: 'Delete this chat? All messages will be permanently removed.',
+    confirmLabel: 'Delete',
+    danger: true,
+  })
+  if (!confirmed) return
   try {
     await chatsStore.deleteChat(chatId.value)
     showToast('Chat deleted')

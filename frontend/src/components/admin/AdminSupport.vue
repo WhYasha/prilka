@@ -73,6 +73,9 @@ import {
   sendSupportMessage,
 } from '@/api/admin'
 import type { User } from '@/api/types'
+import { useToast } from '@/composables/useToast'
+
+const { showToast } = useToast()
 
 const users = ref<User[]>([])
 const chats = ref<Array<{ id: number; type: string; name: string; title: string; member_count: number }>>([])
@@ -103,12 +106,12 @@ async function send() {
   } else if (targetChatId.value.trim()) {
     payload.chat_id = parseInt(targetChatId.value.trim())
   } else {
-    alert('Select a target user or enter a chat ID.')
+    showToast('Select a target user or enter a chat ID.')
     return
   }
   await sendSupportMessage(payload)
   content.value = ''
-  alert('Support message sent.')
+  showToast('Support message sent.')
   await load()
 }
 

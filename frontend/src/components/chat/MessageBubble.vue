@@ -293,7 +293,6 @@ const replyQuoteText = computed(() => {
 const renderedContent = computed(() => {
   const text = linkifyStr(props.message.content || '', {
     defaultProtocol: 'https',
-    target: '_blank',
     rel: 'noopener noreferrer',
   })
   // Process @mentions — skip @ signs inside <a ...>...</a> tags

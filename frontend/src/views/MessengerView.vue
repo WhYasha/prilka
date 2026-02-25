@@ -24,6 +24,12 @@
       @select-chat="handleSelectChat"
     />
 
+    <!-- Resize handle -->
+    <div
+      class="resize-handle"
+      @pointerdown="onResizeStart"
+    />
+
     <!-- Chat Panel -->
     <ChatPanel
       @back="handleBack"
@@ -246,6 +252,33 @@ async function openChatAndScrollToMessage(chatId: number, messageId: number) {
   pendingScrollMessageId.value = messageId
 }
 
+// ── Resizable sidebar ──────────────────────────────────────
+const SIDEBAR_MIN = 240
+const SIDEBAR_MAX_RATIO = 0.5
+const savedWidth = parseInt(localStorage.getItem('sidebar-width') || '360', 10)
+if (savedWidth >= SIDEBAR_MIN) {
+  document.documentElement.style.setProperty('--sidebar-width', savedWidth + 'px')
+}
+
+function onResizeStart(e: PointerEvent) {
+  e.preventDefault()
+  const target = e.currentTarget as HTMLElement
+  target.setPointerCapture(e.pointerId)
+  const onMove = (ev: PointerEvent) => {
+    const maxW = window.innerWidth * SIDEBAR_MAX_RATIO
+    const w = Math.min(maxW, Math.max(SIDEBAR_MIN, ev.clientX))
+    document.documentElement.style.setProperty('--sidebar-width', w + 'px')
+  }
+  const onUp = () => {
+    target.removeEventListener('pointermove', onMove)
+    target.removeEventListener('pointerup', onUp)
+    const current = getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width').trim()
+    localStorage.setItem('sidebar-width', parseInt(current, 10).toString())
+  }
+  target.addEventListener('pointermove', onMove)
+  target.addEventListener('pointerup', onUp)
+}
+
 function handleSelectChat(chatId: number) {
   chatsStore.setActiveChat(chatId)
   router.replace('/app')
@@ -313,29 +346,48 @@ async function handleInviteJoined(chatId: number) {
   chatsStore.setActiveChat(chatId)
 }
 
-// Intercept clicks on invite links within the messenger
-function handleInviteLinkClick(e: MouseEvent) {
+// Intercept clicks on links within the messenger
+function handleLinkClick(e: MouseEvent) {
   const target = (e.target as HTMLElement)?.closest('a')
   if (!target) return
   const href = target.getAttribute('href')
   if (!href) return
 
-  // Match /join/{token} paths (relative or absolute with same origin)
-  let match: RegExpMatchArray | null = null
+  let url: URL
   try {
-    const url = new URL(href, window.location.origin)
-    if (url.origin === window.location.origin) {
-      match = url.pathname.match(/^\/join\/([^/]+)$/)
-    }
+    url = new URL(href, window.location.origin)
   } catch {
-    match = href.match(/^\/join\/([^/]+)$/)
+    return
   }
 
-  if (match) {
+  // External links → open in system browser (new window)
+  if (url.origin !== window.location.origin) {
     e.preventDefault()
     e.stopPropagation()
-    inviteToken.value = match[1] ?? null
+    window.open(url.href, '_blank')
+    return
   }
+
+  // Same-origin links → handle in-app
+  e.preventDefault()
+  e.stopPropagation()
+  const path = url.pathname
+
+  // Invite links: /join/{token}
+  const joinMatch = path.match(/^\/join\/([^/]+)$/)
+  if (joinMatch) {
+    inviteToken.value = joinMatch[1] ?? null
+    return
+  }
+
+  // Route to known in-app paths
+  if (path.startsWith('/@') || path.startsWith('/u/') || path.startsWith('/dm/') || path.startsWith('/c/')) {
+    router.push(path)
+    return
+  }
+
+  // Fallback: navigate via router for any same-origin path
+  router.push(path)
 }
 
 // Global ESC handler
@@ -353,10 +405,10 @@ function handleEsc(e: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleEsc)
-  document.addEventListener('click', handleInviteLinkClick, true)
+  document.addEventListener('click', handleLinkClick, true)
 })
 onUnmounted(() => {
   document.removeEventListener('keydown', handleEsc)
-  document.removeEventListener('click', handleInviteLinkClick, true)
+  document.removeEventListener('click', handleLinkClick, true)
 })
 </script>

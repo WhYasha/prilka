@@ -103,6 +103,11 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getUserDetail, userAction, sendSupportMessage } from '@/api/admin'
 import type { AdminUserDetail } from '@/api/types'
+import { useConfirm } from '@/composables/useConfirm'
+import { useToast } from '@/composables/useToast'
+
+const { showConfirm } = useConfirm()
+const { showToast } = useToast()
 
 const route = useRoute()
 const data = ref<AdminUserDetail | null>(null)
@@ -124,7 +129,13 @@ async function doAction(action: 'block' | 'unblock' | 'soft-delete' | 'toggle-ad
   const msg = action === 'soft-delete'
     ? 'Are you sure you want to soft-delete this user?'
     : `Are you sure you want to ${action} this user?`
-  if (!confirm(msg)) return
+  const confirmed = await showConfirm({
+    title: action.charAt(0).toUpperCase() + action.slice(1).replace('-', ' '),
+    message: msg,
+    confirmLabel: action === 'soft-delete' ? 'Delete' : action.charAt(0).toUpperCase() + action.slice(1),
+    danger: action === 'block' || action === 'soft-delete',
+  })
+  if (!confirmed) return
   await userAction(userId, action)
   await load()
 }
@@ -136,7 +147,7 @@ async function sendSupport() {
     content: supportMsg.value.trim(),
   })
   supportMsg.value = ''
-  alert('Support message sent.')
+  showToast('Support message sent.')
 }
 
 function fmtDate(s?: string): string {
