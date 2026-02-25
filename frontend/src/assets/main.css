@@ -1080,6 +1080,7 @@ body {
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0,0,0,.18);
   min-width: 160px; overflow: hidden;
+  animation: ctx-menu-in var(--transition-fast) ease;
 }
 .ctx-item {
   display: flex; align-items: center; gap: .5rem;
@@ -1214,6 +1215,7 @@ body {
   box-shadow: 0 8px 24px rgba(0,0,0,.18);
   min-width: 180px; overflow: hidden;
   padding: 4px 0;
+  animation: ctx-menu-in var(--transition-fast) ease;
 }
 .msg-context-menu-item {
   display: flex; align-items: center; gap: .6rem;
@@ -2056,4 +2058,14 @@ body {
   color: var(--text-muted); font-size: .85rem;
   text-align: center;
   display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Reduced motion preference ──────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
