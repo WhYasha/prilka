@@ -15,15 +15,18 @@ KEYS_FILE="${VAULT_KEYS_FILE:-/opt/messenger/vault/unseal-keys.json}"
 log() { echo "[$(date +%T)] $*"; }
 
 # ── Check if Vault is reachable ──────────────────────────────────────────────
-if ! vault status -format=json >/dev/null 2>&1; then
+# vault status returns: 0=unsealed, 1=error, 2=sealed
+VAULT_RC=0
+vault status -format=json >/dev/null 2>&1 || VAULT_RC=$?
+
+if [ "${VAULT_RC}" -eq 1 ]; then
     log "ERROR: Vault is not reachable at ${VAULT_ADDR}"
     log "Ensure the Vault container is running: docker compose up -d vault"
     exit 1
 fi
 
-# ── Check if already unsealed ─────────────────────────────────────────────────
-SEALED=$(vault status -format=json 2>/dev/null | jq -r '.sealed')
-if [ "${SEALED}" = "false" ]; then
+# ── Check if already unsealed (exit code 0) ──────────────────────────────────
+if [ "${VAULT_RC}" -eq 0 ]; then
     log "Vault is already unsealed."
     exit 0
 fi
