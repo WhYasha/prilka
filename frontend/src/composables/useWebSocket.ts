@@ -52,7 +52,7 @@ export function useWebSocket() {
     if (!token) return null
     const wsBase = import.meta.env.VITE_WS_URL
     if (wsBase) {
-      return `${wsBase}/?token=${encodeURIComponent(token)}`
+      return `${wsBase}?token=${encodeURIComponent(token)}`
     }
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
