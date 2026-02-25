@@ -33,33 +33,35 @@ cp infra/prometheus/prometheus.prod.yml infra/prometheus/prometheus.yml
 log "Injecting TLS certificates..."
 bash infra/scripts/inject-certs.sh "${REPO_DIR}"
 
-# ── Vault: unseal + render .env ───────────────────────────────────────────────
-# If Vault credentials exist, use Vault Agent to render .env from secrets.
-# Otherwise fall back to manual .env file.
-if [ -f "${VAULT_DIR}/role-id" ] && [ -f "${VAULT_DIR}/secret-id" ]; then
-    log "Vault credentials found — rendering .env from Vault..."
+# ── Vault: unseal + render .env (Compose mode only) ──────────────────────────
+# In Nomad mode, Vault runs via systemd and secrets are injected directly
+# into containers via Vault templates — no .env rendering needed.
+if [ "${DEPLOY_MODE}" != "nomad" ]; then
+    if [ -f "${VAULT_DIR}/role-id" ] && [ -f "${VAULT_DIR}/secret-id" ]; then
+        log "Vault credentials found — rendering .env from Vault..."
 
-    # Ensure Vault container is running
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d vault
-    sleep 3
+        # Ensure Vault container is running
+        docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d vault
+        sleep 3
 
-    # Auto-unseal if sealed
-    bash infra/vault/unseal.sh || {
-        log "WARNING: Vault unseal failed; falling back to existing .env"
-    }
+        # Auto-unseal if sealed
+        bash infra/vault/unseal.sh || {
+            log "WARNING: Vault unseal failed; falling back to existing .env"
+        }
 
-    # Render .env via Vault Agent (one-shot)
-    vault agent -config=infra/vault/agent-init.hcl && {
-        log ".env rendered from Vault successfully."
-    } || {
-        log "WARNING: Vault Agent render failed; falling back to existing .env"
-    }
-else
-    log "No Vault credentials found — using manual .env file."
+        # Render .env via Vault Agent (one-shot)
+        vault agent -config=infra/vault/agent-init.hcl && {
+            log ".env rendered from Vault successfully."
+        } || {
+            log "WARNING: Vault Agent render failed; falling back to existing .env"
+        }
+    else
+        log "No Vault credentials found — using manual .env file."
+    fi
+
+    # ── Ensure .env symlink exists in repo dir ─────────────────────────────────
+    [ -f .env ] || ln -sf "${ENV_FILE}" .env
 fi
-
-# ── Ensure .env symlink exists in repo dir ─────────────────────────────────────
-[ -f .env ] || ln -sf "${ENV_FILE}" .env
 
 if [ "${DEPLOY_MODE}" = "nomad" ]; then
     # ── Nomad deployment ─────────────────────────────────────────────────────
