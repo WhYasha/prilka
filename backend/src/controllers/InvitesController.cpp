@@ -33,7 +33,7 @@ void InvitesController::createInvite(const drogon::HttpRequestPtr& req,
         "SELECT c.type, cm.role FROM chats c "
         "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $2 "
         "WHERE c.id = $1",
-        [cb = std::move(cb), chatId, me](const drogon::orm::Result& r) mutable {
+        [cb, chatId, me](const drogon::orm::Result& r) mutable {
             if (r.empty())
                 return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
 
@@ -56,7 +56,7 @@ void InvitesController::createInvite(const drogon::HttpRequestPtr& req,
             db2->execSqlAsync(
                 "INSERT INTO invites (chat_id, created_by) VALUES ($1, $2) "
                 "RETURNING token, chat_id, created_by, created_at",
-                [cb = std::move(cb)](const drogon::orm::Result& ir) mutable {
+                [cb](const drogon::orm::Result& ir) mutable {
                     const auto& row = ir[0];
                     std::string token = row["token"].as<std::string>();
 
@@ -71,12 +71,12 @@ void InvitesController::createInvite(const drogon::HttpRequestPtr& req,
                     httpResp->setStatusCode(drogon::k201Created);
                     cb(httpResp);
                 },
-                [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
                     LOG_ERROR << "createInvite: " << e.base().what();
                     cb(jsonErr("Internal error", drogon::k500InternalServerError));
                 }, chatId, me);
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "createInvite check: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, chatId, me);
@@ -104,7 +104,7 @@ void InvitesController::listInvites(const drogon::HttpRequestPtr& req,
     // Check user role
     db->execSqlAsync(
         "SELECT cm.role FROM chat_members cm WHERE cm.chat_id = $1 AND cm.user_id = $2",
-        [cb = std::move(cb), chatId](const drogon::orm::Result& r) mutable {
+        [cb, chatId](const drogon::orm::Result& r) mutable {
             if (r.empty())
                 return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
 
@@ -122,7 +122,7 @@ void InvitesController::listInvites(const drogon::HttpRequestPtr& req,
                 "SELECT token, chat_id, created_by, created_at FROM invites "
                 "WHERE chat_id = $1 AND revoked_at IS NULL "
                 "ORDER BY created_at DESC",
-                [cb = std::move(cb)](const drogon::orm::Result& ir) mutable {
+                [cb](const drogon::orm::Result& ir) mutable {
                     Json::Value arr(Json::arrayValue);
                     for (auto& row : ir) {
                         Json::Value inv;
@@ -136,12 +136,12 @@ void InvitesController::listInvites(const drogon::HttpRequestPtr& req,
                     }
                     cb(drogon::HttpResponse::newHttpJsonResponse(arr));
                 },
-                [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
                     LOG_ERROR << "listInvites: " << e.base().what();
                     cb(jsonErr("Internal error", drogon::k500InternalServerError));
                 }, chatId);
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "listInvites check: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, chatId, me);
@@ -171,7 +171,7 @@ void InvitesController::revokeInvite(const drogon::HttpRequestPtr& req,
         "SELECT i.chat_id, cm.role FROM invites i "
         "JOIN chat_members cm ON cm.chat_id = i.chat_id AND cm.user_id = $2 "
         "WHERE i.token = $1 AND i.revoked_at IS NULL",
-        [cb = std::move(cb), token](const drogon::orm::Result& r) mutable {
+        [cb, token](const drogon::orm::Result& r) mutable {
             if (r.empty())
                 return cb(jsonErr("Invite not found or already revoked", drogon::k404NotFound));
 
@@ -187,17 +187,17 @@ void InvitesController::revokeInvite(const drogon::HttpRequestPtr& req,
             }
             db2->execSqlAsync(
                 "UPDATE invites SET revoked_at = NOW() WHERE token = $1",
-                [cb = std::move(cb)](const drogon::orm::Result&) mutable {
+                [cb](const drogon::orm::Result&) mutable {
                     Json::Value resp;
                     resp["revoked"] = true;
                     cb(drogon::HttpResponse::newHttpJsonResponse(resp));
                 },
-                [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
                     LOG_ERROR << "revokeInvite: " << e.base().what();
                     cb(jsonErr("Internal error", drogon::k500InternalServerError));
                 }, token);
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "revokeInvite check: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, token, me);
@@ -221,7 +221,7 @@ void InvitesController::previewInvite(const drogon::HttpRequestPtr& req,
         "FROM invites i "
         "JOIN chats c ON c.id = i.chat_id "
         "WHERE i.token = $1",
-        [cb = std::move(cb)](const drogon::orm::Result& r) mutable {
+        [cb](const drogon::orm::Result& r) mutable {
             if (r.empty())
                 return cb(jsonErr("Invite not found", drogon::k404NotFound));
 
@@ -237,7 +237,7 @@ void InvitesController::previewInvite(const drogon::HttpRequestPtr& req,
             resp["member_count"] = Json::Int64(row["member_count"].as<long long>());
             cb(drogon::HttpResponse::newHttpJsonResponse(resp));
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "previewInvite: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, token);
@@ -264,7 +264,7 @@ void InvitesController::joinInvite(const drogon::HttpRequestPtr& req,
 
     db->execSqlAsync(
         "SELECT i.chat_id, i.revoked_at FROM invites i WHERE i.token = $1",
-        [cb = std::move(cb), me](const drogon::orm::Result& r) mutable {
+        [cb, me](const drogon::orm::Result& r) mutable {
             if (r.empty())
                 return cb(jsonErr("Invite not found", drogon::k404NotFound));
 
@@ -283,7 +283,7 @@ void InvitesController::joinInvite(const drogon::HttpRequestPtr& req,
             }
             db2->execSqlAsync(
                 "SELECT role FROM chat_members WHERE chat_id = $1 AND user_id = $2",
-                [cb = std::move(cb), chatId, me](const drogon::orm::Result& mr) mutable {
+                [cb, chatId, me](const drogon::orm::Result& mr) mutable {
                     if (!mr.empty()) {
                         Json::Value resp;
                         resp["chat_id"]         = Json::Int64(chatId);
@@ -302,24 +302,24 @@ void InvitesController::joinInvite(const drogon::HttpRequestPtr& req,
                     db3->execSqlAsync(
                         "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member') "
                         "ON CONFLICT DO NOTHING",
-                        [cb = std::move(cb), chatId](const drogon::orm::Result&) mutable {
+                        [cb, chatId](const drogon::orm::Result&) mutable {
                             Json::Value resp;
                             resp["chat_id"]        = Json::Int64(chatId);
                             resp["role"]           = "member";
                             resp["already_member"] = false;
                             cb(drogon::HttpResponse::newHttpJsonResponse(resp));
                         },
-                        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                        [cb](const drogon::orm::DrogonDbException& e) mutable {
                             LOG_ERROR << "joinInvite insert: " << e.base().what();
                             cb(jsonErr("Internal error", drogon::k500InternalServerError));
                         }, chatId, me);
                 },
-                [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
                     LOG_ERROR << "joinInvite check member: " << e.base().what();
                     cb(jsonErr("Internal error", drogon::k500InternalServerError));
                 }, chatId, me);
         },
-        [cb = std::move(cb)](const drogon::orm::DrogonDbException& e) mutable {
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "joinInvite: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, token);
