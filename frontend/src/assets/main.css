@@ -158,10 +158,24 @@ textarea, input, select { font-family: inherit; }
   to   { transform: translateY(0);   opacity: 1; }
 }
 
-/* ── Message delete exit ────────────────────────────────────── */
-@keyframes msg-delete-out {
-  from { opacity: 1; max-height: 200px; }
-  to   { opacity: 0; max-height: 0; }
+/* ── Message delete – particle dissolve ─────────────────────── */
+@keyframes msg-dissolve {
+  0%   { opacity: 1; transform: scale(1); filter: blur(0); }
+  40%  { opacity: .7; transform: scale(1.01); filter: blur(0); }
+  70%  { opacity: .3; transform: scale(.97); filter: blur(1.5px); }
+  100% { opacity: 0; transform: scale(.92); filter: blur(3px); }
+}
+@keyframes msg-particle-left {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0); }
+  20%  { opacity: .8; transform: translate(-4px, -2px) scale(1); }
+  60%  { opacity: .5; transform: translate(-14px, -8px) scale(.7); }
+  100% { opacity: 0; transform: translate(-22px, -14px) scale(0); }
+}
+@keyframes msg-particle-right {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0); }
+  20%  { opacity: .8; transform: translate(4px, -2px) scale(1); }
+  60%  { opacity: .5; transform: translate(14px, -8px) scale(.7); }
+  100% { opacity: 0; transform: translate(22px, -14px) scale(0); }
 }
 
 /* ── Context menu appear ────────────────────────────────────── */
@@ -172,9 +186,40 @@ textarea, input, select { font-family: inherit; }
 
 /* ── Message row animation classes ──────────────────────────── */
 .msg-row.msg-deleting {
-  animation: msg-delete-out .3s ease forwards;
   pointer-events: none;
   overflow: hidden;
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  transition: max-height .25s ease .4s, margin .25s ease .4s, padding .25s ease .4s;
+}
+.msg-row.msg-deleting .msg-bubble {
+  animation: msg-dissolve .5s ease forwards;
+  position: relative;
+}
+.msg-row.msg-deleting .msg-bubble::before,
+.msg-row.msg-deleting .msg-bubble::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bubble-me);
+  top: 50%;
+  pointer-events: none;
+}
+.msg-row.msg-deleting .msg-bubble::before {
+  left: 20%;
+  animation: msg-particle-left .5s ease forwards;
+}
+.msg-row.msg-deleting .msg-bubble::after {
+  right: 20%;
+  animation: msg-particle-right .5s ease forwards;
+}
+/* Particle color for received messages */
+.msg-row.msg-deleting .msg-them .msg-bubble::before,
+.msg-row.msg-deleting .msg-them .msg-bubble::after {
+  background: var(--bubble-them);
 }
 .msg-row.msg-new {
   animation: msg-send-in var(--transition-normal) ease;

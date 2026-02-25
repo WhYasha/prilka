@@ -18,7 +18,7 @@ export const useMessagesStore = defineStore('messages', () => {
 
   function markForDeletion(messageId: number): Promise<void> {
     deletingMessages.add(messageId)
-    return new Promise((resolve) => setTimeout(resolve, 300))
+    return new Promise((resolve) => setTimeout(resolve, 600))
   }
 
   function isDeleting(messageId: number): boolean {
