@@ -7,15 +7,9 @@
 
 data_dir = "/opt/messenger/nomad/data"
 
-# Single-node: bind to all interfaces but advertise on localhost.
-# The advertise block prevents "unsafe localhost" errors.
-bind_addr = "127.0.0.1"
-
-advertise {
-  http = "127.0.0.1"
-  rpc  = "127.0.0.1"
-  serf = "127.0.0.1"
-}
+# Bind to all interfaces so Vault container can reach JWKS endpoint.
+# External access blocked by firewall (ports 4646-4648 not exposed).
+bind_addr = "0.0.0.0"
 
 # ── Server (leader election — single node bootstrap) ──────────────────────────
 server {
@@ -75,9 +69,15 @@ consul {
 
 # ── Vault integration (secret injection into tasks) ──────────────────────────
 vault {
-  enabled          = true
-  address          = "http://127.0.0.1:8200"
-  create_from_role = "nomad-cluster"
+  enabled = true
+  address = "http://127.0.0.1:8200"
+
+  default_identity {
+    aud  = ["vault.io"]
+    env  = false
+    file = false
+    ttl  = "1h"
+  }
 }
 
 # ── Telemetry ──────────────────────────────────────────────────────────────────
