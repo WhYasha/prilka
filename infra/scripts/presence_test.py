@@ -54,6 +54,10 @@ user_b_id = b.get("user_id", 0)
 s, b = api("POST", "/chats", {"type": "direct", "member_ids": [user_b_id]}, token=token_a)
 chat_id = b.get("id", 0)
 
+# Ensure both users have clean privacy settings (reset from any prior crashed run)
+api("PUT", "/settings", {"last_seen_visibility": "everyone"}, token=token_a)
+api("PUT", "/settings", {"last_seen_visibility": "everyone"}, token=token_b)
+
 print(f"\n  Users: A={user_a_id}, B={user_b_id}, Chat={chat_id}")
 
 
@@ -93,23 +97,32 @@ async def expect_no_presence(ws, user_id, unwanted_status, timeout=3):
     Unlike reading just one message, this catches late-arriving broadcasts
     that slip past a single recv() call."""
     deadline = asyncio.get_event_loop().time() + timeout
+    msgs_seen = []
     while True:
         remaining = deadline - asyncio.get_event_loop().time()
         if remaining <= 0:
+            if msgs_seen:
+                print(f"    [debug] messages seen during expect_no_presence: {msgs_seen}")
             return True, "no_broadcast"
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
             m = json.loads(raw)
+            msgs_seen.append({"type": m.get("type"), "user_id": m.get("user_id"),
+                              "status": m.get("status")})
             if (m.get("type") == "presence"
                     and m.get("user_id") == user_id
                     and m.get("status") == unwanted_status):
+                print(f"    [debug] unwanted msg: {m}")
+                print(f"    [debug] all msgs seen: {msgs_seen}")
                 return False, f"GOT_{unwanted_status.upper()}_UNEXPECTEDLY"
             # Non-matching message — keep reading until timeout
         except asyncio.TimeoutError:
+            if msgs_seen:
+                print(f"    [debug] messages seen during expect_no_presence: {msgs_seen}")
             return True, "no_broadcast"
 
 
-async def close_and_settle(ws, settle=2.5):
+async def close_and_settle(ws, settle=3):
     """Close a WebSocket and wait for the server to fully process the
     disconnect + propagate via Redis."""
     await ws.close()
@@ -119,7 +132,23 @@ async def close_and_settle(ws, settle=2.5):
 async def run_tests():
     import websockets
 
-    # Allow stale WS connections (e.g. from a prior smoke_test run) to close
+    # ── Warmup: actively flush stale connections from prior tests ─────
+    # Connecting + disconnecting both users forces the server to prune any
+    # stale entries in s_userConns and process all pending Redis broadcasts.
+    print("\n[0] Warmup: flushing stale connections")
+    try:
+        wf_a = await websockets.connect(WS, open_timeout=5)
+        await wf_a.send(json.dumps({"type": "auth", "token": token_a}))
+        await asyncio.wait_for(wf_a.recv(), timeout=3)
+        wf_b = await websockets.connect(WS, open_timeout=5)
+        await wf_b.send(json.dumps({"type": "auth", "token": token_b}))
+        await asyncio.wait_for(wf_b.recv(), timeout=3)
+        await asyncio.sleep(1)
+        await wf_b.close()
+        await wf_a.close()
+    except Exception as e:
+        print(f"  Warmup error (non-fatal): {e}")
+    # Wait for server to fully process disconnects + Redis propagation
     await asyncio.sleep(3)
 
     # ── Test 1: Connect with active=true -> online broadcast ─────────
@@ -140,11 +169,11 @@ async def run_tests():
     ok, status = await recv_presence(ws_a, user_b_id, "online")
     check("User B connects active=true -> A sees online", ok, f"status={status}")
     await close_and_settle(ws_b)
-    await drain(ws_a)               # consume the offline + any stragglers
+    await drain(ws_a, timeout=2)    # consume the offline + any stragglers
 
     # ── Test 2: Connect with active=false -> NO online broadcast ─────
     print("\n[2] Connect with active=false")
-    await drain(ws_a)
+    await drain(ws_a, timeout=2)
     ws_b = await websockets.connect(WS, open_timeout=5)
     await ws_b.send(json.dumps({"type": "auth", "token": token_b, "active": False}))
     await asyncio.wait_for(ws_b.recv(), timeout=3)  # auth_ok
@@ -188,9 +217,9 @@ async def run_tests():
     ok, status = await recv_presence(ws_a, user_b_id, "offline")
     check("User B sends away -> A sees offline", ok, f"status={status}")
 
-    await drain(ws_a)
+    await drain(ws_a, timeout=2)
     await close_and_settle(ws_b)
-    ok, detail = await expect_no_presence(ws_a, user_b_id, "offline", timeout=2)
+    ok, detail = await expect_no_presence(ws_a, user_b_id, "offline", timeout=3)
     check("Disconnect while away -> no extra offline", ok, detail)
 
     # ── Test 8: Privacy enforcement ──────────────────────────────────
