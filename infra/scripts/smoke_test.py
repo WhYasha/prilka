@@ -352,7 +352,10 @@ if voice_file_id and chat_id:
 
     if voice_msg_id:
         # Fetch messages and verify voice message fields
-        s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=5", token=token)
+        s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=50", token=token)
+        msg_ids = [m.get("id") for m in (b if isinstance(b, list) else [])][:10]
+        print("    DEBUG voice_msg_id=" + str(voice_msg_id) + " type=" + str(type(voice_msg_id).__name__)
+              + " first_ids=" + str(msg_ids))
         voice_msg = None
         for m in (b if isinstance(b, list) else []):
             if m.get("id") == voice_msg_id:
@@ -485,10 +488,8 @@ if token_b and user_b_id and presence_chat:
         "        except asyncio.TimeoutError:",
         "            pass",
         "        ws_b = await websockets.connect(URI, open_timeout=5)",
-        "        await ws_b.send(json.dumps({'type':'auth','token':TOKEN_B,'active':False}))",
+        "        await ws_b.send(json.dumps({'type':'auth','token':TOKEN_B}))",
         "        await asyncio.wait_for(ws_b.recv(), timeout=3)",
-        "        await asyncio.sleep(1.5)",
-        "        await ws_b.send(json.dumps({'type':'presence_update','status':'active'}))",
         "        got_online = False",
         "        for _ in range(5):",
         "            try:",

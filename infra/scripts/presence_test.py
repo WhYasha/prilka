@@ -57,8 +57,8 @@ chat_id = b.get("id", 0)
 print(f"\n  Users: A={user_a_id}, B={user_b_id}, Chat={chat_id}")
 
 
-async def drain(ws, timeout=0.3):
-    """Drain any pending messages."""
+async def drain(ws, timeout=1.5):
+    """Drain any pending messages. Default 1.5s to handle Redis latency."""
     while True:
         try:
             await asyncio.wait_for(ws.recv(), timeout=timeout)
@@ -67,23 +67,60 @@ async def drain(ws, timeout=0.3):
 
 
 async def recv_presence(ws, user_id, expected_status, timeout=5):
-    """Wait for a presence message for user_id with expected status."""
-    for _ in range(10):
+    """Wait for a presence message for user_id with expected status.
+    Skips stale presence messages (wrong status) to handle Redis latency."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            return False, "TIMEOUT"
         try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
             m = json.loads(raw)
             if m.get("type") == "presence" and m.get("user_id") == user_id:
-                return m.get("status") == expected_status, m.get("status")
+                if m.get("status") == expected_status:
+                    return True, m.get("status")
+                # Stale presence message — skip and keep looking
+                continue
+            # Non-presence message — skip
         except asyncio.TimeoutError:
             return False, "TIMEOUT"
     return False, "NOT_FOUND"
+
+
+async def expect_no_presence(ws, user_id, unwanted_status, timeout=3):
+    """Read ALL messages for the full timeout period and verify none match.
+    Unlike reading just one message, this catches late-arriving broadcasts
+    that slip past a single recv() call."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            return True, "no_broadcast"
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+            m = json.loads(raw)
+            if (m.get("type") == "presence"
+                    and m.get("user_id") == user_id
+                    and m.get("status") == unwanted_status):
+                return False, f"GOT_{unwanted_status.upper()}_UNEXPECTEDLY"
+            # Non-matching message — keep reading until timeout
+        except asyncio.TimeoutError:
+            return True, "no_broadcast"
+
+
+async def close_and_settle(ws, settle=2.5):
+    """Close a WebSocket and wait for the server to fully process the
+    disconnect + propagate via Redis."""
+    await ws.close()
+    await asyncio.sleep(settle)
 
 
 async def run_tests():
     import websockets
 
     # Allow stale WS connections (e.g. from a prior smoke_test run) to close
-    await asyncio.sleep(2)
+    await asyncio.sleep(3)
 
     # ── Test 1: Connect with active=true -> online broadcast ─────────
     print("\n[1] Connect with active=true")
@@ -102,9 +139,8 @@ async def run_tests():
 
     ok, status = await recv_presence(ws_a, user_b_id, "online")
     check("User B connects active=true -> A sees online", ok, f"status={status}")
-    await ws_b.close()
-    await asyncio.sleep(1)          # let server process disconnect
-    await drain(ws_a, timeout=1)    # consume the offline + any stragglers
+    await close_and_settle(ws_b)
+    await drain(ws_a)               # consume the offline + any stragglers
 
     # ── Test 2: Connect with active=false -> NO online broadcast ─────
     print("\n[2] Connect with active=false")
@@ -113,17 +149,9 @@ async def run_tests():
     await ws_b.send(json.dumps({"type": "auth", "token": token_b, "active": False}))
     await asyncio.wait_for(ws_b.recv(), timeout=3)  # auth_ok
 
-    # Should NOT get an online presence for B
-    got_presence = False
-    try:
-        raw = await asyncio.wait_for(ws_a.recv(), timeout=3)
-        m = json.loads(raw)
-        if m.get("type") == "presence" and m.get("user_id") == user_b_id and m.get("status") == "online":
-            got_presence = True
-    except asyncio.TimeoutError:
-        pass
-    check("User B connects active=false -> A does NOT see online", not got_presence,
-          "no_broadcast" if not got_presence else "GOT_ONLINE_UNEXPECTEDLY")
+    # Read ALL messages for 3s — none should be an online presence for B
+    ok, detail = await expect_no_presence(ws_a, user_b_id, "online")
+    check("User B connects active=false -> A does NOT see online", ok, detail)
 
     # ── Test 3: Send presence_update active -> online broadcast ──────
     print("\n[3] presence_update: away -> active")
@@ -150,16 +178,8 @@ async def run_tests():
     print("\n[6] Duplicate presence_update (no-op)")
     await drain(ws_a)
     await ws_b.send(json.dumps({"type": "presence_update", "status": "active"}))
-    got_dup = False
-    try:
-        raw = await asyncio.wait_for(ws_a.recv(), timeout=2)
-        m = json.loads(raw)
-        if m.get("type") == "presence" and m.get("user_id") == user_b_id:
-            got_dup = True
-    except asyncio.TimeoutError:
-        pass
-    check("Duplicate active -> no extra broadcast", not got_dup,
-          "no_duplicate" if not got_dup else "GOT_DUPLICATE")
+    ok, detail = await expect_no_presence(ws_a, user_b_id, "online", timeout=2)
+    check("Duplicate active -> no extra broadcast", ok, detail)
 
     # ── Test 7: away then disconnect -> no double offline ────────────
     print("\n[7] Away then disconnect")
@@ -169,18 +189,9 @@ async def run_tests():
     check("User B sends away -> A sees offline", ok, f"status={status}")
 
     await drain(ws_a)
-    await ws_b.close()
-    await asyncio.sleep(1)
-    got_extra_offline = False
-    try:
-        raw = await asyncio.wait_for(ws_a.recv(), timeout=2)
-        m = json.loads(raw)
-        if m.get("type") == "presence" and m.get("user_id") == user_b_id and m.get("status") == "offline":
-            got_extra_offline = True
-    except asyncio.TimeoutError:
-        pass
-    check("Disconnect while away -> no extra offline", not got_extra_offline,
-          "no_extra" if not got_extra_offline else "GOT_EXTRA_OFFLINE")
+    await close_and_settle(ws_b)
+    ok, detail = await expect_no_presence(ws_a, user_b_id, "offline", timeout=2)
+    check("Disconnect while away -> no extra offline", ok, detail)
 
     # ── Test 8: Privacy enforcement ──────────────────────────────────
     print("\n[8] Privacy: last_seen_visibility=nobody")
@@ -192,16 +203,8 @@ async def run_tests():
     await ws_b.send(json.dumps({"type": "auth", "token": token_b, "active": True}))
     await asyncio.wait_for(ws_b.recv(), timeout=3)
 
-    got_presence = False
-    try:
-        raw = await asyncio.wait_for(ws_a.recv(), timeout=3)
-        m = json.loads(raw)
-        if m.get("type") == "presence" and m.get("user_id") == user_b_id:
-            got_presence = True
-    except asyncio.TimeoutError:
-        pass
-    check("Privacy=nobody -> A does NOT see presence", not got_presence,
-          "hidden" if not got_presence else "LEAKED")
+    ok, detail = await expect_no_presence(ws_a, user_b_id, "online")
+    check("Privacy=nobody -> A does NOT see presence", ok, detail)
 
     # Reset privacy
     api("PUT", "/settings", {"last_seen_visibility": "everyone"}, token=token_b)

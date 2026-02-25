@@ -24,8 +24,9 @@ bool WsHandler::isUserOnline(long long userId) {
     std::lock_guard<std::mutex> lk(s_userMu);
     auto it = s_userConns.find(userId);
     if (it == s_userConns.end() || it->second.empty()) return false;
-    // User is online only if at least one connection is active (not away)
+    // User is online only if at least one live, active connection exists
     for (const auto& conn : it->second) {
+        if (!conn || conn->disconnected()) continue;
         auto ctx = conn->getContext<ConnCtx>();
         if (ctx && ctx->active) return true;
     }
@@ -268,14 +269,12 @@ void WsHandler::handleConnectionClosed(const drogon::WebSocketConnectionPtr& con
                     auto it = s_userConns.find(ctx->userId);
                     if (it != s_userConns.end()) {
                         auto& vec = it->second;
-                        // Was user online (any active connection) before removing?
-                        bool wasOnline = false;
-                        for (const auto& c : vec) {
-                            auto cctx = c->getContext<ConnCtx>();
-                            if (cctx && cctx->active) { wasOnline = true; break; }
-                        }
-                        // Remove this connection
-                        vec.erase(std::remove(vec.begin(), vec.end(), conn), vec.end());
+                        // Remove this connection + prune stale (disconnected) connections
+                        bool wasOnline = ctx->active;
+                        vec.erase(std::remove_if(vec.begin(), vec.end(),
+                            [&conn](const drogon::WebSocketConnectionPtr& c) {
+                                return c == conn || !c || c->disconnected();
+                            }), vec.end());
                         if (vec.empty()) {
                             s_userConns.erase(it);
                             shouldBroadcastOffline = wasOnline;
@@ -352,6 +351,11 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                     {
                         std::lock_guard<std::mutex> lk(s_userMu);
                         auto& vec = s_userConns[ctx->userId];
+                        // Prune stale (disconnected) connections before checking state
+                        vec.erase(std::remove_if(vec.begin(), vec.end(),
+                            [](const drogon::WebSocketConnectionPtr& c) {
+                                return !c || c->disconnected();
+                            }), vec.end());
                         // Was user already online (any existing active connection)?
                         bool wasOnline = false;
                         for (const auto& c : vec) {
@@ -460,11 +464,16 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
             bool broadcastOffline = false;
             {
                 std::lock_guard<std::mutex> lk(s_userMu);
-                // Check if any OTHER connection is currently active
+                // Prune stale connections, then check if any OTHER is active
                 bool hadOtherActive = false;
                 auto it = s_userConns.find(ctx->userId);
                 if (it != s_userConns.end()) {
-                    for (const auto& c : it->second) {
+                    auto& vec = it->second;
+                    vec.erase(std::remove_if(vec.begin(), vec.end(),
+                        [](const drogon::WebSocketConnectionPtr& c) {
+                            return !c || c->disconnected();
+                        }), vec.end());
+                    for (const auto& c : vec) {
                         if (c == conn) continue;
                         auto cctx = c->getContext<ConnCtx>();
                         if (cctx && cctx->active) { hadOtherActive = true; break; }
