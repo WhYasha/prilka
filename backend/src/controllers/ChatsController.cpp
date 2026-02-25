@@ -673,7 +673,7 @@ void ChatsController::deleteChat(const drogon::HttpRequestPtr& req,
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "deleteChat: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
-        }, me, chatId);
+        }, chatId, me);
 }
 
 // PATCH /chats/{id} — update title, description, public_name (owner/admin only)
