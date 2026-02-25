@@ -43,7 +43,7 @@ export const menuItems: MenuItemConfig[] = [
   },
   {
     id: 'favorites',
-    label: 'Favorites',
+    label: 'Saved Messages',
     icon: 'bookmark',
     action: 'openFavorites',
     visible: () => true,

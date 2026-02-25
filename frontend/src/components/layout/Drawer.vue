@@ -7,17 +7,22 @@
       <span class="drawer-title">Menu</span>
     </div>
 
-    <div class="drawer-avatar-wrap">
+    <div class="drawer-profile">
       <Avatar
         :name="authStore.user?.display_name || authStore.user?.username || '?'"
         :url="authStore.user?.avatar_url"
-        size="lg"
+        size="xl"
       />
-      <div class="drawer-user-info">
-        <div class="drawer-display-name">
-          {{ authStore.user?.display_name || authStore.user?.username || '---' }}
+      <div class="drawer-profile-bottom">
+        <div class="drawer-profile-info">
+          <div class="drawer-display-name">
+            {{ authStore.user?.display_name || authStore.user?.username || '---' }}
+          </div>
+          <div class="drawer-username">@{{ authStore.user?.username || '---' }}</div>
         </div>
-        <div class="drawer-username">@{{ authStore.user?.username || '---' }}</div>
+        <button class="icon-btn drawer-edit-btn" aria-label="Edit profile" @click="emit('openProfile')">
+          <PencilIcon :size="18" :stroke-width="2" />
+        </button>
       </div>
     </div>
 
@@ -72,6 +77,7 @@ import Avatar from '@/components/ui/Avatar.vue'
 import MenuItem from '@/components/layout/MenuItem.vue'
 import {
   X,
+  Pencil as PencilIcon,
   User as UserIcon,
   Users as UsersIcon,
   Megaphone as MegaphoneIcon,
@@ -146,6 +152,55 @@ function handleAction(action?: string) {
 </script>
 
 <style scoped>
+.drawer-profile {
+  padding: 1rem 1rem .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.drawer-profile-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.drawer-profile-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.drawer-display-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--menu-text-color);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-username {
+  font-size: .8125rem;
+  color: var(--text-secondary);
+  line-height: 1.3;
+  margin-top: .125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-edit-btn {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  opacity: .7;
+  transition: opacity var(--transition-fast);
+}
+
+.drawer-edit-btn:hover {
+  opacity: 1;
+}
+
 .drawer-nav {
   flex: 1;
   padding: .25rem 0;

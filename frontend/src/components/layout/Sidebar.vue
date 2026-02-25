@@ -3,11 +3,12 @@
     <header class="sidebar-header">
       <button class="icon-btn" aria-label="Menu" @click="emit('openDrawer')"><Menu :size="20" /></button>
       <div class="search-wrap">
+        <Search :size="16" class="search-icon" />
         <input
           v-model="searchQuery"
           class="search-input"
           type="search"
-          placeholder="Search chats..."
+          placeholder="Search"
         />
       </div>
       <button
@@ -77,7 +78,7 @@
 
 <script setup lang="ts">
 import { ref, computed, provide } from 'vue'
-import { Menu, SquarePen } from 'lucide-vue-next'
+import { Menu, SquarePen, Search } from 'lucide-vue-next'
 import { useChatsStore } from '@/stores/chats'
 import ChatListItem from '@/components/chat/ChatListItem.vue'
 

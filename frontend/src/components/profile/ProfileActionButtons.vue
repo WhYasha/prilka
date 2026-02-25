@@ -91,7 +91,11 @@ const actions = computed<ActionItem[]>(() => {
 }
 
 .profile-action-btn:hover {
-  opacity: .8;
+  opacity: .85;
+}
+
+.profile-action-btn:active .profile-action-btn__circle {
+  transform: scale(.95);
 }
 
 .profile-action-btn:disabled {
@@ -111,7 +115,7 @@ const actions = computed<ActionItem[]>(() => {
   height: 48px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  transition: background var(--transition-fast);
+  transition: background var(--transition-fast), transform var(--transition-fast);
 }
 
 .profile-action-btn:hover .profile-action-btn__circle {

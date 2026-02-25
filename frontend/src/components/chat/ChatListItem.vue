@@ -18,15 +18,15 @@
       @click="emit('select')"
       @contextmenu.prevent="emit('contextmenu', $event)"
     >
-      <Avatar :name="displayName" :url="isSelfChat ? (authStore.user?.avatar_url || null) : (chat.type === 'direct' ? chat.other_avatar_url : chat.avatar_url)" size="sm" :online="isOnline" />
+      <Avatar :name="displayName" :url="isSelfChat ? (authStore.user?.avatar_url || null) : (chat.type === 'direct' ? chat.other_avatar_url : chat.avatar_url)" size="md" :online="isOnline" />
       <div class="chat-item-info">
         <div class="chat-item-top">
           <span class="chat-item-name">
-            <span v-if="chat.is_pinned" class="pin-icon" title="Pinned">&#128204;</span>
-            <span v-if="chat.type === 'channel'" class="ci-channel" />
-            <span v-else-if="chat.type === 'group'" class="ci-group" />
+            <Megaphone v-if="chat.type === 'channel'" class="chat-type-icon" :size="16" :stroke-width="1.8" />
+            <Users v-else-if="chat.type === 'group'" class="chat-type-icon" :size="16" :stroke-width="1.8" />
             {{ displayName }}
-            <span v-if="chat.is_muted" class="mute-icon" title="Muted">&#128276;</span>
+            <Pin v-if="chat.is_pinned" class="status-icon" :size="14" :stroke-width="1.8" title="Pinned" />
+            <BellOff v-if="chat.is_muted" class="status-icon status-icon-muted" :size="14" :stroke-width="1.8" title="Muted" />
           </span>
           <span class="chat-item-time">{{ formatTime(chat.last_at || chat.updated_at) }}</span>
         </div>
@@ -56,6 +56,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Pin, BellOff, Megaphone, Users } from 'lucide-vue-next'
 import Avatar from '@/components/ui/Avatar.vue'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
@@ -168,12 +169,74 @@ function onTouchEnd() {
 }
 
 .chat-item {
-  transition: transform 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background var(--transition-fast, 0.15s ease);
   will-change: transform;
+  border-radius: 8px;
+}
+
+.chat-item:hover {
+  background: var(--menu-hover-bg, rgba(0, 0, 0, 0.04));
+}
+
+.chat-item.active {
+  background: var(--sidebar-active, rgba(0, 0, 0, 0.08));
 }
 
 .chat-item-unread .chat-item-name {
   font-weight: 700;
+}
+
+.chat-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.chat-item-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9375rem;
+}
+
+.chat-item-time {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted, #999);
+}
+
+.chat-type-icon {
+  flex-shrink: 0;
+  color: var(--text-muted, #999);
+}
+
+.status-icon {
+  flex-shrink: 0;
+  color: var(--text-muted, #999);
+  opacity: 0.7;
+}
+
+.status-icon-muted {
+  opacity: 0.5;
 }
 
 .chat-item-bottom {
@@ -189,6 +252,8 @@ function onTouchEnd() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--text-muted, #999);
 }
 
 .unread-badge {
@@ -199,7 +264,7 @@ function onTouchEnd() {
   height: 20px;
   padding: 0 6px;
   border-radius: 10px;
-  background: var(--color-primary, #3390ec);
+  background: var(--accent, var(--color-primary, #3390ec));
   color: #fff;
   font-size: 0.75rem;
   font-weight: 600;
@@ -207,12 +272,6 @@ function onTouchEnd() {
 }
 
 .unread-badge-muted {
-  background: var(--color-gray, #aaa);
-}
-
-.pin-icon {
-  font-size: 0.8em;
-  margin-right: 2px;
-  opacity: 0.6;
+  background: var(--badge-muted, var(--color-gray, #aaa));
 }
 </style>
