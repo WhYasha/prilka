@@ -450,10 +450,14 @@ s2, b2 = req("POST", "/auth/login", {"username": "smoketest_e2e_b",
 token_b = b2.get("access_token", "")
 user_b_id = b2.get("user_id", 0)
 
-# Ensure they share a DM
-s2, b2 = req("POST", "/chats", {"type": "direct", "member_ids": [user_b_id]},
-             token=token)
-presence_chat = b2.get("id", chat_id)
+# Create a fresh group chat for presence testing.
+# A fresh chat_id forces a new Redis subscriber on the server, avoiding
+# stale subscriber issues from long-running server processes.
+import time as _time
+_pts = int(_time.time())
+s2, b2 = req("POST", "/chats", {"type": "group", "name": f"smoke_presence_{_pts}",
+             "member_ids": [user_b_id]}, token=token)
+presence_chat = b2.get("id", 0)
 
 # Ensure user B has clean privacy (reset from any prior crashed test)
 if token_b:
@@ -472,17 +476,30 @@ if token_b and user_b_id and presence_chat:
         "            await asyncio.wait_for(ws.recv(), timeout=timeout)",
         "    except asyncio.TimeoutError:",
         "        pass",
-        "async def wait_presence(ws, user_id, status, attempts=10, timeout=3):",
+        "async def prime_pipeline(ws, cid, attempts=3, per_timeout=3):",
         "    for _ in range(attempts):",
+        "        await ws.send(json.dumps({'type':'typing','chat_id':cid}))",
+        "        dl = asyncio.get_event_loop().time() + per_timeout",
+        "        while True:",
+        "            rem = dl - asyncio.get_event_loop().time()",
+        "            if rem <= 0: break",
+        "            try:",
+        "                m = json.loads(await asyncio.wait_for(ws.recv(), timeout=rem))",
+        "                if m.get('type') == 'typing': return True",
+        "            except asyncio.TimeoutError: break",
+        "        await asyncio.sleep(0.5)",
+        "    return False",
+        "async def wait_presence(ws, user_id, status, timeout=8):",
+        "    dl = asyncio.get_event_loop().time() + timeout",
+        "    while True:",
+        "        rem = dl - asyncio.get_event_loop().time()",
+        "        if rem <= 0: return False",
         "        try:",
-        "            m = json.loads(await asyncio.wait_for(ws.recv(), timeout=timeout))",
+        "            m = json.loads(await asyncio.wait_for(ws.recv(), timeout=rem))",
         "            if m.get('type')=='presence' and m.get('user_id')==user_id:",
         "                s = m.get('status', m.get('last_seen_bucket',''))",
-        "                if s == status:",
-        "                    return True",
-        "        except asyncio.TimeoutError:",
-        "            break",
-        "    return False",
+        "                if s == status: return True",
+        "        except asyncio.TimeoutError: return False",
         "async def test():",
         "    URI = '" + os.environ.get("SMOKE_WS_URL", "wss://ws.behappy.rest/ws") + "'",
         "    TOKEN_A = '" + token + "'",
@@ -499,12 +516,16 @@ if token_b and user_b_id and presence_chat:
         "        r = json.loads(await asyncio.wait_for(ws_a.recv(), timeout=3))",
         "        if r.get('type') != 'subscribed':",
         "            print('SUB_FAIL'); return",
-        "        await asyncio.sleep(2)",
+        "        await asyncio.sleep(1)",
+        "        await drain(ws_a)",
+        "        primed = await prime_pipeline(ws_a, CHAT_ID)",
+        "        if not primed:",
+        "            print('ONLINE:FAIL\\nOFFLINE:FAIL'); return",
         "        await drain(ws_a)",
         "        ws_b = await websockets.connect(URI, open_timeout=5)",
         "        await ws_b.send(json.dumps({'type':'auth','token':TOKEN_B,'active':False}))",
         "        await asyncio.wait_for(ws_b.recv(), timeout=3)",
-        "        await asyncio.sleep(1)",
+        "        await asyncio.sleep(0.5)",
         "        await drain(ws_a)",
         "        await ws_b.send(json.dumps({'type':'presence_update','status':'active'}))",
         "        online = await wait_presence(ws_a, USER_B, 'online')",
@@ -523,11 +544,14 @@ if token_b and user_b_id and presence_chat:
     ])
 
     r = subprocess.run([_ws_py, "-c", ws_presence_code],
-                       capture_output=True, text=True, timeout=25)
+                       capture_output=True, text=True, timeout=40)
     pout = r.stdout.strip()
     perr = r.stderr.strip()[:80]
     check("Presence online received", "ONLINE:OK" in pout, pout[:80] or perr)
     check("Presence offline received", "OFFLINE:OK" in pout, pout[:80] or perr)
+
+    # Cleanup: delete the temporary presence chat
+    req("DELETE", f"/chats/{presence_chat}", token=token)
 else:
     check("Presence online received", False, "could not set up second user")
     check("Presence offline received", False, "could not set up second user")

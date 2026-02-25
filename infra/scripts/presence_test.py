@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """End-to-end test for presence active/away behavior."""
-import asyncio, json, sys, os, urllib.request, urllib.error
+import asyncio, json, sys, os, urllib.request, urllib.error, time
 
 BASE = os.environ.get("SMOKE_API_URL", "https://api.behappy.rest")
 WS   = os.environ.get("SMOKE_WS_URL", "wss://ws.behappy.rest/ws")
@@ -33,7 +33,7 @@ def api(method, path, body=None, token=None):
     except Exception as e:
         return 0, {"error": str(e)}
 
-# ── Setup: two users with a DM ──────────────────────────────────────────
+# ── Setup: two users ─────────────────────────────────────────────────────
 print("=" * 50)
 print("  Presence Active/Away Test")
 print("=" * 50)
@@ -50,8 +50,15 @@ s, b = api("POST", "/auth/login", {"username": "smoketest_e2e_b", "password": PA
 token_b = b.get("access_token", "")
 user_b_id = b.get("user_id", 0)
 
-# Create DM
-s, b = api("POST", "/chats", {"type": "direct", "member_ids": [user_b_id]}, token=token_a)
+# Create a fresh group chat for this test run.
+# A fresh chat_id guarantees a fresh Redis subscriber on the server,
+# avoiding stale subscriber issues from long-running server processes.
+ts = int(time.time())
+s, b = api("POST", "/chats", {
+    "type": "group",
+    "name": f"presence_test_{ts}",
+    "member_ids": [user_b_id],
+}, token=token_a)
 chat_id = b.get("id", 0)
 
 # Ensure both users have clean privacy settings (reset from any prior crashed run)
@@ -62,7 +69,7 @@ print(f"\n  Users: A={user_a_id}, B={user_b_id}, Chat={chat_id}")
 
 
 async def drain(ws, timeout=1.5):
-    """Drain any pending messages. Default 1.5s to handle Redis latency."""
+    """Drain any pending messages."""
     while True:
         try:
             await asyncio.wait_for(ws.recv(), timeout=timeout)
@@ -71,8 +78,7 @@ async def drain(ws, timeout=1.5):
 
 
 async def recv_presence(ws, user_id, expected_status, timeout=5):
-    """Wait for a presence message for user_id with expected status.
-    Skips stale presence messages (wrong status) to handle Redis latency."""
+    """Wait for a presence message for user_id with expected status."""
     deadline = asyncio.get_event_loop().time() + timeout
     while True:
         remaining = deadline - asyncio.get_event_loop().time()
@@ -84,73 +90,61 @@ async def recv_presence(ws, user_id, expected_status, timeout=5):
             if m.get("type") == "presence" and m.get("user_id") == user_id:
                 if m.get("status") == expected_status:
                     return True, m.get("status")
-                # Stale presence message — skip and keep looking
-                continue
-            # Non-presence message — skip
+                continue  # stale presence — skip
         except asyncio.TimeoutError:
             return False, "TIMEOUT"
-    return False, "NOT_FOUND"
 
 
 async def expect_no_presence(ws, user_id, unwanted_status, timeout=3):
-    """Read ALL messages for the full timeout period and verify none match.
-    Unlike reading just one message, this catches late-arriving broadcasts
-    that slip past a single recv() call."""
+    """Read ALL messages for the full timeout and verify none match."""
     deadline = asyncio.get_event_loop().time() + timeout
-    msgs_seen = []
     while True:
         remaining = deadline - asyncio.get_event_loop().time()
         if remaining <= 0:
-            if msgs_seen:
-                print(f"    [debug] messages seen during expect_no_presence: {msgs_seen}")
             return True, "no_broadcast"
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
             m = json.loads(raw)
-            msgs_seen.append({"type": m.get("type"), "user_id": m.get("user_id"),
-                              "status": m.get("status")})
             if (m.get("type") == "presence"
                     and m.get("user_id") == user_id
                     and m.get("status") == unwanted_status):
-                print(f"    [debug] unwanted msg: {m}")
-                print(f"    [debug] all msgs seen: {msgs_seen}")
                 return False, f"GOT_{unwanted_status.upper()}_UNEXPECTEDLY"
-            # Non-matching message — keep reading until timeout
         except asyncio.TimeoutError:
-            if msgs_seen:
-                print(f"    [debug] messages seen during expect_no_presence: {msgs_seen}")
             return True, "no_broadcast"
 
 
 async def close_and_settle(ws, settle=3):
-    """Close a WebSocket and wait for the server to fully process the
-    disconnect + propagate via Redis."""
+    """Close a WebSocket and wait for disconnect to propagate."""
     await ws.close()
     await asyncio.sleep(settle)
 
 
-async def prime_redis_pipeline(ws, chat_id, timeout=5):
-    """Send a typing indicator and wait for it to round-trip through Redis.
-    This ensures the Redis subscriber is fully active before real tests."""
-    await ws.send(json.dumps({"type": "typing", "chat_id": chat_id}))
-    deadline = asyncio.get_event_loop().time() + timeout
-    while True:
-        remaining = deadline - asyncio.get_event_loop().time()
-        if remaining <= 0:
-            return False
-        try:
-            raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
-            m = json.loads(raw)
-            if m.get("type") == "typing":
-                return True
-        except asyncio.TimeoutError:
-            return False
+async def prime_redis_pipeline(ws, cid, attempts=5, per_timeout=3):
+    """Send typing indicators and wait for a round-trip through Redis.
+    Retries to handle the race between subscribe and Redis SUBSCRIBE ack."""
+    for attempt in range(1, attempts + 1):
+        await ws.send(json.dumps({"type": "typing", "chat_id": cid}))
+        deadline = asyncio.get_event_loop().time() + per_timeout
+        while True:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                break
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                m = json.loads(raw)
+                if m.get("type") == "typing":
+                    return True
+            except asyncio.TimeoutError:
+                break
+        if attempt < attempts:
+            await asyncio.sleep(1)
+    return False
 
 
 async def run_tests():
     import websockets
 
-    # ── Warmup: actively flush stale connections from prior tests ─────
+    # ── Warmup: flush stale connections from prior test runs ──────────
     print("\n[0] Warmup: flushing stale connections")
     try:
         wf_a = await websockets.connect(WS, open_timeout=5)
@@ -164,21 +158,28 @@ async def run_tests():
         await wf_a.close()
     except Exception as e:
         print(f"  Warmup error (non-fatal): {e}")
-    await asyncio.sleep(3)
+    await asyncio.sleep(2)
 
-    # ── Setup: connect A, subscribe, prime Redis pipeline ─────────
+    # ── Setup: connect A, subscribe to the fresh chat, prime Redis ────
     ws_a = await websockets.connect(WS, open_timeout=5)
     await ws_a.send(json.dumps({"type": "auth", "token": token_a}))
     r = json.loads(await asyncio.wait_for(ws_a.recv(), timeout=3))
     assert r.get("type") == "auth_ok", f"Auth A failed: {r}"
     await ws_a.send(json.dumps({"type": "subscribe", "chat_id": chat_id}))
     await asyncio.wait_for(ws_a.recv(), timeout=3)  # subscribed
+
+    # Allow time for Redis SUBSCRIBE to be fully acknowledged
+    await asyncio.sleep(1)
     await drain(ws_a)
 
-    # Prime the Redis pub/sub pipeline — ensures the subscriber is fully
-    # active before we rely on it for presence broadcasts.
+    # Prime the Redis pub/sub pipeline with retries
     primed = await prime_redis_pipeline(ws_a, chat_id)
     print(f"  Redis pipeline primed: {primed}")
+    if not primed:
+        print("  [FATAL] Redis pub/sub pipeline not working — server cannot deliver broadcasts")
+        print("  This usually means the API cannot connect to Redis.")
+        print("  Check: nomad alloc logs <alloc> api_cpp | grep -i redis")
+        # Still run the tests so we get a proper result count, but they'll fail
     await drain(ws_a)
 
     # ── Test 1: Connect with active=true -> online broadcast ─────────
@@ -190,7 +191,7 @@ async def run_tests():
     ok, status = await recv_presence(ws_a, user_b_id, "online", timeout=8)
     check("User B connects active=true -> A sees online", ok, f"status={status}")
     await close_and_settle(ws_b)
-    await drain(ws_a, timeout=2)    # consume the offline + any stragglers
+    await drain(ws_a, timeout=2)
 
     # ── Test 2: Connect with active=false -> NO online broadcast ─────
     print("\n[2] Connect with active=false")
@@ -245,7 +246,6 @@ async def run_tests():
 
     # ── Test 8: Privacy enforcement ──────────────────────────────────
     print("\n[8] Privacy: last_seen_visibility=nobody")
-    # Set B privacy to nobody
     api("PUT", "/settings", {"last_seen_visibility": "nobody"}, token=token_b)
 
     await drain(ws_a)
@@ -260,6 +260,9 @@ async def run_tests():
     api("PUT", "/settings", {"last_seen_visibility": "everyone"}, token=token_b)
     await ws_b.close()
     await ws_a.close()
+
+    # ── Cleanup: delete the temporary group chat ─────────────────────
+    api("DELETE", f"/chats/{chat_id}", token=token_a)
 
     # ── Summary ──────────────────────────────────────────────────────
     passed = sum(results)

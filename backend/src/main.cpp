@@ -31,6 +31,7 @@
 #include <csignal>
 #include <iostream>
 #include <chrono>
+#include <thread>
 #include <regex>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -75,21 +76,34 @@ int main(int argc, char* argv[]) {
     // Drogon's c-ares async resolver can fail to resolve Docker hostnames.
     // Pre-resolve with getaddrinfo (synchronous, uses the system resolver) and
     // pass the raw IP so Drogon skips its own DNS lookup entirely.
+    // Retry resolution to handle Docker DNS race at container startup.
     if (!cfg.redisHost.empty()) {
         std::string redisIp = cfg.redisHost;
-        struct addrinfo hints{}, *res = nullptr;
-        hints.ai_family   = AF_INET;
-        hints.ai_socktype = SOCK_STREAM;
-        if (getaddrinfo(cfg.redisHost.c_str(), nullptr, &hints, &res) == 0 && res) {
-            char buf[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &reinterpret_cast<struct sockaddr_in*>(res->ai_addr)->sin_addr,
-                      buf, sizeof(buf));
-            redisIp = buf;
-            freeaddrinfo(res);
-            LOG_INFO << "Redis " << cfg.redisHost << " resolved to " << redisIp;
-        } else {
-            LOG_WARN << "Could not resolve Redis host '" << cfg.redisHost
-                     << "', using as-is";
+        constexpr int maxAttempts = 15;
+        for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
+            struct addrinfo hints{}, *res = nullptr;
+            hints.ai_family   = AF_INET;
+            hints.ai_socktype = SOCK_STREAM;
+            if (getaddrinfo(cfg.redisHost.c_str(), nullptr, &hints, &res) == 0 && res) {
+                char buf[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET,
+                          &reinterpret_cast<struct sockaddr_in*>(res->ai_addr)->sin_addr,
+                          buf, sizeof(buf));
+                redisIp = buf;
+                freeaddrinfo(res);
+                LOG_INFO << "Redis " << cfg.redisHost << " resolved to " << redisIp;
+                break;
+            }
+            if (attempt < maxAttempts) {
+                LOG_WARN << "Could not resolve Redis host '" << cfg.redisHost
+                         << "' (attempt " << attempt << "/" << maxAttempts
+                         << "), retrying in 2s...";
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+            } else {
+                LOG_ERROR << "Could not resolve Redis host '" << cfg.redisHost
+                          << "' after " << maxAttempts
+                          << " attempts — Redis will be unavailable";
+            }
         }
         drogon::app().createRedisClient(
             redisIp,
