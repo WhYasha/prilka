@@ -107,8 +107,9 @@
       <div v-if="isRecording" class="recording-bar">
         <span class="rec-dot" />
         <span class="rec-time">{{ recorderComposable.formatTime(recorderComposable.seconds.value) }}</span>
-        <span class="rec-label">Recording... tap mic to stop</span>
+        <span class="rec-label">Recording...</span>
         <button class="icon-btn rec-cancel" title="Cancel" @click="cancelRec">&#10005;</button>
+        <button class="icon-btn rec-send" title="Send" @click="stopRec">&#10148;</button>
       </div>
 
       <!-- Message context menu (desktop right-click) -->
@@ -522,14 +523,19 @@ async function startRec() {
   try {
     await recorderComposable.startRecording()
     isRecording.value = true
+  } catch {
+    isRecording.value = false
+    showToast('Microphone access denied')
+  }
+}
 
-    // Wait for stop
+async function stopRec() {
+  try {
     const file = await recorderComposable.stopRecording()
     isRecording.value = false
     await uploadVoice(file)
   } catch {
     isRecording.value = false
-    showToast('Microphone access denied')
   }
 }
 

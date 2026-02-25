@@ -43,10 +43,13 @@
       <template v-else-if="message.message_type === 'voice'">
         <div class="msg-bubble">
           <div class="voice-player">
-            <audio controls :src="voiceSrc" />
-            <span v-if="message.duration_seconds" class="voice-dur">
-              {{ formatDuration(message.duration_seconds) }}
-            </span>
+            <button class="voice-play-btn" @click.stop="toggleVoice">
+              {{ voicePlaying ? '\u23F8' : '\u25B6' }}
+            </button>
+            <div class="voice-track" @click.stop="seekVoice">
+              <div class="voice-progress" :style="{ width: voiceProgress + '%' }" />
+            </div>
+            <span class="voice-dur">{{ voiceTimeDisplay }}</span>
           </div>
         </div>
       </template>
@@ -80,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref } from 'vue'
+import { computed, inject, ref, onUnmounted, watch } from 'vue'
 import linkifyStr from 'linkify-string'
 import Badge from '@/components/ui/Badge.vue'
 import type { Message, Sticker } from '@/api/types'
@@ -162,6 +165,102 @@ const stickerUrl = computed(() => {
 
 const voiceSrc = computed(() => {
   return props.message.attachment_url || ''
+})
+
+// Voice player state
+const voicePlaying = ref(false)
+const voiceProgress = ref(0)
+const voiceCurrentTime = ref(0)
+const voiceDuration = ref(props.message.duration_seconds || 0)
+let voiceAudio: HTMLAudioElement | null = null
+let voiceRafId: number | null = null
+
+function getVoiceAudio(): HTMLAudioElement {
+  if (!voiceAudio) {
+    voiceAudio = new Audio(voiceSrc.value)
+    voiceAudio.addEventListener('loadedmetadata', () => {
+      if (voiceAudio && isFinite(voiceAudio.duration)) {
+        voiceDuration.value = voiceAudio.duration
+      }
+    })
+    voiceAudio.addEventListener('ended', () => {
+      voicePlaying.value = false
+      voiceProgress.value = 0
+      voiceCurrentTime.value = 0
+      cancelVoiceRaf()
+    })
+  }
+  return voiceAudio
+}
+
+function updateVoiceProgress() {
+  if (voiceAudio && voicePlaying.value) {
+    voiceCurrentTime.value = voiceAudio.currentTime
+    const dur = voiceAudio.duration
+    voiceProgress.value = dur && isFinite(dur) ? (voiceAudio.currentTime / dur) * 100 : 0
+    voiceRafId = requestAnimationFrame(updateVoiceProgress)
+  }
+}
+
+function cancelVoiceRaf() {
+  if (voiceRafId !== null) {
+    cancelAnimationFrame(voiceRafId)
+    voiceRafId = null
+  }
+}
+
+function toggleVoice() {
+  const audio = getVoiceAudio()
+  if (voicePlaying.value) {
+    audio.pause()
+    voicePlaying.value = false
+    cancelVoiceRaf()
+  } else {
+    audio.play()
+    voicePlaying.value = true
+    voiceRafId = requestAnimationFrame(updateVoiceProgress)
+  }
+}
+
+function seekVoice(e: MouseEvent) {
+  const audio = getVoiceAudio()
+  const target = e.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+  const dur = audio.duration
+  if (dur && isFinite(dur)) {
+    audio.currentTime = ratio * dur
+    voiceCurrentTime.value = audio.currentTime
+    voiceProgress.value = ratio * 100
+  }
+}
+
+const voiceTimeDisplay = computed(() => {
+  const dur = voiceDuration.value
+  if (voicePlaying.value || voiceCurrentTime.value > 0) {
+    return formatDuration(Math.floor(voiceCurrentTime.value)) + ' / ' + formatDuration(Math.floor(dur))
+  }
+  return formatDuration(Math.floor(dur))
+})
+
+// Update audio src if attachment_url changes
+watch(voiceSrc, () => {
+  if (voiceAudio) {
+    voiceAudio.pause()
+    voicePlaying.value = false
+    cancelVoiceRaf()
+    voiceAudio = null
+    voiceProgress.value = 0
+    voiceCurrentTime.value = 0
+  }
+})
+
+onUnmounted(() => {
+  if (voiceAudio) {
+    voiceAudio.pause()
+    voiceAudio = null
+  }
+  cancelVoiceRaf()
 })
 
 const replyQuoteText = computed(() => {

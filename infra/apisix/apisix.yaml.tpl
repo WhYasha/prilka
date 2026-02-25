@@ -206,6 +206,13 @@ routes:
     priority: 50
     upstream_id: 1
     plugins:
+      cors:
+        allow_origins: "https://behappy.rest"
+        allow_methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        allow_headers: "Content-Type, Authorization, X-Requested-With, Accept"
+        expose_headers: "Content-Disposition"
+        max_age: 86400
+        allow_credential: true
       limit-req:
         rate: 30
         burst: 60
@@ -302,6 +309,34 @@ routes:
             Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
             X-Content-Type-Options: nosniff
             Cache-Control: "public, max-age=86400"
+
+  # ========================================================================
+  # admin.behappy.rest — Admin panel (part of main SPA)
+  # Redirects bare / to /admin, proxies everything else to Drogon
+  # ========================================================================
+  - id: 95
+    name: admin-redirect-root
+    uri: /
+    host: admin.behappy.rest
+    priority: 60
+    plugins:
+      redirect:
+        uri: "/admin"
+        ret_code: 302
+
+  - id: 96
+    name: admin-spa
+    uri: /*
+    host: admin.behappy.rest
+    priority: 50
+    upstream_id: 1
+    plugins:
+      response-rewrite:
+        headers:
+          set:
+            Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
+            X-Content-Type-Options: nosniff
+            X-Frame-Options: SAMEORIGIN
 
   # ========================================================================
   # behappy.rest — SPA catch-all (C++ Drogon serves Vue app)

@@ -9,5 +9,6 @@ export async function uploadFile(file: File): Promise<FileUploadResult> {
 }
 
 export function getDownloadUrl(fileId: number): string {
-  return `/api/files/${fileId}/download`
+  const base = import.meta.env.VITE_API_URL || '/api'
+  return `${base}/files/${fileId}/download`
 }

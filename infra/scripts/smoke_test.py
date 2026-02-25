@@ -307,6 +307,91 @@ if isinstance(b, list) and b:
     check("Presigned sticker fetch -> 200", ps == 200,
           "status=" + str(ps) + " type=" + ct)
 
+# ── 10b. Voice message ───────────────────────────────────────────────────
+print("\n[10b] Voice message")
+
+# Upload a tiny audio file (WAV header — valid but silent)
+import struct
+wav_header = struct.pack('<4sI4s4sIHHIIHH4sI',
+    b'RIFF', 36 + 16000, b'WAVE',           # RIFF header (1s of 8kHz 16-bit mono PCM)
+    b'fmt ', 16, 1, 1, 8000, 16000, 2, 16,  # fmt chunk
+    b'data', 16000)                           # data chunk header
+wav_data = wav_header + b'\x00' * 16000       # 1 second of silence
+
+boundary_v = "VoiceBoundary42"
+voice_body = (
+    "--" + boundary_v + "\r\n"
+    "Content-Disposition: form-data; name=\"file\"; filename=\"voice.wav\"\r\n"
+    "Content-Type: audio/wav\r\n\r\n"
+).encode() + wav_data + ("\r\n--" + boundary_v + "--\r\n").encode()
+
+vr = urllib.request.Request(
+    BASE + "/files", data=voice_body,
+    headers={"Authorization": "Bearer " + token,
+             "Content-Type": "multipart/form-data; boundary=" + boundary_v},
+    method="POST")
+try:
+    with urllib.request.urlopen(vr, timeout=15) as resp:
+        vfb = json.loads(resp.read())
+        vfs = 201
+except urllib.error.HTTPError as e:
+    vfs = e.code
+    vfb = json.loads(e.read())
+voice_file_id = vfb.get("id")
+check("POST /files (voice) -> 201", vfs == 201, "id=" + str(voice_file_id))
+
+if voice_file_id and chat_id:
+    # Send voice message
+    s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
+               {"content": "", "type": "voice",
+                "file_id": voice_file_id, "duration_seconds": 3}, token=token)
+    voice_msg_id = b.get("id") if s == 201 else None
+    check("POST voice message -> 201", s == 201 and b.get("message_type") == "voice",
+          "msg_id=" + str(voice_msg_id) + " type=" + str(b.get("message_type")))
+
+    if voice_msg_id:
+        # Fetch messages and verify voice message fields
+        s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=5", token=token)
+        voice_msg = None
+        for m in (b if isinstance(b, list) else []):
+            if m.get("id") == voice_msg_id:
+                voice_msg = m
+                break
+        if voice_msg:
+            has_voice_fields = (voice_msg.get("message_type") == "voice"
+                                and voice_msg.get("duration_seconds") == 3
+                                and voice_msg.get("attachment_url") is not None
+                                and voice_msg.get("attachment_url") != "")
+            check("GET voice msg -> has type/duration/attachment_url", has_voice_fields,
+                  "dur=" + str(voice_msg.get("duration_seconds"))
+                  + " url=" + str(voice_msg.get("attachment_url", ""))[:50])
+
+            # Fetch the presigned attachment URL
+            att_url = voice_msg.get("attachment_url", "")
+            if att_url:
+                try:
+                    ar = urllib.request.Request(att_url, method="GET")
+                    with urllib.request.urlopen(ar, timeout=10) as resp:
+                        att_status = resp.status
+                except urllib.error.HTTPError as e:
+                    att_status = e.code
+                except urllib.error.URLError:
+                    att_status = 0
+                check("GET voice attachment_url -> 200", att_status == 200,
+                      "status=" + str(att_status))
+            else:
+                check("GET voice attachment_url -> 200", False, "no url")
+        else:
+            check("GET voice msg -> has type/duration/attachment_url", False, "msg not found")
+            check("GET voice attachment_url -> 200", False, "skipped")
+    else:
+        check("GET voice msg -> has type/duration/attachment_url", False, "skipped")
+        check("GET voice attachment_url -> 200", False, "skipped")
+else:
+    check("POST voice message -> 201", False, "no file_id or chat_id")
+    check("GET voice msg -> has type/duration/attachment_url", False, "skipped")
+    check("GET voice attachment_url -> 200", False, "skipped")
+
 # ── 11. WebSocket ──────────────────────────────────────────────────────────
 print("\n[11] WebSocket")
 ws_code = "\n".join([
