@@ -77,12 +77,15 @@ services:
 
   # ── Vault – production overrides ────────────────────────────────────────────
   vault:
-    ports: !reset []              # internal only in prod
+    ports: !override
+      - "127.0.0.1:8200:8200"    # localhost only — needed by deploy-time Vault Agent
     restart: always
 
   # ── Consul – production overrides ───────────────────────────────────────────
   consul:
-    ports: !reset []              # internal only in prod; access via APISIX if needed
+    ports: !override
+      - "127.0.0.1:8500:8500"    # localhost only — needed by Nomad + admin
+      - "127.0.0.1:8600:8600/udp"
     restart: always
 
   # ── Nomad – enabled in production (Phase 4) ────────────────────────────────
