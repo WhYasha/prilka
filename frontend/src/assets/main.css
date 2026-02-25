@@ -57,6 +57,15 @@ textarea, input, select { font-family: inherit; }
   --modal-backdrop:        rgba(0,0,0,.4);
   --modal-radius:          12px;
   --modal-shadow:          0 8px 40px rgba(0,0,0,.2);
+
+  /* ── Telegram-style tokens ──────────────────────────────── */
+  --badge-muted:           #8e8e93;
+  --chat-avatar-size:      52px;
+  --chat-row-hover:        rgba(0,0,0,.04);
+  --settings-row-bg:       var(--surface);
+  --settings-row-hover:    rgba(0,0,0,.04);
+  --profile-header-bg:     var(--sidebar-bg);
+  --profile-cover-gradient:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.45) 100%);
 }
 
 /* ── Dark mode tokens ───────────────────────────────────────── */
@@ -93,6 +102,14 @@ textarea, input, select { font-family: inherit; }
   --menu-text-color:       var(--sidebar-txt);
   --modal-backdrop:        rgba(0,0,0,.6);
   --modal-shadow:          0 8px 40px rgba(0,0,0,.4);
+
+  /* ── Telegram-style tokens (dark) ───────────────────────── */
+  --badge-muted:           #8e8e93;
+  --chat-row-hover:        rgba(255,255,255,.04);
+  --settings-row-bg:       var(--surface);
+  --settings-row-hover:    rgba(255,255,255,.06);
+  --profile-header-bg:     var(--sidebar-bg);
+  --profile-cover-gradient:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.6) 100%);
 }
 
 /* ── Animation keyframes ────────────────────────────────────── */
@@ -1857,3 +1874,87 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 .search-btn { color: var(--text-muted); font-size: 1rem; margin-left: auto; }
 [data-theme="dark"] .search-bar { border-color: var(--border); }
 [data-theme="dark"] .search-result-snippet mark { background: rgba(43,154,243,.35); }
+
+/* ── Telegram-style utility classes ─────────────────────────── */
+
+/* Settings row */
+.settings-row {
+  display: flex; align-items: center; gap: var(--menu-item-gap);
+  padding: 12px var(--menu-item-px);
+  background: var(--settings-row-bg);
+  cursor: pointer; transition: background var(--transition-fast);
+  min-height: var(--menu-item-height);
+}
+.settings-row:hover { background: var(--settings-row-hover); }
+.settings-row-icon {
+  width: var(--menu-item-icon-size); height: var(--menu-item-icon-size);
+  color: var(--text-muted); flex-shrink: 0;
+}
+.settings-row-content { flex: 1; min-width: 0; }
+.settings-row-label { font-size: .95rem; color: var(--text); }
+.settings-row-hint  { font-size: .8rem; color: var(--text-muted); }
+.settings-row-right { flex-shrink: 0; color: var(--text-muted); font-size: .85rem; }
+
+/* Settings group */
+.settings-group {
+  background: var(--settings-row-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.settings-group-title {
+  font-size: .78rem; font-weight: 600; color: var(--accent);
+  padding: 8px var(--menu-item-px) 4px;
+  text-transform: uppercase; letter-spacing: .03em;
+}
+
+/* Profile section */
+.profile-section {
+  background: var(--profile-section-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.profile-section + .profile-section { margin-top: 0; }
+
+/* Profile cover / header area */
+.profile-cover {
+  position: relative;
+  background: var(--profile-header-bg);
+  min-height: 200px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-end;
+  padding: 20px;
+}
+.profile-cover::after {
+  content: ''; position: absolute; inset: 0;
+  background: var(--profile-cover-gradient);
+  pointer-events: none;
+}
+.profile-cover > * { position: relative; z-index: 1; }
+
+/* Media tabs (profile panel) */
+.media-tabs {
+  display: flex; border-bottom: 2px solid var(--border);
+  background: var(--surface);
+}
+.media-tab {
+  flex: 1; padding: 12px 0; text-align: center;
+  font-size: .85rem; font-weight: 600;
+  color: var(--text-muted); background: none; border: none;
+  cursor: pointer; position: relative;
+  transition: color var(--transition-fast);
+}
+.media-tab:hover { color: var(--text); }
+.media-tab.active { color: var(--accent); }
+.media-tab.active::after {
+  content: ''; position: absolute; bottom: -2px; left: 0; right: 0;
+  height: 2px; background: var(--accent); border-radius: 1px;
+}
+.media-tab-content {
+  padding: 16px var(--menu-item-px);
+  min-height: 120px;
+  color: var(--text-muted); font-size: .85rem;
+  text-align: center;
+  display: flex; align-items: center; justify-content: center;
+}
