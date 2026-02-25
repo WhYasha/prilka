@@ -17,6 +17,7 @@ ExecStartPre=-/usr/bin/docker network create messenger_net
 
 ExecStart=/usr/bin/docker run --rm \
     --name messenger-apisix \
+    --user root \
     --network messenger_net \
     -p 80:9080 \
     -p 443:9443 \
