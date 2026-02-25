@@ -212,6 +212,12 @@ job "messenger" {
       read_only = true
     }
 
+    volume "stickers" {
+      type      = "host"
+      source    = "stickers"
+      read_only = true
+    }
+
     # ── MinIO bucket init (prestart) ────────────────────────────────────────
     task "minio-init" {
       driver = "docker"
@@ -223,6 +229,12 @@ job "messenger" {
 
       vault {
         role = "nomad-workloads"
+      }
+
+      volume_mount {
+        volume      = "stickers"
+        destination = "/stickers"
+        read_only   = true
       }
 
       template {
@@ -241,7 +253,7 @@ job "messenger" {
         network_mode = "messenger_net"
         entrypoint   = ["/bin/sh", "-c"]
         args = [
-          "sleep 10 && mc mb --ignore-existing local/bh-avatars && mc mb --ignore-existing local/bh-uploads && mc mb --ignore-existing local/bh-stickers && mc mb --ignore-existing local/bh-test-artifacts && mc anonymous set none local/bh-avatars && mc anonymous set none local/bh-uploads && mc anonymous set none local/bh-stickers && mc anonymous set none local/bh-test-artifacts && echo 'MinIO buckets ready.'",
+          "sleep 10 && mc mb --ignore-existing local/bh-avatars && mc mb --ignore-existing local/bh-uploads && mc mb --ignore-existing local/bh-stickers && mc mb --ignore-existing local/bh-test-artifacts && mc anonymous set none local/bh-avatars && mc anonymous set none local/bh-uploads && mc anonymous set none local/bh-stickers && mc anonymous set none local/bh-test-artifacts && mc cp /stickers/s01.svg local/bh-stickers/stickers/s01.svg && mc cp /stickers/s02.svg local/bh-stickers/stickers/s02.svg && mc cp /stickers/s03.svg local/bh-stickers/stickers/s03.svg && mc cp /stickers/s04.svg local/bh-stickers/stickers/s04.svg && mc cp /stickers/s05.svg local/bh-stickers/stickers/s05.svg && mc cp /stickers/s06.svg local/bh-stickers/stickers/s06.svg && mc cp /stickers/s07.svg local/bh-stickers/stickers/s07.svg && mc cp /stickers/s08.svg local/bh-stickers/stickers/s08.svg && echo 'MinIO buckets and stickers ready.'",
         ]
       }
 
