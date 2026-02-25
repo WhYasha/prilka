@@ -41,7 +41,7 @@ job "messenger" {
       driver = "docker"
 
       vault {
-        policies = ["messenger"]
+        role = "nomad-workloads"
       }
 
       template {
@@ -89,7 +89,7 @@ job "messenger" {
       driver = "docker"
 
       vault {
-        policies = ["messenger"]
+        role = "nomad-workloads"
       }
 
       template {
@@ -140,7 +140,7 @@ job "messenger" {
       driver = "docker"
 
       vault {
-        policies = ["messenger"]
+        role = "nomad-workloads"
       }
 
       template {
@@ -221,7 +221,7 @@ job "messenger" {
       }
 
       vault {
-        policies = ["messenger"]
+        role = "nomad-workloads"
       }
 
       template {
@@ -260,7 +260,7 @@ job "messenger" {
       }
 
       vault {
-        policies = ["messenger"]
+        role = "nomad-workloads"
       }
 
       template {
@@ -306,7 +306,7 @@ job "messenger" {
       driver = "docker"
 
       vault {
-        policies = ["messenger"]
+        role = "nomad-workloads"
       }
 
       template {
@@ -446,7 +446,7 @@ job "messenger" {
       driver = "docker"
 
       vault {
-        policies = ["messenger"]
+        role = "nomad-workloads"
       }
 
       template {
