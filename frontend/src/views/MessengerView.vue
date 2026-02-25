@@ -208,18 +208,10 @@ async function openDM(target: string) {
     let userId: number
     if (target.startsWith('@')) {
       const username = target.substring(1)
-      if (authStore.user?.username === username) {
-        userProfileTarget.value = username
-        return
-      }
       const user = await getUserByUsername(username)
       userId = user.id
     } else {
       userId = parseInt(target)
-      if (authStore.user?.id === userId) {
-        showToast('Cannot open DM with yourself')
-        return
-      }
     }
     const chat = await createChat({ type: 'direct', member_ids: [userId] })
     await chatsStore.loadChats()
@@ -287,8 +279,17 @@ function handleOpenNewChannel() {
   newChatModalOpen.value = true
 }
 
-function handleOpenFavorites() {
+async function handleOpenFavorites() {
   drawerOpen.value = false
+  if (!authStore.user) return
+  try {
+    // Create or open the self-chat (saved messages)
+    const chat = await createChat({ type: 'direct', member_ids: [authStore.user.id] })
+    await chatsStore.loadChats()
+    chatsStore.setActiveChat(chat.id)
+  } catch {
+    showToast('Failed to open Saved Messages')
+  }
 }
 
 function openUserProfileModal(username: string) {

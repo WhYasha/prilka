@@ -127,6 +127,14 @@ export const useChatsStore = defineStore('chats', () => {
     }
   }
 
+  async function deleteChat(chatId: number) {
+    await chatsApi.deleteChat(chatId)
+    chats.value = chats.value.filter((c) => c.id !== chatId)
+    if (activeChatId.value === chatId) {
+      activeChatId.value = null
+    }
+  }
+
   function updateChatLastMessage(chatId: number, content: string, time: string) {
     const chat = chats.value.find((c) => c.id === chatId)
     if (chat) {
@@ -227,6 +235,7 @@ export const useChatsStore = defineStore('chats', () => {
     togglePin,
     toggleArchive,
     leave,
+    deleteChat,
     updateChatLastMessage,
     incrementUnread,
     setTyping,

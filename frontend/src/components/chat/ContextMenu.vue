@@ -17,6 +17,12 @@
     >
       Leave chat
     </button>
+    <button
+      class="ctx-item ctx-delete"
+      @click="handleDelete"
+    >
+      Delete chat
+    </button>
   </div>
 </template>
 
@@ -90,6 +96,18 @@ async function handleLeave() {
     showToast('Left chat')
   } catch {
     showToast('Failed to leave chat')
+  }
+}
+
+async function handleDelete() {
+  if (!chatId.value) return
+  visible.value = false
+  if (!confirm('Delete this chat? All messages will be permanently removed.')) return
+  try {
+    await chatsStore.deleteChat(chatId.value)
+    showToast('Chat deleted')
+  } catch {
+    showToast('Failed to delete chat')
   }
 }
 </script>
