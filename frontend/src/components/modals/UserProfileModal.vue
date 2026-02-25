@@ -5,34 +5,36 @@
         <X :size="20" :stroke-width="2" />
       </button>
 
-      <div class="profile-modal-body">
-        <template v-if="loading">
-          <div class="profile-loading">
-            <p>Loading...</p>
-          </div>
-        </template>
-        <template v-else-if="user">
-          <!-- Avatar section -->
-          <div class="profile-avatar-section">
+      <div class="profile-modal-body" v-if="loading">
+        <div class="profile-loading">
+          <p>Loading...</p>
+        </div>
+      </div>
+
+      <template v-else-if="user">
+        <!-- Gradient header with avatar -->
+        <div class="profile-header">
+          <div class="profile-header__gradient" />
+          <div class="profile-header__content">
             <Avatar
               :name="user.display_name || user.username"
               :url="user.avatar_url"
               :online="isOnline"
               size="xxl"
             />
+            <div class="profile-header__info">
+              <div class="profile-name">
+                {{ user.display_name || user.username }}
+                <Badge v-if="user.is_admin" />
+              </div>
+              <div class="profile-status" :class="{ 'profile-status--online': isOnline }">
+                {{ statusText }}
+              </div>
+            </div>
           </div>
+        </div>
 
-          <!-- Name + badge -->
-          <div class="profile-name">
-            {{ user.display_name || user.username }}
-            <Badge v-if="user.is_admin" />
-          </div>
-
-          <!-- Online/offline status -->
-          <div class="profile-status" :class="{ 'profile-status--online': isOnline }">
-            {{ statusText }}
-          </div>
-
+        <div class="profile-modal-body">
           <!-- Action buttons row -->
           <ProfileActionButtons
             :muted="isMuted"
@@ -45,26 +47,35 @@
           <div class="profile-divider" />
 
           <!-- Info list -->
-          <div class="profile-info-list">
-            <div class="profile-info-item">
-              <div class="profile-info-label">Username</div>
-              <div class="profile-info-value">@{{ user.username }}</div>
-            </div>
-            <div v-if="user.bio" class="profile-info-item">
-              <div class="profile-info-label">Bio</div>
-              <div class="profile-info-value">{{ user.bio }}</div>
-            </div>
-            <div class="profile-info-item">
-              <div class="profile-info-label">User ID</div>
-              <div class="profile-info-value">{{ user.id }}</div>
-            </div>
+          <ProfileInfoList
+            :username="user.username"
+            :bio="user.bio"
+            :user-id="user.id"
+          />
+
+          <!-- Media tabs placeholder -->
+          <div class="profile-media-tabs">
+            <button
+              v-for="tab in mediaTabs"
+              :key="tab"
+              class="profile-media-tab"
+              :class="{ 'profile-media-tab--active': activeMediaTab === tab }"
+              @click="activeMediaTab = tab"
+            >
+              {{ tab }}
+            </button>
           </div>
-        </template>
-        <template v-else>
-          <div class="profile-loading">
-            <p>User not found</p>
+          <div class="profile-media-empty">
+            <ImageIcon :size="32" :stroke-width="1.5" />
+            <span>No {{ activeMediaTab.toLowerCase() }} yet</span>
           </div>
-        </template>
+        </div>
+      </template>
+
+      <div class="profile-modal-body" v-else>
+        <div class="profile-loading">
+          <p>User not found</p>
+        </div>
       </div>
     </div>
   </div>
@@ -79,7 +90,8 @@ import { formatLastSeen } from '@/utils/formatLastSeen'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
 import ProfileActionButtons from '@/components/profile/ProfileActionButtons.vue'
-import { X } from 'lucide-vue-next'
+import ProfileInfoList from '@/components/profile/ProfileInfoList.vue'
+import { X, Image as ImageIcon } from 'lucide-vue-next'
 import type { User } from '@/api/types'
 
 const props = defineProps<{ username: string }>()
@@ -95,6 +107,8 @@ const { showToast } = useToast()
 const user = ref<User | null>(null)
 const loading = ref(true)
 const isMuted = ref(false)
+const mediaTabs = ['Media', 'Files', 'Links'] as const
+const activeMediaTab = ref<string>('Media')
 
 const isOnline = computed(() => {
   if (!user.value) return false
@@ -125,3 +139,75 @@ function handleMute() {
   showToast(isMuted.value ? 'User muted' : 'User unmuted')
 }
 </script>
+
+<style scoped>
+.profile-header {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 1.25rem;
+}
+
+.profile-header__gradient {
+  position: absolute;
+  inset: 0;
+  bottom: 40%;
+  background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 60%, #6c5ce7) 100%);
+  border-radius: var(--modal-radius) var(--modal-radius) 0 0;
+}
+
+.profile-header__content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 2rem;
+}
+
+.profile-header__info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: .75rem;
+}
+
+.profile-media-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--profile-divider);
+  margin-top: 1.25rem;
+  width: 100%;
+}
+
+.profile-media-tab {
+  flex: 1;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.profile-media-tab:hover {
+  color: var(--text);
+}
+
+.profile-media-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.profile-media-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 2rem 0 .5rem;
+  color: var(--text-muted);
+  font-size: .85rem;
+}
+</style>
