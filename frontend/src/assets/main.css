@@ -217,8 +217,8 @@ textarea, input, select { font-family: inherit; }
   animation: msg-particle-right .5s ease forwards;
 }
 /* Particle color for received messages */
-.msg-row.msg-deleting .msg-them .msg-bubble::before,
-.msg-row.msg-deleting .msg-them .msg-bubble::after {
+.msg-row.msg-deleting.theirs .msg-bubble::before,
+.msg-row.msg-deleting.theirs .msg-bubble::after {
   background: var(--bubble-them);
 }
 .msg-row.msg-new {
@@ -539,6 +539,7 @@ body {
 /* Message row wrapper */
 .msg-row {
   display: flex; flex-direction: column; max-width: 65%;
+  max-height: 500px;
 }
 .msg-row.mine   { align-self: flex-end; align-items: flex-end; }
 .msg-row.theirs { align-self: flex-start; align-items: flex-start; }
