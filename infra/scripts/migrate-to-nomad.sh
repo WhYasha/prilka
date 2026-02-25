@@ -78,8 +78,8 @@ if [ ! -f "${APP_DIR}/vault/unseal-keys.json" ]; then
 fi
 
 # ── Step 1: Build api_cpp image ──────────────────────────────────────────────
-log "=== Step 1: Building messenger-api:latest image ==="
-docker build -t messenger-api:latest ./backend
+log "=== Step 1: Building messenger-api image ==="
+docker build -t messenger-api:latest -t messenger-api:local ./backend
 
 # ── Step 2: Create Docker network + migrate volumes ──────────────────────────
 log "=== Step 2: Creating Docker network + migrating volumes ==="

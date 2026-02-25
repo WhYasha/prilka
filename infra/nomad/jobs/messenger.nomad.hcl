@@ -350,8 +350,7 @@ job "messenger" {
       }
 
       config {
-        image        = "messenger-api:latest"
-        force_pull   = false
+        image        = "messenger-api:local"
         hostname     = "api_cpp"
         network_mode = "messenger_net"
       }
