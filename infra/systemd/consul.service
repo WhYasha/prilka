@@ -1,0 +1,37 @@
+[Unit]
+Description=HashiCorp Consul (Docker container)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+Restart=always
+RestartSec=10s
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+ExecStartPre=-/usr/bin/docker rm -f messenger-consul
+ExecStartPre=/usr/bin/docker network create messenger_net 2>/dev/null || true
+
+ExecStart=/usr/bin/docker run --rm \
+    --name messenger-consul \
+    --network messenger_net \
+    -p 127.0.0.1:8500:8500 \
+    -p 127.0.0.1:8600:8600/udp \
+    -v messenger-consul-data:/consul/data \
+    -v /opt/messenger/repo/infra/consul/config.json:/consul/config/config.json:ro \
+    -v /opt/messenger/repo/infra/consul/services:/consul/config/services:ro \
+    hashicorp/consul:1.17 \
+    consul agent -config-dir=/consul/config
+
+ExecStop=/usr/bin/docker stop messenger-consul
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=consul
+
+[Install]
+WantedBy=multi-user.target

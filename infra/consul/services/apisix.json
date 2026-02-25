@@ -1,10 +1,10 @@
 {
   "service": {
-    "name": "redis",
-    "port": 6379,
-    "tags": ["messenger", "pubsub"],
+    "name": "apisix",
+    "port": 9080,
+    "tags": ["messenger", "gateway", "proxy"],
     "check": {
-      "tcp": "redis:6379",
+      "http": "http://apisix:9080/health",
       "interval": "10s",
       "timeout": "5s",
       "deregister_critical_service_after": "30m"

@@ -1,0 +1,26 @@
+[Unit]
+Description=HashiCorp Nomad Agent
+Requires=docker.service
+After=docker.service vault.service consul.service network-online.target
+Wants=vault.service consul.service network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/nomad agent -config=/opt/messenger/repo/infra/nomad/config.hcl
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10s
+
+# Nomad needs access to Docker socket and system resources
+LimitNOFILE=65536
+LimitNPROC=infinity
+TasksMax=infinity
+OOMScoreAdjust=-1000
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nomad
+
+[Install]
+WantedBy=multi-user.target

@@ -108,6 +108,7 @@ vault kv put secret/messenger/minio \
   avatars_bucket=bh-avatars \
   uploads_bucket=bh-uploads \
   stickers_bucket=bh-stickers \
+  tests_bucket=bh-test-artifacts \
   presign_ttl=900
 
 vault kv put secret/messenger/jwt \
@@ -120,17 +121,34 @@ vault kv put secret/messenger/server \
   threads=0 \
   max_file_size_mb=50
 
+vault kv put secret/messenger/grafana \
+  user=admin \
+  password=CHANGE_ME_GRAFANA_PASSWORD
+
 log ""
 log "============================================================"
 log "Vault initialization complete."
 log ""
 log "NEXT STEPS:"
-log "  1. Save unseal keys in separate secure locations"
-log "  2. Save root token securely (revoke after setup)"
-log "  3. Update secrets with real production values:"
-log "     vault kv put secret/messenger/db password=<real_pw>"
+log "  1. Create Vault credentials directory:"
+log "     mkdir -p /opt/messenger/vault && chmod 700 /opt/messenger/vault"
+log "  2. Save unseal keys for auto-unseal:"
+log "     echo '${INIT_OUTPUT}' | jq '{unseal_keys_b64}' > /opt/messenger/vault/unseal-keys.json"
+log "     chmod 600 /opt/messenger/vault/unseal-keys.json"
+log "  3. Save root token securely (revoke after setup):"
+log "     echo '${ROOT_TOKEN}' > /opt/messenger/vault/root-token"
+log "     chmod 600 /opt/messenger/vault/root-token"
 log "  4. Save AppRole credentials for Vault Agent:"
 log "     echo '${ROLE_ID}' > /opt/messenger/vault/role-id"
 log "     echo '${SECRET_ID}' > /opt/messenger/vault/secret-id"
-log "  5. Start Vault Agent sidecar with api_cpp"
+log "     chmod 600 /opt/messenger/vault/role-id /opt/messenger/vault/secret-id"
+log "  5. Update secrets with real production values:"
+log "     vault kv put secret/messenger/db password=<real_pw>"
+log "     vault kv put secret/messenger/redis password=<real_pw>"
+log "     vault kv put secret/messenger/minio secret_key=<real_pw>"
+log "     vault kv put secret/messenger/jwt secret=<real_jwt_secret>"
+log "     vault kv put secret/messenger/grafana password=<real_pw>"
+log "  6. Test .env rendering:"
+log "     vault agent -config=infra/vault/agent-init.hcl"
+log "     cat /opt/messenger/env/.env"
 log "============================================================"

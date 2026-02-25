@@ -1,10 +1,18 @@
 # ============================================================
 # HashiCorp Nomad – Server + Client Configuration
-# Single-node deployment (dev/single-agent mode).
-# Integrates with Consul for service discovery and Vault for secrets.
+# Single-node deployment: runs as host-native process.
+# Vault and Consul run as standalone Docker containers
+# on messenger_net, reachable via localhost mapped ports.
 # ============================================================
 
-data_dir = "/nomad/data"
+data_dir = "/opt/messenger/nomad/data"
+
+# Bind to localhost only (single-node, no federation)
+bind_addr = "0.0.0.0"
+
+addresses {
+  http = "127.0.0.1"
+}
 
 # ── Server (leader election — single node bootstrap) ──────────────────────────
 server {
@@ -16,7 +24,6 @@ server {
 client {
   enabled = true
 
-  # Docker driver configuration
   host_volume "downloads" {
     path      = "/opt/messenger/downloads"
     read_only = true
@@ -31,17 +38,42 @@ client {
     path      = "/opt/messenger/certbot-webroot"
     read_only = true
   }
+
+  host_volume "migrations" {
+    path      = "/opt/messenger/repo/migrations"
+    read_only = true
+  }
+
+  host_volume "stickers" {
+    path      = "/opt/messenger/repo/infra/minio/stickers"
+    read_only = true
+  }
+
+  host_volume "prometheus_config" {
+    path      = "/opt/messenger/repo/infra/prometheus"
+    read_only = true
+  }
+
+  host_volume "grafana_provisioning" {
+    path      = "/opt/messenger/repo/infra/grafana/provisioning"
+    read_only = true
+  }
+
+  host_volume "apisix_config" {
+    path      = "/opt/messenger/repo/infra/apisix"
+    read_only = true
+  }
 }
 
 # ── Consul integration (service registration + discovery) ─────────────────────
 consul {
-  address = "consul:8500"
+  address = "127.0.0.1:8500"
 }
 
 # ── Vault integration (secret injection into tasks) ──────────────────────────
 vault {
   enabled = true
-  address = "http://vault:8200"
+  address = "http://127.0.0.1:8200"
 }
 
 # ── Telemetry ──────────────────────────────────────────────────────────────────

@@ -1,0 +1,39 @@
+[Unit]
+Description=HashiCorp Vault (Docker container)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+Restart=always
+RestartSec=10s
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+ExecStartPre=-/usr/bin/docker rm -f messenger-vault
+ExecStartPre=/usr/bin/docker network create messenger_net 2>/dev/null || true
+
+ExecStart=/usr/bin/docker run --rm \
+    --name messenger-vault \
+    --cap-add IPC_LOCK \
+    --network messenger_net \
+    -p 127.0.0.1:8200:8200 \
+    -e VAULT_ADDR=http://0.0.0.0:8200 \
+    -e VAULT_API_ADDR=http://vault:8200 \
+    -v messenger-vault-data:/vault/data \
+    -v /opt/messenger/repo/infra/vault/config.hcl:/vault/config/config.hcl:ro \
+    -v /opt/messenger/repo/infra/vault/policies:/vault/policies:ro \
+    hashicorp/vault:1.15 \
+    vault server -config=/vault/config/config.hcl
+
+ExecStop=/usr/bin/docker stop messenger-vault
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vault
+
+[Install]
+WantedBy=multi-user.target

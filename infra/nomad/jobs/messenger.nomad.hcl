@@ -1,6 +1,11 @@
 # ============================================================
 # Nomad Job Specification — Messenger Platform
 # Deploys the full messenger stack via Nomad.
+#
+# Prerequisites:
+#   - Vault and Consul running as standalone containers
+#   - Docker network "messenger_net" exists
+#   - messenger-api:latest image built locally
 # ============================================================
 
 job "messenger" {
@@ -21,25 +26,16 @@ job "messenger" {
   group "infra" {
     count = 1
 
-    network {
-      mode = "bridge"
-      port "postgres" { static = 5432 }
-      port "redis"    { static = 6379 }
-      port "minio"    { static = 9000 }
-      port "minio_console" { static = 9001 }
+    restart {
+      attempts = 5
+      delay    = "15s"
+      interval = "5m"
+      mode     = "delay"
     }
 
     # ── PostgreSQL ──────────────────────────────────────────────────────────
     task "postgres" {
       driver = "docker"
-
-      config {
-        image = "postgres:16-alpine"
-        ports = ["postgres"]
-        volumes = [
-          "postgres_data:/var/lib/postgresql/data",
-        ]
-      }
 
       vault {
         policies = ["messenger"]
@@ -57,6 +53,15 @@ job "messenger" {
         env         = true
       }
 
+      config {
+        image        = "postgres:16-alpine"
+        hostname     = "postgres"
+        network_mode = "messenger_net"
+        volumes = [
+          "messenger-postgres-data:/var/lib/postgresql/data",
+        ]
+      }
+
       resources {
         cpu    = 500
         memory = 512
@@ -64,9 +69,10 @@ job "messenger" {
 
       service {
         name = "postgres"
-        port = "postgres"
+        port = 5432
         check {
           type     = "tcp"
+          port     = 5432
           interval = "10s"
           timeout  = "5s"
         }
@@ -92,15 +98,16 @@ job "messenger" {
       }
 
       config {
-        image = "redis:7-alpine"
-        ports = ["redis"]
+        image        = "redis:7-alpine"
+        hostname     = "redis"
+        network_mode = "messenger_net"
         args = [
           "redis-server",
           "--requirepass", "${REDIS_PASSWORD}",
           "--appendonly", "yes",
         ]
         volumes = [
-          "redis_data:/data",
+          "messenger-redis-data:/data",
         ]
       }
 
@@ -111,9 +118,10 @@ job "messenger" {
 
       service {
         name = "redis"
-        port = "redis"
+        port = 6379
         check {
           type     = "tcp"
+          port     = 6379
           interval = "10s"
           timeout  = "5s"
         }
@@ -141,11 +149,12 @@ job "messenger" {
       }
 
       config {
-        image = "minio/minio:latest"
-        ports = ["minio", "minio_console"]
-        args  = ["server", "/data", "--console-address", ":9001"]
+        image        = "minio/minio:latest"
+        hostname     = "minio"
+        network_mode = "messenger_net"
+        args         = ["server", "/data", "--console-address", ":9001"]
         volumes = [
-          "minio_data:/data",
+          "messenger-minio-data:/data",
         ]
       }
 
@@ -156,10 +165,11 @@ job "messenger" {
 
       service {
         name = "minio"
-        port = "minio"
+        port = 9000
         check {
           type     = "http"
           path     = "/minio/health/live"
+          port     = 9000
           interval = "15s"
           timeout  = "10s"
         }
@@ -167,7 +177,69 @@ job "messenger" {
 
       service {
         name = "minio-console"
-        port = "minio_console"
+        port = 9001
+      }
+    }
+  }
+
+  # ========================================================================
+  # Task Group: MinIO Init (bucket setup — one-shot)
+  # ========================================================================
+  group "minio-init" {
+    count = 1
+
+    restart {
+      attempts = 3
+      delay    = "10s"
+      mode     = "fail"
+    }
+
+    task "minio-init" {
+      driver = "docker"
+
+      lifecycle {
+        hook    = "prestart"
+        sidecar = false
+      }
+
+      vault {
+        policies = ["messenger"]
+      }
+
+      template {
+        data = <<-EOF
+        {{- with secret "secret/data/messenger/minio" }}
+        MC_HOST_local=http://{{ .Data.data.access_key }}:{{ .Data.data.secret_key }}@minio:9000
+        {{- end }}
+        EOF
+        destination = "secrets/minio.env"
+        env         = true
+      }
+
+      config {
+        image        = "minio/mc:latest"
+        hostname     = "minio-init"
+        network_mode = "messenger_net"
+        entrypoint   = ["/bin/sh", "-c"]
+        args = [
+          <<-SCRIPT
+          sleep 5 &&
+          mc mb --ignore-existing local/bh-avatars &&
+          mc mb --ignore-existing local/bh-uploads &&
+          mc mb --ignore-existing local/bh-stickers &&
+          mc mb --ignore-existing local/bh-test-artifacts &&
+          mc anonymous set none local/bh-avatars &&
+          mc anonymous set none local/bh-uploads &&
+          mc anonymous set none local/bh-stickers &&
+          mc anonymous set none local/bh-test-artifacts &&
+          echo 'MinIO buckets ready.'
+          SCRIPT
+        ]
+      }
+
+      resources {
+        cpu    = 100
+        memory = 128
       }
     }
   }
@@ -178,11 +250,15 @@ job "messenger" {
   group "migrations" {
     count = 1
 
-    # Run once and stop
     restart {
       attempts = 3
       delay    = "15s"
       mode     = "fail"
+    }
+
+    volume "migrations" {
+      type   = "host"
+      source = "migrations"
     }
 
     task "flyway" {
@@ -200,7 +276,7 @@ job "messenger" {
       template {
         data = <<-EOF
         {{- with secret "secret/data/messenger/db" }}
-        FLYWAY_URL=jdbc:postgresql://{{ .Data.data.host }}:{{ .Data.data.port }}/{{ .Data.data.name }}
+        FLYWAY_URL=jdbc:postgresql://postgres:5432/{{ .Data.data.name }}
         FLYWAY_USER={{ .Data.data.user }}
         FLYWAY_PASSWORD={{ .Data.data.password }}
         {{- end }}
@@ -209,8 +285,16 @@ job "messenger" {
         env         = true
       }
 
+      volume_mount {
+        volume      = "migrations"
+        destination = "/flyway/sql"
+        read_only   = true
+      }
+
       config {
-        image = "flyway/flyway:10-alpine"
+        image        = "flyway/flyway:10-alpine"
+        hostname     = "flyway"
+        network_mode = "messenger_net"
         args = [
           "-url=${FLYWAY_URL}",
           "-user=${FLYWAY_USER}",
@@ -218,9 +302,6 @@ job "messenger" {
           "-locations=filesystem:/flyway/sql",
           "-connectRetries=10",
           "migrate",
-        ]
-        volumes = [
-          "/opt/messenger/repo/migrations:/flyway/sql:ro",
         ]
       }
 
@@ -237,9 +318,11 @@ job "messenger" {
   group "app" {
     count = 1
 
-    network {
-      mode = "bridge"
-      port "http" { static = 8080 }
+    restart {
+      attempts = 5
+      delay    = "15s"
+      interval = "5m"
+      mode     = "delay"
     }
 
     task "api_cpp" {
@@ -249,23 +332,22 @@ job "messenger" {
         policies = ["messenger"]
       }
 
-      # All secrets injected as env vars from Vault
       template {
         data = <<-EOF
         {{- with secret "secret/data/messenger/db" }}
-        DB_HOST={{ .Data.data.host }}
-        DB_PORT={{ .Data.data.port }}
+        DB_HOST=postgres
+        DB_PORT=5432
         DB_NAME={{ .Data.data.name }}
         DB_USER={{ .Data.data.user }}
         DB_PASS={{ .Data.data.password }}
         {{- end }}
         {{- with secret "secret/data/messenger/redis" }}
-        REDIS_HOST={{ .Data.data.host }}
-        REDIS_PORT={{ .Data.data.port }}
+        REDIS_HOST=redis
+        REDIS_PORT=6379
         REDIS_PASS={{ .Data.data.password }}
         {{- end }}
         {{- with secret "secret/data/messenger/minio" }}
-        MINIO_ENDPOINT={{ .Data.data.endpoint }}
+        MINIO_ENDPOINT=minio:9000
         MINIO_ACCESS_KEY={{ .Data.data.access_key }}
         MINIO_SECRET_KEY={{ .Data.data.secret_key }}
         MINIO_PUBLIC_URL={{ .Data.data.public_url }}
@@ -290,8 +372,9 @@ job "messenger" {
       }
 
       config {
-        image = "messenger-api:latest"
-        ports = ["http"]
+        image        = "messenger-api:latest"
+        hostname     = "api_cpp"
+        network_mode = "messenger_net"
       }
 
       resources {
@@ -301,10 +384,11 @@ job "messenger" {
 
       service {
         name = "api-cpp"
-        port = "http"
+        port = 8080
         check {
           type     = "http"
           path     = "/health"
+          port     = 8080
           interval = "10s"
           timeout  = "5s"
         }
@@ -313,32 +397,49 @@ job "messenger" {
   }
 
   # ========================================================================
-  # Task Group: Monitoring (prometheus, grafana)
+  # Task Group: Monitoring (prometheus, grafana, cadvisor)
   # ========================================================================
   group "monitoring" {
     count = 1
 
-    network {
-      mode = "bridge"
-      port "prometheus" { static = 9090 }
-      port "grafana"    { static = 3000 }
+    restart {
+      attempts = 3
+      delay    = "15s"
+      interval = "5m"
+      mode     = "delay"
+    }
+
+    volume "prometheus_config" {
+      type   = "host"
+      source = "prometheus_config"
+    }
+
+    volume "grafana_provisioning" {
+      type   = "host"
+      source = "grafana_provisioning"
     }
 
     task "prometheus" {
       driver = "docker"
 
+      volume_mount {
+        volume      = "prometheus_config"
+        destination = "/etc/prometheus/host"
+        read_only   = true
+      }
+
       config {
-        image = "prom/prometheus:v2.51.0"
-        ports = ["prometheus"]
+        image        = "prom/prometheus:v2.51.0"
+        hostname     = "prometheus"
+        network_mode = "messenger_net"
         args = [
-          "--config.file=/etc/prometheus/prometheus.yml",
+          "--config.file=/etc/prometheus/host/prometheus.yml",
           "--storage.tsdb.path=/prometheus",
           "--storage.tsdb.retention.time=15d",
           "--web.enable-lifecycle",
         ]
         volumes = [
-          "/opt/messenger/repo/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
-          "prometheus_data:/prometheus",
+          "messenger-prometheus-data:/prometheus",
         ]
       }
 
@@ -349,10 +450,11 @@ job "messenger" {
 
       service {
         name = "prometheus"
-        port = "prometheus"
+        port = 9090
         check {
           type     = "http"
           path     = "/-/healthy"
+          port     = 9090
           interval = "15s"
           timeout  = "5s"
         }
@@ -366,18 +468,33 @@ job "messenger" {
         policies = ["messenger"]
       }
 
-      env {
-        GF_USERS_ALLOW_SIGN_UP       = "false"
-        GF_SERVER_ROOT_URL            = "https://grafana.behappy.rest/"
-        GF_SERVER_SERVE_FROM_SUB_PATH = "false"
+      template {
+        data = <<-EOF
+        {{- with secret "secret/data/messenger/grafana" }}
+        GF_SECURITY_ADMIN_USER={{ .Data.data.user }}
+        GF_SECURITY_ADMIN_PASSWORD={{ .Data.data.password }}
+        {{- end }}
+        GF_USERS_ALLOW_SIGN_UP=false
+        GF_SERVER_ROOT_URL=https://grafana.behappy.rest/
+        GF_SERVER_SERVE_FROM_SUB_PATH=false
+        GF_INSTALL_PLUGINS=
+        EOF
+        destination = "secrets/grafana.env"
+        env         = true
+      }
+
+      volume_mount {
+        volume      = "grafana_provisioning"
+        destination = "/etc/grafana/provisioning"
+        read_only   = true
       }
 
       config {
-        image = "grafana/grafana:10.4.0"
-        ports = ["grafana"]
+        image        = "grafana/grafana:10.4.0"
+        hostname     = "grafana"
+        network_mode = "messenger_net"
         volumes = [
-          "grafana_data:/var/lib/grafana",
-          "/opt/messenger/repo/infra/grafana/provisioning:/etc/grafana/provisioning:ro",
+          "messenger-grafana-data:/var/lib/grafana",
         ]
       }
 
@@ -388,13 +505,45 @@ job "messenger" {
 
       service {
         name = "grafana"
-        port = "grafana"
+        port = 3000
         check {
           type     = "http"
           path     = "/api/health"
+          port     = 3000
           interval = "15s"
           timeout  = "5s"
         }
+      }
+    }
+
+    task "cadvisor" {
+      driver = "docker"
+
+      config {
+        image        = "gcr.io/cadvisor/cadvisor:v0.49.1"
+        hostname     = "cadvisor"
+        network_mode = "messenger_net"
+        privileged   = true
+        volumes = [
+          "/:/rootfs:ro",
+          "/var/run:/var/run:rw",
+          "/sys:/sys:ro",
+          "/var/lib/docker:/var/lib/docker:ro",
+        ]
+        args = [
+          "--housekeeping_interval=15s",
+          "--docker_only=true",
+        ]
+      }
+
+      resources {
+        cpu    = 200
+        memory = 256
+      }
+
+      service {
+        name = "cadvisor"
+        port = 8080
       }
     }
   }
@@ -405,10 +554,11 @@ job "messenger" {
   group "gateway" {
     count = 1
 
-    network {
-      mode = "bridge"
-      port "http"  { static = 80  to = 9080 }
-      port "https" { static = 443 to = 9443 }
+    restart {
+      attempts = 3
+      delay    = "10s"
+      interval = "5m"
+      mode     = "delay"
     }
 
     volume "letsencrypt" {
@@ -421,17 +571,16 @@ job "messenger" {
       source = "downloads"
     }
 
+    volume "apisix_config" {
+      type   = "host"
+      source = "apisix_config"
+    }
+
     task "apisix" {
       driver = "docker"
 
-      config {
-        image = "apache/apisix:3.15.0-debian"
-        ports = ["http", "https"]
-        volumes = [
-          "/opt/messenger/repo/infra/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro",
-          "/opt/messenger/repo/infra/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro",
-        ]
-      }
+      # Run as root to read Let's Encrypt certs
+      user = "root"
 
       volume_mount {
         volume      = "letsencrypt"
@@ -445,14 +594,39 @@ job "messenger" {
         read_only   = true
       }
 
+      volume_mount {
+        volume      = "apisix_config"
+        destination = "/apisix-config"
+        read_only   = true
+      }
+
+      config {
+        image        = "apache/apisix:3.15.0-debian"
+        hostname     = "apisix"
+        network_mode = "messenger_net"
+        port_map {
+          http  = 9080
+          https = 9443
+        }
+        volumes = [
+          "/opt/messenger/repo/infra/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro",
+          "/opt/messenger/repo/infra/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro",
+        ]
+      }
+
+      # Bind to host ports 80/443
       resources {
         cpu    = 500
         memory = 256
+        network {
+          port "http"  { static = 80 }
+          port "https" { static = 443 }
+        }
       }
 
       service {
         name = "apisix"
-        port = "https"
+        port = "http"
         check {
           type     = "http"
           path     = "/health"
