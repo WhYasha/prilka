@@ -138,6 +138,28 @@ ufw allow 443/tcp  comment 'HTTPS'
 ufw --force enable
 ufw status verbose
 
+# ── 7b. Fix MTU for VPS with network encapsulation (VXLAN/GRE) ───────────────
+# Many VPS providers use overlay networks with ~52 bytes overhead, reducing
+# effective path MTU to ~1448. With interface MTU at 1500, TLS handshakes to
+# external hosts (GitHub, PyPI, etc.) silently fail due to PMTUD black hole.
+# MSS clamping ensures TCP negotiates correct segment sizes automatically.
+log "Configuring MTU and MSS clamping..."
+PRIMARY_IF=$(ip -o route show default | awk '{print $5}' | head -1)
+if [ -n "${PRIMARY_IF}" ]; then
+    IFACE_FILE="/etc/network/interfaces"
+    if [ -f "${IFACE_FILE}" ] && ! grep -q "mtu 1440" "${IFACE_FILE}"; then
+        cp -n "${IFACE_FILE}" "${IFACE_FILE}.orig"
+        sed -i "/iface ${PRIMARY_IF} inet/a\\    mtu 1440" "${IFACE_FILE}"
+        sed -i "/mtu 1440/a\\    post-up iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o ${PRIMARY_IF} -j TCPMSS --clamp-mss-to-pmtu" "${IFACE_FILE}"
+        log "  Added MTU 1440 + MSS clamping to ${IFACE_FILE}"
+    fi
+    # Apply immediately
+    ip link set "${PRIMARY_IF}" mtu 1440 2>/dev/null || true
+    iptables -t mangle -C POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o "${PRIMARY_IF}" -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null \
+        || iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o "${PRIMARY_IF}" -j TCPMSS --clamp-mss-to-pmtu
+    log "  MTU set to 1440 on ${PRIMARY_IF}, MSS clamping active"
+fi
+
 # ── 8. Fail2ban ────────────────────────────────────────────────────────────────
 log "Configuring fail2ban..."
 cat > /etc/fail2ban/jail.d/sshd.local <<'EOF'
