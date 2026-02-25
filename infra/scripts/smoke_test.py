@@ -116,8 +116,7 @@ if has_smoke_msg:
 else:
     s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
                {"content": SMOKE_MSG, "type": "text"}, token=token)
-    check("POST /chats/{id}/messages -> 201", s == 201,
-          "status=" + str(s) + " msg_id=" + str(b.get("id")) + " body=" + str(b)[:120])
+    check("POST /chats/{id}/messages -> 201", s == 201, "msg_id=" + str(b.get("id")))
 
 # ── 8b. Reply to message ──────────────────────────────────────────────────
 print("\n[8b] Reply to message")
@@ -352,10 +351,8 @@ if voice_file_id and chat_id:
 
     if voice_msg_id:
         # Fetch messages and verify voice message fields
+        # API returns oldest-first, so use large enough limit to include the new message
         s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=50", token=token)
-        msg_ids = [m.get("id") for m in (b if isinstance(b, list) else [])][:10]
-        print("    DEBUG voice_msg_id=" + str(voice_msg_id) + " type=" + str(type(voice_msg_id).__name__)
-              + " first_ids=" + str(msg_ids))
         voice_msg = None
         for m in (b if isinstance(b, list) else []):
             if m.get("id") == voice_msg_id:
