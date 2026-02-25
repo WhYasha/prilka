@@ -79,6 +79,7 @@ const filteredChats = computed(() => {
 
 function chatDisplayName(chat: Chat): string {
   if (chat.type === 'direct') {
+    if (!chat.other_user_id) return 'Saved Messages'
     return chat.other_display_name || chat.other_username || chat.title || 'Direct Chat'
   }
   return chat.title || chat.name || 'Unnamed Chat'

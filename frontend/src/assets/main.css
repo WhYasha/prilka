@@ -983,6 +983,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 }
 .ctx-item:hover { background: var(--input-bg); }
 .ctx-leave { color: var(--danger); }
+.ctx-delete { color: var(--danger); }
 
 /* ── @mention spans ─────────────────────────────────────────── */
 .mention {
@@ -1254,7 +1255,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 /* ── Forwarded message indicator ───────────────────────────── */
 .msg-forwarded-label {
   font-size: .72rem; color: var(--accent); font-weight: 600;
-  margin-bottom: .15rem; padding: 0 .4rem;
+  margin-bottom: .15rem; padding: 2px .4rem;
+  font-style: italic;
 }
 
 /* ── Swipe actions (chat list) ─────────────────────────────── */

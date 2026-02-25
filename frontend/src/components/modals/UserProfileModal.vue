@@ -30,7 +30,7 @@
 
           <!-- Online/offline status -->
           <div class="profile-status" :class="{ 'profile-status--online': isOnline }">
-            {{ isOnline ? 'online' : 'offline' }}
+            {{ statusText }}
           </div>
 
           <!-- Action buttons row -->
@@ -75,6 +75,7 @@ import { ref, computed, onMounted } from 'vue'
 import { getUserByUsername } from '@/api/users'
 import { useChatsStore } from '@/stores/chats'
 import { useToast } from '@/composables/useToast'
+import { formatLastSeen } from '@/utils/formatLastSeen'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
 import ProfileActionButtons from '@/components/profile/ProfileActionButtons.vue'
@@ -98,6 +99,15 @@ const isMuted = ref(false)
 const isOnline = computed(() => {
   if (!user.value) return false
   return chatsStore.isUserOnline(user.value.id)
+})
+
+const statusText = computed(() => {
+  if (isOnline.value) return 'online'
+  if (!user.value) return 'offline'
+  const presence = chatsStore.getUserPresence(user.value.id)
+  if (presence?.lastSeenAt) return formatLastSeen(presence.lastSeenAt)
+  if (presence?.lastSeenBucket) return `last seen ${presence.lastSeenBucket}`
+  return 'offline'
 })
 
 onMounted(async () => {
