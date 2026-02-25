@@ -2,6 +2,7 @@
 # ============================================================
 # backup-postgres.sh — daily Postgres dump with 7-day retention
 # Runs as: deploy user via systemd timer (messenger-backup.timer)
+# Compatible with both Docker Compose and Nomad container names.
 # ============================================================
 set -euo pipefail
 
@@ -20,8 +21,16 @@ log() { echo "[$(date +%T)] $*"; }
 
 mkdir -p "${BACKUP_DIR}"
 
+# Find the Postgres container (works with both Compose and Nomad naming)
+PG_CONTAINER=$(docker ps --filter "name=postgres" --format "{{.Names}}" | head -1)
+if [ -z "${PG_CONTAINER}" ]; then
+    log "ERROR: No running Postgres container found"
+    exit 1
+fi
+log "Found Postgres container: ${PG_CONTAINER}"
+
 log "Starting Postgres backup -> ${DUMP_FILE}"
-docker exec messenger-postgres-1 \
+docker exec "${PG_CONTAINER}" \
     pg_dump \
     -U "${POSTGRES_USER}" \
     -d "${POSTGRES_DB}" \
