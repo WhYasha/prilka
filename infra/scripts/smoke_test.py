@@ -566,11 +566,10 @@ else:
 # ── 15. Message Pinning ───────────────────────────────────────────────────
 print("\n[15] Message Pinning")
 
-# Find a message to pin
-s, b = req("GET", "/chats/" + str(chat_id) + "/messages?limit=1", token=token)
-pin_msg_id = None
-if s == 200 and isinstance(b, list) and b:
-    pin_msg_id = b[0].get("id")
+# Send a dedicated message for pinning (avoids flaky reliance on limit=1)
+s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
+           {"content": "Pin test message", "type": "text"}, token=token)
+pin_msg_id = b.get("id") if s == 201 else None
 
 if pin_msg_id:
     # Pin message
