@@ -71,13 +71,15 @@ job "messenger" {
       }
 
       service {
-        name = "postgres"
-        port = 5432
+        name         = "postgres"
+        port         = "5432"
+        address_mode = "driver"
         check {
-          type     = "tcp"
-          port     = 5432
-          interval = "10s"
-          timeout  = "5s"
+          type         = "tcp"
+          port         = "5432"
+          address_mode = "driver"
+          interval     = "10s"
+          timeout      = "5s"
         }
       }
     }
@@ -120,13 +122,15 @@ job "messenger" {
       }
 
       service {
-        name = "redis"
-        port = 6379
+        name         = "redis"
+        port         = "6379"
+        address_mode = "driver"
         check {
-          type     = "tcp"
-          port     = 6379
-          interval = "10s"
-          timeout  = "5s"
+          type         = "tcp"
+          port         = "6379"
+          address_mode = "driver"
+          interval     = "10s"
+          timeout      = "5s"
         }
       }
     }
@@ -167,34 +171,39 @@ job "messenger" {
       }
 
       service {
-        name = "minio"
-        port = 9000
+        name         = "minio"
+        port         = "9000"
+        address_mode = "driver"
         check {
-          type     = "http"
-          path     = "/minio/health/live"
-          port     = 9000
-          interval = "15s"
-          timeout  = "10s"
+          type         = "http"
+          path         = "/minio/health/live"
+          port         = "9000"
+          address_mode = "driver"
+          interval     = "15s"
+          timeout      = "10s"
         }
       }
 
       service {
-        name = "minio-console"
-        port = 9001
+        name         = "minio-console"
+        port         = "9001"
+        address_mode = "driver"
       }
     }
   }
 
   # ========================================================================
-  # Task Group: Initialization (minio-init, flyway — one-shot)
+  # Task Group: Application (api_cpp + prestart init tasks)
+  # minio-init and flyway run as prestart lifecycle hooks before api_cpp.
   # ========================================================================
-  group "init" {
+  group "app" {
     count = 1
 
     restart {
-      attempts = 3
+      attempts = 5
       delay    = "15s"
-      mode     = "fail"
+      interval = "5m"
+      mode     = "delay"
     }
 
     volume "migrations" {
@@ -202,7 +211,7 @@ job "messenger" {
       source = "migrations"
     }
 
-    # ── MinIO bucket init ────────────────────────────────────────────────────
+    # ── MinIO bucket init (prestart) ────────────────────────────────────────
     task "minio-init" {
       driver = "docker"
 
@@ -241,7 +250,7 @@ job "messenger" {
       }
     }
 
-    # ── Flyway migrations ────────────────────────────────────────────────────
+    # ── Flyway migrations (prestart) ────────────────────────────────────────
     task "flyway" {
       driver = "docker"
 
@@ -291,21 +300,8 @@ job "messenger" {
         memory = 256
       }
     }
-  }
 
-  # ========================================================================
-  # Task Group: Application (api_cpp)
-  # ========================================================================
-  group "app" {
-    count = 1
-
-    restart {
-      attempts = 5
-      delay    = "15s"
-      interval = "5m"
-      mode     = "delay"
-    }
-
+    # ── API Server (main task) ──────────────────────────────────────────────
     task "api_cpp" {
       driver = "docker"
 
@@ -364,14 +360,16 @@ job "messenger" {
       }
 
       service {
-        name = "api-cpp"
-        port = 8080
+        name         = "api-cpp"
+        port         = "8080"
+        address_mode = "driver"
         check {
-          type     = "http"
-          path     = "/health"
-          port     = 8080
-          interval = "10s"
-          timeout  = "5s"
+          type         = "http"
+          path         = "/health"
+          port         = "8080"
+          address_mode = "driver"
+          interval     = "10s"
+          timeout      = "5s"
         }
       }
     }
@@ -430,14 +428,16 @@ job "messenger" {
       }
 
       service {
-        name = "prometheus"
-        port = 9090
+        name         = "prometheus"
+        port         = "9090"
+        address_mode = "driver"
         check {
-          type     = "http"
-          path     = "/-/healthy"
-          port     = 9090
-          interval = "15s"
-          timeout  = "5s"
+          type         = "http"
+          path         = "/-/healthy"
+          port         = "9090"
+          address_mode = "driver"
+          interval     = "15s"
+          timeout      = "5s"
         }
       }
     }
@@ -485,14 +485,16 @@ job "messenger" {
       }
 
       service {
-        name = "grafana"
-        port = 3000
+        name         = "grafana"
+        port         = "3000"
+        address_mode = "driver"
         check {
-          type     = "http"
-          path     = "/api/health"
-          port     = 3000
-          interval = "15s"
-          timeout  = "5s"
+          type         = "http"
+          path         = "/api/health"
+          port         = "3000"
+          address_mode = "driver"
+          interval     = "15s"
+          timeout      = "5s"
         }
       }
     }
@@ -523,8 +525,9 @@ job "messenger" {
       }
 
       service {
-        name = "cadvisor"
-        port = 8080
+        name         = "cadvisor"
+        port         = "8080"
+        address_mode = "driver"
       }
     }
   }
