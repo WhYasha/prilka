@@ -126,8 +126,17 @@ textarea, input, select { font-family: inherit; }
   to   { transform: translateX(0); }
 }
 
+/* ── Profile panel slide-in animation ───────────────────────── */
+@keyframes profileSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 html, body { height: 100%; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  transition: background-color var(--transition-normal) ease, color var(--transition-normal) ease;
+}
 
 /* ── Utility ────────────────────────────────────────────────── */
 .hidden { display: none !important; }
@@ -839,6 +848,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 .profile-modal-body {
   display: flex; flex-direction: column; align-items: center;
   padding: 2rem 1.5rem 1.5rem;
+  animation: profileSlideIn var(--transition-normal) ease;
 }
 .profile-loading {
   padding: 3rem 0;
@@ -855,6 +865,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   font-size: 1.4rem; font-weight: 700;
   color: var(--profile-name-color);
   display: flex; align-items: center; gap: 6px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .profile-status {
   font-size: .85rem; margin-top: 4px;
@@ -899,6 +911,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   font-size: .95rem; color: var(--text);
   line-height: 1.4; word-break: break-word;
 }
+/* Hide empty profile info items (no bio, etc.) */
+.profile-info-item:empty { display: none; }
+.profile-info-value:empty { display: none; }
 
 /* ── Self-profile modal (editor) ────────────────────────────── */
 .profile-modal--self {
@@ -1729,7 +1744,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
   flex-shrink: 0;
 }
 .unread-badge-pill.muted {
-  background: var(--text-muted);
+  background: var(--badge-muted);
 }
 
 /* ── Chat item unread state ────────────────────────────────── */
@@ -1814,6 +1829,39 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); }
 [data-theme="dark"] .msg-reply-quote { background: rgba(255,255,255,.06); }
 [data-theme="dark"] .msg-reply-quote:hover { background: rgba(255,255,255,.1); }
 [data-theme="dark"] .mine .msg-reply-quote { background: rgba(255,255,255,.08); }
+
+/* ── Theme transition smoothness ─────────────────────────────── */
+.sidebar,
+.chat-panel,
+.chat-header,
+.composer,
+.drawer,
+.modal,
+.profile-modal,
+.settings-row,
+.settings-group,
+.profile-section,
+.profile-cover,
+.profile-action-btn,
+.media-tabs,
+.media-tab {
+  transition: background-color var(--transition-normal) ease,
+              border-color var(--transition-normal) ease,
+              color var(--transition-normal) ease,
+              box-shadow var(--transition-normal) ease;
+}
+
+/* ── Dark mode: profile action buttons ────────────────────── */
+[data-theme="dark"] .profile-action-btn { background: var(--input-bg); }
+[data-theme="dark"] .profile-action-btn:hover { background: var(--accent); color: #fff; }
+[data-theme="dark"] .profile-action-btn--danger:hover { background: var(--danger); color: #fff; }
+
+/* ── Dark mode: settings row icon color ───────────────────── */
+[data-theme="dark"] .settings-row-icon { color: var(--sidebar-txt); }
+
+/* ── Dark mode: profile close btn ─────────────────────────── */
+[data-theme="dark"] .profile-close-btn { color: var(--sidebar-txt); }
+[data-theme="dark"] .profile-close-btn:hover { color: var(--text); background: rgba(255,255,255,.08); }
 
 /* ── Edit preview above composer ─────────────────────────── */
 .edit-preview { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border); }
