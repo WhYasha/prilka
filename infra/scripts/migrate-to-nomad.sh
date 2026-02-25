@@ -95,6 +95,8 @@ declare -A VOLUMES=(
     ["${COMPOSE_PROJECT}_minio_data"]="messenger-minio-data"
     ["${COMPOSE_PROJECT}_prometheus_data"]="messenger-prometheus-data"
     ["${COMPOSE_PROJECT}_grafana_data"]="messenger-grafana-data"
+    ["${COMPOSE_PROJECT}_vault_data"]="messenger-vault-data"
+    ["${COMPOSE_PROJECT}_consul_data"]="messenger-consul-data"
 )
 
 for SRC in "${!VOLUMES[@]}"; do
@@ -112,6 +114,16 @@ for SRC in "${!VOLUMES[@]}"; do
     docker run --rm -v "${SRC}:/from:ro" -v "${DST}:/to" alpine sh -c "cp -a /from/. /to/"
     log "  Done."
 done
+
+# Fix volume permissions for non-root containers
+log "Fixing volume permissions..."
+docker run --rm -v messenger-prometheus-data:/data alpine chown -R 65534:65534 /data 2>/dev/null || true
+docker run --rm -v messenger-grafana-data:/data alpine chown -R 472:0 /data 2>/dev/null || true
+
+# Inject TLS certs into APISIX config
+log "Injecting TLS certificates..."
+cp infra/prometheus/prometheus.prod.yml infra/prometheus/prometheus.yml 2>/dev/null || true
+bash infra/scripts/inject-certs.sh "${REPO_DIR}" || log "WARNING: cert injection failed"
 
 # ── Step 3: Stop Docker Compose stack ────────────────────────────────────────
 log "=== Step 3: Stopping Docker Compose stack ==="

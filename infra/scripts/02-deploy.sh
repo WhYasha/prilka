@@ -65,10 +65,18 @@ if [ "${DEPLOY_MODE}" = "nomad" ]; then
     # ── Nomad deployment ─────────────────────────────────────────────────────
     log "Deploying via Nomad..."
 
-    # Build the api_cpp image (Nomad references it as messenger-api:latest)
-    docker build -t messenger-api:latest ./backend
+    # Auto-unseal Vault if sealed
+    export VAULT_ADDR=http://127.0.0.1:8200
+    bash infra/vault/unseal.sh || log "WARNING: Vault unseal failed"
+
+    # Build the api_cpp image (Nomad references it as messenger-api:local)
+    docker build -t messenger-api:latest -t messenger-api:local ./backend
+
+    # Reload APISIX to pick up cert changes
+    sudo systemctl restart apisix
 
     # Run the Nomad job
+    export NOMAD_ADDR=http://127.0.0.1:4646
     nomad job run infra/nomad/jobs/messenger.nomad.hcl
 
     log ""
