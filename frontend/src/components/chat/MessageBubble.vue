@@ -19,34 +19,33 @@
     </div>
 
     <div class="msg-content-wrap">
-      <!-- Forwarded attribution -->
-      <div v-if="forwardedLabel" class="msg-forwarded-label">
-        {{ forwardedLabel }}
-      </div>
-
-      <!-- Reply quote -->
-      <div
-        v-if="message.reply_to_message_id"
-        class="msg-reply-quote"
-        @click.stop="emit('replyClick', message.reply_to_message_id!)"
-      >
-        <div class="msg-reply-quote-bar" />
-        <div>
-          <div class="msg-reply-quote-name">{{ message.reply_to_sender_name || message.reply_to_sender_username || 'Unknown' }}</div>
-          <div class="msg-reply-quote-text">{{ replyQuoteText }}</div>
-        </div>
-      </div>
-
       <!-- Sticker -->
       <template v-if="message.message_type === 'sticker'">
         <div class="msg-bubble sticker-bubble">
           <img class="sticker-img" :src="stickerUrl" :alt="message.sticker_label || 'sticker'" />
+          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
         </div>
       </template>
 
       <!-- Voice -->
       <template v-else-if="message.message_type === 'voice'">
         <div class="msg-bubble">
+          <!-- Forwarded attribution -->
+          <div v-if="forwardedLabel" class="msg-forwarded-label">
+            {{ forwardedLabel }}
+          </div>
+          <!-- Reply quote -->
+          <div
+            v-if="message.reply_to_message_id"
+            class="msg-reply-quote"
+            @click.stop="emit('replyClick', message.reply_to_message_id!)"
+          >
+            <div class="msg-reply-quote-bar" />
+            <div>
+              <div class="msg-reply-quote-name">{{ message.reply_to_sender_name || message.reply_to_sender_username || 'Unknown' }}</div>
+              <div class="msg-reply-quote-text">{{ replyQuoteText }}</div>
+            </div>
+          </div>
           <div class="voice-player">
             <button class="voice-play-btn" @click.stop="toggleVoice">
               {{ voicePlaying ? '\u23F8' : '\u25B6' }}
@@ -56,12 +55,32 @@
             </div>
             <span class="voice-dur">{{ voiceTimeDisplay }}</span>
           </div>
+          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
         </div>
       </template>
 
       <!-- Text -->
       <template v-else>
-        <div class="msg-bubble" v-html="renderedContent" />
+        <div class="msg-bubble">
+          <!-- Forwarded attribution -->
+          <div v-if="forwardedLabel" class="msg-forwarded-label">
+            {{ forwardedLabel }}
+          </div>
+          <!-- Reply quote -->
+          <div
+            v-if="message.reply_to_message_id"
+            class="msg-reply-quote"
+            @click.stop="emit('replyClick', message.reply_to_message_id!)"
+          >
+            <div class="msg-reply-quote-bar" />
+            <div>
+              <div class="msg-reply-quote-name">{{ message.reply_to_sender_name || message.reply_to_sender_username || 'Unknown' }}</div>
+              <div class="msg-reply-quote-text">{{ replyQuoteText }}</div>
+            </div>
+          </div>
+          <div class="msg-text" v-html="renderedContent" />
+          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
+        </div>
       </template>
 
       <!-- Hover reaction button -->
@@ -82,8 +101,6 @@
         <button class="reaction-chip reaction-add-chip" @click.stop="onReactionBtnClick">+</button>
       </div>
     </div>
-
-    <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
   </div>
 </template>
 

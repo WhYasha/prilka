@@ -18,7 +18,7 @@ export const useMessagesStore = defineStore('messages', () => {
 
   function markForDeletion(messageId: number): Promise<void> {
     deletingMessages.add(messageId)
-    return new Promise((resolve) => setTimeout(resolve, 300))
+    return new Promise((resolve) => setTimeout(resolve, 600))
   }
 
   function isDeleting(messageId: number): boolean {
@@ -206,10 +206,10 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
-  async function deleteMessage(chatId: number, messageId: number) {
+  async function deleteMessage(chatId: number, messageId: number, forEveryone = false) {
     try {
       await markForDeletion(messageId)
-      await messagesApi.deleteMessage(chatId, messageId)
+      await messagesApi.deleteMessage(chatId, messageId, forEveryone)
       removeMessage(chatId, messageId)
     } catch (e) {
       console.error('Failed to delete message', e)
