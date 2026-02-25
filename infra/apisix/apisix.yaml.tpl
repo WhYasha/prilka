@@ -227,7 +227,7 @@ routes:
     upstream_id: 1
     plugins:
       cors:
-        allow_origins: "https://behappy.rest"
+        allow_origins: "https://behappy.rest,https://admin.behappy.rest"
         allow_methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
         allow_headers: "Content-Type, Authorization, X-Requested-With, Accept"
         expose_headers: "Content-Disposition"
