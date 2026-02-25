@@ -116,7 +116,8 @@ if has_smoke_msg:
 else:
     s, b = req("POST", "/chats/" + str(chat_id) + "/messages",
                {"content": SMOKE_MSG, "type": "text"}, token=token)
-    check("POST /chats/{id}/messages -> 201", s == 201, "msg_id=" + str(b.get("id")))
+    check("POST /chats/{id}/messages -> 201", s == 201,
+          "status=" + str(s) + " msg_id=" + str(b.get("id")) + " body=" + str(b)[:120])
 
 # ── 8b. Reply to message ──────────────────────────────────────────────────
 print("\n[8b] Reply to message")
