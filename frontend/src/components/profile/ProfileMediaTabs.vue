@@ -18,7 +18,7 @@
         :style="indicatorStyle"
       />
     </div>
-    <div class="profile-media-tabs__content">
+    <div v-if="activeTabData" class="profile-media-tabs__content">
       <div class="profile-media-tabs__empty">
         <component
           :is="activeTabData.emptyIcon"
@@ -59,7 +59,7 @@ const activeTabIndex = computed(() =>
 )
 
 const activeTabData = computed(() =>
-  tabs[activeTabIndex.value]
+  tabs[activeTabIndex.value] ?? tabs[0]
 )
 
 const indicatorStyle = computed(() => ({
