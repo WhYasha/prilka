@@ -45,8 +45,11 @@
     />
     <ProfileModal
       v-if="profileModalOpen"
-      :initial-tab="profileInitialTab"
       @close="profileModalOpen = false"
+    />
+    <SettingsView
+      v-if="settingsViewOpen"
+      @close="settingsViewOpen = false"
     />
     <UserProfileModal
       v-if="userProfileTarget"
@@ -93,6 +96,7 @@ import ProfileModal from '@/components/modals/ProfileModal.vue'
 import UserProfileModal from '@/components/modals/UserProfileModal.vue'
 import DownloadModal from '@/components/modals/DownloadModal.vue'
 import InvitePreviewModal from '@/components/modals/InvitePreviewModal.vue'
+import SettingsView from '@/components/settings/SettingsView.vue'
 import ContextMenu from '@/components/chat/ContextMenu.vue'
 
 const route = useRoute()
@@ -111,7 +115,7 @@ const drawerOpen = ref(false)
 const newChatModalOpen = ref(false)
 const newChatInitialStep = ref<'select' | 'direct' | 'group' | 'channel'>('select')
 const profileModalOpen = ref(false)
-const profileInitialTab = ref<'profile' | 'settings'>('profile')
+const settingsViewOpen = ref(false)
 const downloadModalOpen = ref(false)
 const userProfileTarget = ref<string | null>(null)
 const inviteToken = ref<string | null>(null)
@@ -290,14 +294,12 @@ function handleBack() {
 
 function openProfileModal() {
   drawerOpen.value = false
-  profileInitialTab.value = 'profile'
   profileModalOpen.value = true
 }
 
 function openSettingsModal() {
   drawerOpen.value = false
-  profileInitialTab.value = 'settings'
-  profileModalOpen.value = true
+  settingsViewOpen.value = true
 }
 
 function handleOpenNewGroup() {
@@ -398,6 +400,7 @@ function handleEsc(e: KeyboardEvent) {
   if (userProfileTarget.value) { userProfileTarget.value = null; return }
   if (newChatModalOpen.value) { newChatModalOpen.value = false; return }
   if (profileModalOpen.value) { profileModalOpen.value = false; return }
+  if (settingsViewOpen.value) { settingsViewOpen.value = false; return }
   if (downloadModalOpen.value) { downloadModalOpen.value = false; return }
   if (drawerOpen.value) { drawerOpen.value = false; return }
   if (chatsStore.activeChatId !== null) { handleBack(); return }
