@@ -77,6 +77,9 @@ if [ "${DEPLOY_MODE}" = "nomad" ]; then
     # Reload APISIX to pick up cert changes
     sudo systemctl restart apisix
 
+    # Stamp deploy_ts so Nomad sees a job change and creates a new allocation
+    sed -i "s/deploy_ts = .*/deploy_ts = \"$(date +%s)\"/" infra/nomad/jobs/messenger.nomad.hcl
+
     # Run the Nomad job
     export NOMAD_ADDR=http://127.0.0.1:4646
     nomad job run infra/nomad/jobs/messenger.nomad.hcl

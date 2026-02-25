@@ -361,6 +361,11 @@ job "messenger" {
         env         = true
       }
 
+      meta {
+        # Updated by deploy script to force new allocation on each deploy
+        deploy_ts = "0"
+      }
+
       config {
         image        = "messenger-api:local"
         hostname     = "api_cpp"
