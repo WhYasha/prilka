@@ -130,6 +130,17 @@ systemctl daemon-reload
 
 mkdir -p /opt/messenger/nomad/data
 
+# Create Nomad env file with Vault token
+if [ -f "${APP_DIR}/vault/nomad-token" ]; then
+    echo "VAULT_TOKEN=$(cat ${APP_DIR}/vault/nomad-token)" > /opt/messenger/nomad/env
+    chmod 600 /opt/messenger/nomad/env
+    log "Nomad Vault token configured."
+else
+    err "Nomad Vault token not found at ${APP_DIR}/vault/nomad-token"
+    err "Create it: vault token create -policy nomad-server -period 768h -orphan"
+    exit 1
+fi
+
 # Start Vault first (needed by Nomad for secrets)
 systemctl enable vault
 systemctl start vault
