@@ -211,6 +211,7 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    COALESCE(( "
         "        SELECT COUNT(*) FROM messages m2 "
         "        WHERE m2.chat_id = c.id AND m2.id > COALESCE(clr.last_read_msg_id, 0) "
+        "          AND m2.sender_id != $1 "
         "    ), 0) AS unread_count "
         "FROM chats c "
         "JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1 "

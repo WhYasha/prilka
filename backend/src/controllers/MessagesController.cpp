@@ -214,6 +214,19 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                                 LOG_WARN << "chat updated_at: " << e.base().what();
                             }, chatId);
 
+                        // Auto-mark sender's own message as read
+                        auto db3 = drogon::app().getDbClient();
+                        db3->execSqlAsync(
+                            "INSERT INTO chat_last_read (user_id, chat_id, last_read_msg_id, read_at) "
+                            "VALUES ($1, $2, $3, NOW()) "
+                            "ON CONFLICT (user_id, chat_id) DO UPDATE SET "
+                            "  last_read_msg_id = GREATEST(chat_last_read.last_read_msg_id, EXCLUDED.last_read_msg_id), "
+                            "  read_at = NOW()",
+                            [](const drogon::orm::Result&) {},
+                            [](const drogon::orm::DrogonDbException& e) {
+                                LOG_WARN << "auto-mark-read on send: " << e.base().what();
+                            }, me, chatId, msgId);
+
                         Json::Value wsMsg;
                         wsMsg["type"]         = "message";
                         wsMsg["id"]           = Json::Int64(msgId);
