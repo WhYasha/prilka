@@ -82,6 +82,9 @@ async def recv_presence(ws, user_id, expected_status, timeout=5):
 async def run_tests():
     import websockets
 
+    # Allow stale WS connections (e.g. from a prior smoke_test run) to close
+    await asyncio.sleep(2)
+
     # ── Test 1: Connect with active=true -> online broadcast ─────────
     print("\n[1] Connect with active=true")
     ws_a = await websockets.connect(WS, open_timeout=5)
@@ -100,8 +103,8 @@ async def run_tests():
     ok, status = await recv_presence(ws_a, user_b_id, "online")
     check("User B connects active=true -> A sees online", ok, f"status={status}")
     await ws_b.close()
-    await drain(ws_a)  # consume the offline
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(1)          # let server process disconnect
+    await drain(ws_a, timeout=1)    # consume the offline + any stragglers
 
     # ── Test 2: Connect with active=false -> NO online broadcast ─────
     print("\n[2] Connect with active=false")
