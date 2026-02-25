@@ -52,6 +52,26 @@ upstreams:
     nodes:
       "minio:9001": 1
 
+  - id: 5
+    name: vault
+    type: roundrobin
+    nodes:
+      "messenger-vault:8200": 1
+    timeout:
+      connect: 5
+      send: 30
+      read: 30
+
+  - id: 6
+    name: nomad
+    type: roundrobin
+    nodes:
+      "172.19.0.1:4646": 1
+    timeout:
+      connect: 5
+      send: 60
+      read: 60
+
 # ── Global rules (applied to all routes) ─────────────────────────────────────
 global_rules:
   - id: 1
@@ -337,6 +357,49 @@ routes:
             Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
             X-Content-Type-Options: nosniff
             X-Frame-Options: SAMEORIGIN
+
+  # ========================================================================
+  # vlt.behappy.rest — HashiCorp Vault UI + API
+  # Vault serves UI at /ui/, API at /v1/, redirects / → /ui/
+  # ========================================================================
+  - id: 110
+    name: vault-ui
+    uri: /*
+    host: vlt.behappy.rest
+    priority: 50
+    upstream_id: 5
+    plugins:
+      proxy-rewrite:
+        headers:
+          set:
+            X-Forwarded-Proto: https
+      response-rewrite:
+        headers:
+          set:
+            Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
+            X-Content-Type-Options: nosniff
+
+  # ========================================================================
+  # nomad.behappy.rest — HashiCorp Nomad UI + API
+  # Nomad serves UI at /ui/, API at /v1/
+  # Uses SSE for live updates — needs long read timeouts
+  # ========================================================================
+  - id: 120
+    name: nomad-ui
+    uri: /*
+    host: nomad.behappy.rest
+    priority: 50
+    upstream_id: 6
+    plugins:
+      proxy-rewrite:
+        headers:
+          set:
+            X-Forwarded-Proto: https
+      response-rewrite:
+        headers:
+          set:
+            Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
+            X-Content-Type-Options: nosniff
 
   # ========================================================================
   # behappy.rest — SPA catch-all (C++ Drogon serves Vue app)
