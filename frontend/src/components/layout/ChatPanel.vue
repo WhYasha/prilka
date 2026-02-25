@@ -624,13 +624,13 @@ function closeForwardDialog() {
   selectionStore.exitSelectionMode()
 }
 
-async function onDeleteConfirm(_forEveryone: boolean) {
+async function onDeleteConfirm(forEveryone: boolean) {
   deleteModalVisible.value = false
   const chatId = chatsStore.activeChatId
   if (!chatId) return
   for (const msgId of deleteMessageIds.value) {
     try {
-      await messagesStore.deleteMessage(chatId, msgId)
+      await messagesStore.deleteMessage(chatId, msgId, forEveryone)
     } catch {
       showToast('Failed to delete message')
     }
