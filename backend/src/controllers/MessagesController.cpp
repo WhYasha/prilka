@@ -244,7 +244,7 @@ void MessagesController::sendMessage(const drogon::HttpRequestPtr& req,
                                          chatId, me, content, msgType, resolvedStickerId, replyToMsgId);
                     else if (resolvedFileId > 0 && durationSecs > 0)
                         db->execSqlAsync(sql, std::move(onInserted), std::move(onErr),
-                                         chatId, me, content, msgType, resolvedFileId, (long long)durationSecs, replyToMsgId);
+                                         chatId, me, content, msgType, resolvedFileId, durationSecs, replyToMsgId);
                     else if (resolvedFileId > 0)
                         db->execSqlAsync(sql, std::move(onInserted), std::move(onErr),
                                          chatId, me, content, msgType, resolvedFileId, replyToMsgId);
