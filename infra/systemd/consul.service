@@ -25,7 +25,7 @@ ExecStart=/usr/bin/docker run --rm \
     -v /opt/messenger/repo/infra/consul/config.json:/consul/config/config.json:ro \
     -v /opt/messenger/repo/infra/consul/services:/consul/config/services:ro \
     hashicorp/consul:1.17 \
-    consul agent -config-dir=/consul/config
+    consul agent -config-dir=/consul/config -config-dir=/consul/config/services
 
 ExecStop=/usr/bin/docker stop messenger-consul
 

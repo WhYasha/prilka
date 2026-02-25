@@ -318,7 +318,7 @@ services:
       - consul_data:/consul/data
       - ./infra/consul/config.json:/consul/config/config.json:ro
       - ./infra/consul/services:/consul/config/services:ro
-    command: consul agent -config-dir=/consul/config
+    command: consul agent -config-dir=/consul/config -config-dir=/consul/config/services
     ports:
       - "8500:8500"    # HTTP API + UI
       - "8600:8600/udp" # DNS
