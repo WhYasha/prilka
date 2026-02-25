@@ -4,7 +4,7 @@
     "port": 9080,
     "tags": ["messenger", "gateway", "proxy"],
     "check": {
-      "http": "http://apisix:9080/health",
+      "tcp": "apisix:9080",
       "interval": "10s",
       "timeout": "5s",
       "deregister_critical_service_after": "30m"
