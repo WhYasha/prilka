@@ -214,10 +214,11 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   padding: .65rem 1.25rem; border: none; border-radius: 8px;
   font-size: 1rem; font-weight: 600;
-  cursor: pointer; transition: background .15s, opacity .15s;
+  cursor: pointer; transition: background .15s, opacity .15s, transform var(--transition-fast);
 }
+.btn:active { transform: scale(0.97); }
 .btn-primary  { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-dark); }
+.btn-primary:hover { background: var(--accent-dark); transform: translateY(-1px); }
 .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
 .btn-full     { width: 100%; margin-top: .5rem; }
 .btn-outline  { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); border-radius: 8px; }
@@ -233,10 +234,11 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   background: none; border: none; border-radius: 50%;
   font-size: 1.15rem; color: var(--sidebar-txt);
-  cursor: pointer; transition: background .15s, color .15s;
+  cursor: pointer; transition: background .15s, color .15s, transform var(--transition-fast);
   flex-shrink: 0;
 }
 .icon-btn:hover { background: var(--sidebar-hover); color: var(--sidebar-txt-d); }
+.icon-btn:active { transform: scale(0.97); }
 
 /* ── Alerts ─────────────────────────────────────────────────── */
 .alert { padding: .75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: .9rem; }
@@ -604,6 +606,7 @@ body {
 .emoji-pick-btn {
   width: 36px; height: 36px; background: none; border: none;
   border-radius: 8px; font-size: 1.25rem; cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast);
 }
 .emoji-pick-btn:hover { background: var(--input-bg); transform: scale(1.15); }
 
@@ -657,7 +660,7 @@ body {
 
 .composer-btn { color: var(--text-muted); }
 .send-btn { color: var(--accent); }
-.send-btn:hover { background: rgba(43,154,243,.1); color: var(--accent-dark); }
+.send-btn:hover { background: rgba(43,154,243,.1); color: var(--accent-dark); transform: translateY(-1px); }
 .record-btn.recording { color: var(--danger); animation: pulse 1s infinite; }
 
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
@@ -1109,9 +1112,10 @@ body {
   background: none; border: none;
   font-size: .9rem; color: var(--ctx-menu-text);
   cursor: pointer; text-align: left;
-  transition: background .1s;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
 }
 .ctx-item:hover { background: var(--ctx-menu-hover); }
+.ctx-item:active { transform: scale(0.97); }
 .ctx-leave { color: var(--danger); }
 .ctx-delete { color: var(--danger); }
 
