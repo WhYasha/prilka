@@ -24,8 +24,8 @@ export async function sendMessage(
   return data
 }
 
-export async function deleteMessage(chatId: number, messageId: number): Promise<void> {
-  await api.delete(`/chats/${chatId}/messages/${messageId}`)
+export async function deleteMessage(chatId: number, messageId: number, forEveryone = false): Promise<void> {
+  await api.delete(`/chats/${chatId}/messages/${messageId}`, forEveryone ? { data: { for_everyone: true } } : undefined)
 }
 
 export async function editMessage(chatId: number, messageId: number, content: string): Promise<Message> {
