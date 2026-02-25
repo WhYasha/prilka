@@ -152,8 +152,9 @@ export const useMessagesStore = defineStore('messages', () => {
     if (!messagesByChat.value[chatId]) {
       messagesByChat.value[chatId] = []
     }
-    // Dedup: WS or polling may have already delivered this message
-    // Always replace with the API response since it has enriched reply_to fields
+    // POST response lacks enriched reply_to fields (sender name, content, type).
+    // Fill them from the local message store before inserting into the reactive array.
+    enrichReplyFields(chatId, msg)
     const existingIdx = messagesByChat.value[chatId].findIndex((m) => m.id === msg.id)
     if (existingIdx !== -1) {
       messagesByChat.value[chatId][existingIdx] = msg

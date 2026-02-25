@@ -92,6 +92,16 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
     } else {
         msg["forwarded_from_message_id"] = Json::Value();
     }
+    if (!row["forwarded_from_user_id"].isNull()) {
+        msg["forwarded_from_user_id"] = Json::Int64(row["forwarded_from_user_id"].as<long long>());
+    } else {
+        msg["forwarded_from_user_id"] = Json::Value();
+    }
+    if (!row["forwarded_from_display_name"].isNull()) {
+        msg["forwarded_from_display_name"] = row["forwarded_from_display_name"].as<std::string>();
+    } else {
+        msg["forwarded_from_display_name"] = Json::Value();
+    }
 
     // Reply-to fields
     if (!row["reply_to_message_id"].isNull()) {
@@ -113,6 +123,7 @@ static const char* kEnrichedMsgSelect =
     "       m.is_edited, m.updated_at, "
     "       m.duration_seconds, "
     "       m.forwarded_from_chat_id, m.forwarded_from_message_id, "
+    "       m.forwarded_from_user_id, m.forwarded_from_display_name, "
     "       m.reply_to_message_id, "
     "       u.username AS sender_username, "
     "       COALESCE(u.display_name, u.username) AS sender_display_name, "
@@ -844,12 +855,14 @@ void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                 inClause += std::to_string(messageIds[i]);
             }
 
-            // Fetch original messages
+            // Fetch original messages with sender info
             auto db = drogon::app().getDbClient();
             std::string fetchSql =
-                "SELECT id, content, message_type, sender_id, file_id, sticker_id, duration_seconds "
-                "FROM messages WHERE id IN (" + inClause + ") AND chat_id = $1 AND is_deleted = false "
-                "ORDER BY id ASC";
+                "SELECT m.id, m.content, m.message_type, m.sender_id, m.file_id, m.sticker_id, m.duration_seconds, "
+                "       COALESCE(u.display_name, u.username) AS orig_sender_name "
+                "FROM messages m JOIN users u ON u.id = m.sender_id "
+                "WHERE m.id IN (" + inClause + ") AND m.chat_id = $1 AND m.is_deleted = false "
+                "ORDER BY m.id ASC";
 
             db->execSqlAsync(fetchSql,
                 [=](const drogon::orm::Result& origRows) {
@@ -881,14 +894,17 @@ void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                         long long fileId = row["file_id"].isNull() ? 0 : row["file_id"].as<long long>();
                         long long stickerId = row["sticker_id"].isNull() ? 0 : row["sticker_id"].as<long long>();
                         int duration = row["duration_seconds"].isNull() ? 0 : row["duration_seconds"].as<int>();
+                        long long origSenderId = row["sender_id"].as<long long>();
+                        std::string origSenderName = row["orig_sender_name"].isNull() ? "" : row["orig_sender_name"].as<std::string>();
 
                         auto db2 = drogon::app().getDbClient();
                         db2->execSqlAsync(
                             "INSERT INTO messages (chat_id, sender_id, content, message_type, "
                             "file_id, sticker_id, duration_seconds, "
-                            "forwarded_from_chat_id, forwarded_from_message_id) "
+                            "forwarded_from_chat_id, forwarded_from_message_id, "
+                            "forwarded_from_user_id, forwarded_from_display_name) "
                             "VALUES ($1, $2, $3, $4, "
-                            "NULLIF($5::BIGINT, 0), NULLIF($6::BIGINT, 0), NULLIF($7::BIGINT, 0), $8, $9) "
+                            "NULLIF($5::BIGINT, 0), NULLIF($6::BIGINT, 0), NULLIF($7::BIGINT, 0), $8, $9, $10, NULLIF($11, '')) "
                             "RETURNING id, created_at",
                             [=](const drogon::orm::Result& ir) {
                                 long long newId = ir[0]["id"].as<long long>();
@@ -903,6 +919,9 @@ void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                                 msg["created_at"] = createdAt;
                                 msg["forwarded_from_chat_id"] = Json::Int64(fromChatId);
                                 msg["forwarded_from_message_id"] = Json::Int64(origId);
+                                msg["forwarded_from_user_id"] = Json::Int64(origSenderId);
+                                if (!origSenderName.empty())
+                                    msg["forwarded_from_display_name"] = origSenderName;
 
                                 // Broadcast via WS
                                 Json::Value wsMsg;
@@ -915,6 +934,9 @@ void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                                 wsMsg["created_at"] = createdAt;
                                 wsMsg["forwarded_from_chat_id"] = Json::Int64(fromChatId);
                                 wsMsg["forwarded_from_message_id"] = Json::Int64(origId);
+                                wsMsg["forwarded_from_user_id"] = Json::Int64(origSenderId);
+                                if (!origSenderName.empty())
+                                    wsMsg["forwarded_from_display_name"] = origSenderName;
                                 WsDispatch::publishMessage(targetChatId, wsMsg);
 
                                 newMessages->append(msg);
@@ -944,7 +966,7 @@ void MessagesController::forwardMessages(const drogon::HttpRequestPtr& req,
                             },
                             targetChatId, me, content, msgType,
                             fileId, stickerId, (long long)duration,
-                            fromChatId, origId);
+                            fromChatId, origId, origSenderId, origSenderName);
                     }
                 },
                 [cbPtr](const drogon::orm::DrogonDbException& e) {

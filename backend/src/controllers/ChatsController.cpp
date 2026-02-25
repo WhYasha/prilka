@@ -47,17 +47,24 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
     auto memberIds = (*body)["member_ids"];
     std::vector<long long> members;
     members.push_back(me);
+    bool selfChat = false;
     for (auto& id : memberIds) {
         long long mid = id.asInt64();
-        if (mid != me) members.push_back(mid);
+        if (mid == me) {
+            selfChat = true;  // self-chat / saved messages
+        } else {
+            members.push_back(mid);
+        }
     }
 
-    if (type == "direct" && members.size() != 2)
+    if (type == "direct" && !selfChat && members.size() != 2)
         return cb(jsonErr("direct chat requires exactly one other member_id", drogon::k400BadRequest));
+    if (type == "direct" && selfChat && members.size() != 1)
+        return cb(jsonErr("self-chat must not include other members", drogon::k400BadRequest));
 
     // For direct chats: check if DM already exists to avoid duplicates
     if (type == "direct") {
-        long long otherId = members[1];
+        long long otherId = selfChat ? me : members[1];
         auto db = drogon::app().getDbClient();
         db->execSqlAsync(
             "SELECT c.id FROM chats c "
@@ -200,7 +207,8 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "LEFT JOIN LATERAL ( "
         "    SELECT u2.id, u2.username, u2.display_name, u2.avatar_file_id "
         "    FROM chat_members cm2 JOIN users u2 ON u2.id = cm2.user_id "
-        "    WHERE cm2.chat_id = c.id AND cm2.user_id != $1 AND c.type = 'direct' LIMIT 1 "
+        "    WHERE cm2.chat_id = c.id AND c.type = 'direct' AND cm2.user_id != $1 "
+        "    LIMIT 1 "
         ") ou ON c.type = 'direct' "
         "LEFT JOIN files ouf ON ouf.id = ou.avatar_file_id "
         "LEFT JOIN files caf ON caf.id = c.avatar_file_id "
