@@ -272,11 +272,17 @@ body {
 }
 .drawer.open { transform: translateX(0); }
 .drawer-overlay {
-  display: none; position: fixed; inset: 0; z-index: 199;
+  position: fixed; inset: 0; z-index: 199;
   background: var(--modal-backdrop);
-  opacity: 0; transition: opacity var(--transition-normal) ease;
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transition: opacity var(--transition-normal) ease,
+              visibility 0s linear var(--transition-normal);
 }
-.drawer-overlay.visible { display: block; opacity: 1; }
+.drawer-overlay.visible {
+  visibility: visible; opacity: 1; pointer-events: auto;
+  transition: opacity var(--transition-normal) ease,
+              visibility 0s linear 0s;
+}
 
 .drawer-header {
   display: flex; align-items: center; gap: .5rem;
