@@ -1,102 +1,76 @@
 # Messenger Platform
 
-A scalable, production-minded messenger with a C++ backend, PostgreSQL, Redis,
-MinIO, and a full monitoring stack — all running locally with a single command.
+A production-grade messenger with a **C++ Drogon backend**, **Vue 3 + TypeScript SPA**,
+**Tauri desktop app**, PostgreSQL, Redis, MinIO — orchestrated by **Nomad** with
+**Vault** secrets, **Consul** service discovery, and **APISIX** reverse proxy.
 
 ```
-                  Browser / iOS
-                       │
-              ┌────────┴────────┐
-              │                 │
-        https://behappy.rest    │
-         nginx (TLS proxy)      │
-              │                 │
-         :5000 (UI)        :8080 (API)
-         Flask Legacy       Drogon C++
-              │                 │
-     ┌────────┼────────┐        │
-     │        │        │        │
-  Postgres  Redis   MinIO  Prometheus
-  :5432    :6379  :9000    :9090
-                             │
-                          Grafana :3000
-                          cAdvisor :8081
+                  Browser / Desktop (Tauri)
+                         │
+                ┌────────┴────────┐
+                │ HTTPS + WSS     │
+                ▼                 │
+     ┌──────────────────────────────────────────────────────────┐
+     │             APISIX (TLS termination, reverse proxy)      │
+     │   behappy.rest      → Drogon SPA                         │
+     │   api.behappy.rest  → api_cpp:8080 (REST, rate-limited)  │
+     │   ws.behappy.rest   → api_cpp:8080 (WebSocket)           │
+     │   grafana / minio-console / downloads → subdomains       │
+     └──────────────────────┬───────────────────────────────────┘
+                            │
+                            ▼
+     ┌──────────────────────────────────────────────────────────┐
+     │              api_cpp (Drogon C++ :8080)                  │
+     │  REST API + WebSocket + SPA host (backend/www/)          │
+     └───────┬──────────────┬──────────────┬────────────────────┘
+             │              │              │
+             ▼              ▼              ▼
+     ┌──────────────┐ ┌──────────┐ ┌──────────────────┐
+     │ PostgreSQL 16│ │ Redis 7  │ │ MinIO (S3)       │
+     │  20 tables   │ │ pub/sub  │ │ 4 buckets        │
+     │  partitioned │ │ presence │ │ presigned URLs   │
+     └──────────────┘ └──────────┘ └──────────────────┘
+
+     ┌──────────────────────────────────────────────────────────┐
+     │  Vault (secrets) · Consul (discovery) · Nomad (orch.)   │
+     │  Prometheus · Grafana · cAdvisor                         │
+     └──────────────────────────────────────────────────────────┘
 ```
+
+## Features
+
+- **Real-time messaging** — WebSocket with Redis Pub/Sub fan-out
+- **Direct, group, and channel chats** — with roles (owner/admin/member)
+- **Telegram-like UI** — context menus, selection mode, swipe actions, bottom sheets, long press
+- **Message replies, editing, pinning, forwarding** with full attribution
+- **Emoji reactions** on messages
+- **Online/offline/away presence** — tracks tab visibility per connection
+- **Unread badges** and read tracking
+- **In-chat message search**
+- **Self-chat / Saved Messages**
+- **File uploads** and **voice messages** (MediaRecorder)
+- **Stickers** (8 seed SVGs)
+- **Invite links** for channels/groups
+- **User avatars** and **chat avatars**
+- **Privacy settings** (last-seen visibility)
+- **Admin panel** — dashboard, user management, message moderation, support
+- **Browser notifications**
+- **Tauri v2 desktop app** (Windows NSIS installer, macOS DMG)
+- **Monitoring** — Prometheus metrics, Grafana dashboards, cAdvisor
 
 ## Production URLs
 
-| Resource | URL | Notes |
-|----------|-----|-------|
-| **Web app** | https://behappy.rest/ | Flask messenger UI |
-| **API base** | https://behappy.rest/api | C++ Drogon backend |
-| **API health** | https://behappy.rest/api/health | `{"status":"ok"}` |
-| **WebSocket** | `wss://behappy.rest/ws` | JWT via `?token=` query param |
-| **Grafana** | https://behappy.rest/grafana/ | admin / see `.env` |
-| **MinIO Console** | https://behappy.rest/minio-console/ | minioadmin / see `.env` |
-| **Downloads – Windows** | https://behappy.rest/downloads/windows/ | Desktop installer |
-| **Downloads – macOS** | https://behappy.rest/downloads/macos/ | Desktop installer |
-
-> Grafana and MinIO Console are not behind additional auth at the nginx level.
-> Restrict by IP (`allow`/`deny` in nginx) before publishing publicly.
-
-## Storage Layout (MinIO)
-
-All buckets are **private** (no anonymous access). Files are delivered via
-short-lived presigned GET URLs (default TTL: 900 s) routed through nginx.
-
-| Bucket | Purpose | Key pattern |
-|--------|---------|-------------|
-| `bh-avatars` | User profile pictures | `avatars/{user_id}/{uuid}.{ext}` |
-| `bh-uploads` | General file attachments (C++ API) | `uploads/{uuid}_{filename}` |
-| `bh-stickers` | Sticker SVG files (seeded at init) | `stickers/s0N.svg` |
-| `bh-test-artifacts` | Integration test assets | free-form |
-
-### Public URL routing
-
-```
-Browser → https://behappy.rest/minio/{bucket}/{key}?X-Amz-Signature=…
-            └─► nginx /minio/ (Host: minio:9000, GET-only)
-                    └─► MinIO :9000 – validates presigned signature
-```
-
-Set `MINIO_PUBLIC_URL=https://behappy.rest/minio` in production (already done
-in `docker-compose.prod.yml`).  For local development the default
-`http://localhost:9000` works with the exposed port mapping.
-
-### Stickers (8 seed SVGs)
-
-Eight Unicode-emoji SVGs are uploaded to `bh-stickers` on first startup by
-the `minio_init` container and referenced in the `stickers` table.  All are
-rendered by the browser's own emoji font — no proprietary assets.
-
-| Key | Label | Emoji |
-|-----|-------|-------|
-| `stickers/s01.svg` | grin  | 😀 |
-| `stickers/s02.svg` | lol   | 😂 |
-| `stickers/s03.svg` | heart | ❤️ |
-| `stickers/s04.svg` | like  | 👍 |
-| `stickers/s05.svg` | party | 🎉 |
-| `stickers/s06.svg` | cry   | 😢 |
-| `stickers/s07.svg` | cool  | 😎 |
-| `stickers/s08.svg` | fire  | 🔥 |
-
-### Quick API test
-
-```bash
-# Health
-curl https://behappy.rest/api/health
-
-# Login (seed accounts: alice / bob / carol, password: testpass)
-TOKEN=$(curl -s -X POST https://behappy.rest/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"testpass"}' | jq -r .access_token)
-
-# Profile
-curl -H "Authorization: Bearer $TOKEN" https://behappy.rest/api/me
-
-# WebSocket
-wscat -c "wss://behappy.rest/ws?token=$TOKEN"
-```
+| Resource | URL |
+|----------|-----|
+| **Web app** | https://behappy.rest/ |
+| **REST API** | https://api.behappy.rest/ |
+| **WebSocket** | `wss://ws.behappy.rest/ws` |
+| **Grafana** | https://grafana.behappy.rest/ |
+| **MinIO Console** | https://minio-console.behappy.rest/ |
+| **Downloads** | https://downloads.behappy.rest/ |
+| **Vault UI** | https://vlt.behappy.rest/ |
+| **Nomad UI** | https://nomad.behappy.rest/ |
+| **Admin panel** | https://admin.behappy.rest/ |
 
 ---
 
@@ -107,158 +81,281 @@ wscat -c "wss://behappy.rest/ws?token=$TOKEN"
 git clone https://github.com/WhYasha/prilka.git
 cd prilka
 
-# 2. Start everything (builds C++ image, runs migrations, starts all services)
+# 2. Start infrastructure (PostgreSQL, Redis, MinIO, migrations)
 make up
 
-# 3. Check status
+# 3. Start frontend dev server
+cd frontend && npm install && npm run dev
+
+# 4. Check status
 make ps
 make info
 ```
 
 `make up` automatically:
-- Copies `.env.example` → `.env` on first run
+- Copies `.env.example` -> `.env` on first run
 - Builds the C++ backend Docker image
-- Starts PostgreSQL, Redis, MinIO
-- Creates the MinIO bucket
-- Runs Flyway migrations (V1–V4)
-- Starts the C++ API, legacy Flask UI, Prometheus, Grafana, cAdvisor
+- Starts PostgreSQL 16, Redis 7, MinIO
+- Creates MinIO buckets and seeds stickers
+- Runs Flyway migrations (V1-V20)
+- Starts the C++ API, Prometheus, Grafana, cAdvisor
 
-## Prerequisites
+### Prerequisites
 
 | Tool | Version | Why |
 |------|---------|-----|
 | Docker | 24+ | All services run in containers |
-| Docker Compose | v2 (plugin) | Orchestration |
+| Docker Compose | v2 (plugin) | Local orchestration |
+| Node.js | 20+ | Frontend build (Vite + Vue 3) |
 | `make` | any | Convenience commands |
-| `curl` (optional) | any | Smoke testing |
 
-No compiler, Python, or database installation required on the host machine.
-
-## Local Service URLs
+### Local Service URLs
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
+| **Vue Dev Server** | http://localhost:5173 | — |
 | **C++ API** | http://localhost:8080 | JWT tokens |
-| **Legacy UI** | http://localhost:5000 | alice/testpass |
 | **MinIO Console** | http://localhost:9001 | minioadmin/changeme_minio |
 | **Prometheus** | http://localhost:9090 | — |
 | **Grafana** | http://localhost:3000 | admin/admin |
-| **cAdvisor** | http://localhost:8081 | — |
-
-## Production Deployment
-
-### Server layout
-
-```
-/opt/messenger/
-├── repo/          git clone of this repository
-│   ├── docker-compose.yml
-│   ├── docker-compose.prod.yml
-│   └── infra/scripts/
-│       ├── 01-bootstrap.sh   initial server setup
-│       └── 02-deploy.sh      git pull + rebuild + restart
-└── env/
-    └── .env       secrets (chmod 600, never committed)
-```
-
-### Deploy / update
-
-```bash
-# SSH to server as deploy user, then:
-bash /opt/messenger/repo/infra/scripts/02-deploy.sh
-
-# Or manually:
-cd /opt/messenger/repo
-git pull
-sudo systemctl restart messenger
-```
-
-### Environment config
-
-Secrets live in `/opt/messenger/env/.env` (chmod 600). Never committed to git.
-See [docs/env-vars.md](docs/env-vars.md) for the full reference.
-
-**Minimum changes for security:**
-```bash
-JWT_SECRET=$(openssl rand -hex 32)
-POSTGRES_PASSWORD=<strong-password>
-REDIS_PASSWORD=<strong-password>
-MINIO_ROOT_PASSWORD=<strong-password>
-```
-
-### TLS / Let's Encrypt
-
-Certs are managed by certbot on the host:
-- **Cert path**: `/etc/letsencrypt/live/behappy.rest/`
-- **Renewal**: `systemctl status certbot.timer` (auto-renews 30 days before expiry)
-- **Renewal hook**: `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh` reloads nginx after renewal
 
 ---
 
-## Common Commands
+## Project Structure
 
-```bash
-make up              # Start all services
-make down            # Stop all services
-make logs            # Tail all logs
-make logs svc=api_cpp  # Tail a specific service
-make migrate         # Re-run Flyway migrations
-make test            # Run backend unit tests in Docker
-make build           # Rebuild C++ image only
-make shell-api       # Open shell in api_cpp container
-make shell-postgres  # Open psql session
-make clean           # Remove containers + volumes (DESTRUCTIVE)
-make info            # Print all service URLs
 ```
+.
+├── frontend/                    Vue 3 + Vite + TypeScript SPA
+│   ├── src/
+│   │   ├── api/                 13 typed API modules (axios)
+│   │   ├── stores/              7 Pinia stores (auth, chats, messages, ...)
+│   │   ├── composables/         7 composables (WebSocket, recorder, swipe, ...)
+│   │   ├── views/               5 views (Login, Register, Messenger, Admin, Join)
+│   │   ├── components/
+│   │   │   ├── layout/          Sidebar, ChatPanel (814 lines), Drawer, AppBar
+│   │   │   ├── chat/            18 chat components (MessageBubble, Composer, ...)
+│   │   │   ├── modals/          7 modals (NewChat, Profile, Forward, ...)
+│   │   │   ├── admin/           6 admin components (Dashboard, Users, Support, ...)
+│   │   │   └── ui/              Avatar, Badge, BottomSheet, Toast, Spinner, ...
+│   │   └── router/              Routes + auth/admin guards
+│   ├── src-tauri/               Tauri v2 desktop app (Rust)
+│   └── .env.production          VITE_API_URL + VITE_WS_URL
+├── backend/                     C++ Drogon backend
+│   ├── src/
+│   │   ├── controllers/         14 controllers (~4500 lines total)
+│   │   ├── filters/             AuthFilter (JWT), AdminFilter (is_admin claim)
+│   │   ├── services/            JwtService (HS256), MetricsService (Prometheus)
+│   │   ├── utils/               MinioPresign (SigV4 presigned URLs)
+│   │   ├── ws/                  WsHandler (Redis pub/sub, presence, typing)
+│   │   ├── config/Config.h      All env vars in one struct
+│   │   └── main.cpp             App init, /health, /metrics, Redis retry
+│   ├── tests/                   GTest unit tests
+│   ├── Dockerfile               3-stage (build → test → runtime)
+│   └── www/                     Vite build output served by Drogon
+├── migrations/                  Flyway SQL V1–V20
+├── infra/
+│   ├── apisix/                  APISIX config + route templates
+│   ├── vault/                   Vault config, policies, init/unseal scripts
+│   ├── consul/                  Consul config + 6 service definitions
+│   ├── nomad/                   Nomad config + messenger.nomad.hcl (3 groups)
+│   ├── systemd/                 Tier 0 units (vault, consul, apisix, nomad)
+│   ├── prometheus/              Dev + prod configs
+│   ├── grafana/                 Datasource + dashboard provisioning
+│   ├── scripts/                 Bootstrap, deploy, smoke/feature/presence tests
+│   └── nginx/                   DEPRECATED (kept for rollback reference)
+├── docs/
+│   ├── architecture.md          Full system design + scaling strategy
+│   ├── DEPLOY.md                Production deployment runbook
+│   ├── env-vars.md              Environment variable reference
+│   └── mobile.md                iOS/Swift API contract
+├── docker-compose.yml           Dev stack
+├── docker-compose.prod.yml      Production overrides (Docker Compose fallback)
+├── .env.example                 Environment template
+├── Makefile                     Convenience commands
+└── .github/workflows/
+    ├── ci.yml                   Build (Linux/Win/macOS) + smoke test
+    └── desktop-build.yml        Tauri NSIS/DMG build + publish
+```
+
+---
+
+## Production Infrastructure
+
+### Tiered Architecture
+
+```
+Tier 0 (systemd):  Vault → Consul → APISIX → Nomad
+Tier 1 (Nomad):    PostgreSQL, Redis, MinIO, api_cpp, Prometheus, Grafana, cAdvisor
+```
+
+### Tier 0 — systemd Services
+
+| Service | Container | Purpose |
+|---------|-----------|---------|
+| **Vault** 1.15 | `messenger-vault` | Secrets management (KV v2, AppRole + JWT auth) |
+| **Consul** 1.17 | `messenger-consul` | Service discovery + health checks |
+| **APISIX** 3.15 | `messenger-apisix` | TLS termination, reverse proxy (standalone YAML) |
+| **Nomad** | host-native | Container orchestration |
+
+### Tier 1 — Nomad Job `messenger` (3 task groups)
+
+| Group | Tasks | Notes |
+|-------|-------|-------|
+| **infra** | PostgreSQL 16, Redis 7, MinIO | Stateful, Docker volumes |
+| **app** | minio-init (prestart), Flyway (prestart), api_cpp (main) | Init tasks run before API |
+| **monitoring** | Prometheus 2.51, Grafana 10.4, cAdvisor 0.49 | Observability |
+
+### Vault Secrets
+
+All credentials stored in `secret/data/messenger/{db,redis,minio,jwt,server,grafana}`.
+Nomad accesses Vault via workload identity (JWT signed by Nomad, validated by Vault).
+
+### TLS
+
+Wildcard cert `*.behappy.rest` + `behappy.rest` via certbot + Cloudflare DNS plugin.
+APISIX reads certs directly from `/etc/letsencrypt/`.
+
+---
+
+## Storage Layout (MinIO)
+
+All buckets are **private**. Files are delivered via presigned GET URLs (SigV4, default TTL: 900s).
+
+| Bucket | Purpose | Key pattern |
+|--------|---------|-------------|
+| `bh-avatars` | User/chat profile pictures | `avatars/{user_id}/{uuid}.{ext}` |
+| `bh-uploads` | File attachments | `uploads/{uuid}_{filename}` |
+| `bh-stickers` | Sticker SVGs (seeded at init) | `stickers/s0N.svg` |
+| `bh-test-artifacts` | Integration test assets | free-form |
+
+---
+
+## Database Migrations (V1–V20)
+
+| Version | Purpose |
+|---------|---------|
+| V1 | Core schema: users, chats, chat_members, messages (partitioned) |
+| V2–V5 | Stickers, seed data, MinIO sticker URLs |
+| V6–V7 | Channels, invite links, roles |
+| V8 | Message types (text/sticker/voice/file) |
+| V9 | Admin panel (`is_admin` field) |
+| V10–V11 | Favorites, mute, unread tracking |
+| V12 | Emoji reactions |
+| V13 | Soft delete, for_everyone, file_id |
+| V14 | Reply-to-message |
+| V15 | Message editing |
+| V16 | Pinned messages |
+| V17 | Last-seen privacy |
+| V18 | Chat avatars |
+| V19 | Pinned messages CASCADE fix |
+| V20 | Forwarded message attribution |
+
+---
 
 ## API Quick Reference
 
-### Register + Login
 ```bash
+# Health
+curl https://api.behappy.rest/health
+
 # Register
-curl -X POST https://behappy.rest/api/auth/register \
+curl -X POST https://api.behappy.rest/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","email":"alice@example.com","password":"secret123"}'
 
-# Login → get tokens
-TOKEN=$(curl -s -X POST https://behappy.rest/api/auth/login \
+# Login
+TOKEN=$(curl -s -X POST https://api.behappy.rest/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"alice","password":"testpass"}' \
-  | jq -r .access_token)
+  -d '{"username":"alice","password":"testpass"}' | jq -r .access_token)
 
-# Use token
-curl https://behappy.rest/api/me -H "Authorization: Bearer $TOKEN"
-```
+# Profile
+curl -H "Authorization: Bearer $TOKEN" https://api.behappy.rest/me
 
-### Create chat + send message
-```bash
-# Create direct chat with user 2
-CHAT=$(curl -s -X POST https://behappy.rest/api/chats \
+# Create chat + send message
+CHAT=$(curl -s -X POST https://api.behappy.rest/chats \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"type":"direct","member_ids":[2]}' | jq .id)
 
-# Send message
-curl -X POST https://behappy.rest/api/chats/$CHAT/messages \
+curl -X POST https://api.behappy.rest/chats/$CHAT/messages \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content":"Hello!","type":"text"}'
-```
 
-### WebSocket
-```bash
-# Using wscat (npm install -g wscat)
-wscat -c "wss://behappy.rest/ws?token=$TOKEN"
-```
+# WebSocket
+wscat -c "wss://ws.behappy.rest/ws?token=$TOKEN"
 
-### Upload a file
-```bash
-curl -X POST https://behappy.rest/api/files \
+# File upload
+curl -X POST https://api.behappy.rest/files \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@photo.jpg"
 ```
 
-## Building the C++ Backend Locally (without Docker)
+### WebSocket Protocol
+
+Client-to-server: `auth`, `subscribe`, `typing`, `presence_update`, `ping`
+Server-to-client: `pong`, `message`, `typing`, `presence`, `reaction`, `message_deleted`, `message_updated`, `message_pinned`, `message_unpinned`
+
+---
+
+## Testing
+
+### Test Suites
+
+| Suite | File | Checks | Scope |
+|-------|------|--------|-------|
+| **Smoke** | `infra/scripts/smoke_test.py` | 53 | 20 sections: health, auth, chats, messages, replies, editing, files, voice, WS, presence, metrics, reactions, pinning, forwarding, privacy, search, chat avatars |
+| **Feature** | `infra/scripts/feature_test.py` | 23 | Self-chat/Saved Messages, delete chat, forward with attribution |
+| **Presence** | `infra/scripts/presence_test.py` | 9 | Active/away detection, presence_update, duplicate suppression, disconnect cleanup, privacy enforcement |
+
+```bash
+# Run against production
+python infra/scripts/smoke_test.py
+python infra/scripts/feature_test.py
+python infra/scripts/presence_test.py
+
+# Run against local
+SMOKE_API_URL=http://localhost:8080 SMOKE_WS_URL=ws://localhost:8080/ws \
+  python infra/scripts/smoke_test.py
+```
+
+### C++ Unit Tests
+
+```bash
+cd backend/build/linux-debug
+JWT_SECRET="test-secret-at-least-16-chars" ctest --output-on-failure
+```
+
+---
+
+## CI/CD
+
+### GitHub Actions
+
+**`ci.yml`** — on push to master/main/develop, PRs:
+1. **build-linux** — C++ compile + test (GCC, Drogon Docker image)
+2. **build-windows** — C++ compile + test (MSVC, vcpkg)
+3. **build-macos** — C++ compile + test (Clang, Homebrew)
+4. **compose-smoke** — Docker Compose integration test
+
+**`desktop-build.yml`** — on `v*` tags or manual dispatch:
+1. **build-windows** — Tauri NSIS installer
+2. **build-macos** — Tauri DMG
+
+Self-hosted runner `behappy-runner` on production server (Debian 12).
+
+### Deploy
+
+```bash
+# Nomad mode (production)
+ssh deploy@behappy.rest 'DEPLOY_MODE=nomad bash /opt/messenger/repo/infra/scripts/02-deploy.sh'
+
+# Typical deploy: ~30s (cached Docker layers)
+```
+
+---
+
+## Building the C++ Backend Locally
 
 ### Linux (GCC)
 ```bash
@@ -284,34 +381,38 @@ cmake --preset macos-clang
 cmake --build --preset macos-clang
 ```
 
-### Run tests
-```bash
-cd backend/build/linux-debug
-JWT_SECRET="test-secret-at-least-16-chars" ctest --output-on-failure
-```
+---
 
-## Database Migrations
-
-Migrations live in `migrations/` and are managed by [Flyway](https://flywaydb.org/).
-They run automatically on `make up`. To run manually:
+## Common Commands
 
 ```bash
-make migrate
+make up              # Start all services
+make down            # Stop all services
+make logs            # Tail all logs
+make logs svc=api_cpp  # Tail a specific service
+make migrate         # Re-run Flyway migrations
+make test            # Run backend unit tests in Docker
+make build           # Rebuild C++ image only
+make shell-api       # Open shell in api_cpp container
+make shell-postgres  # Open psql session
+make clean           # Remove containers + volumes (DESTRUCTIVE)
+make info            # Print all service URLs
 ```
 
-Migration files follow the naming convention `V{n}__{description}.sql`.
+---
 
 ## Monitoring
 
 ### Grafana
-Open https://behappy.rest/grafana/ (admin / see `.env`). The **Messenger Overview**
-dashboard is pre-provisioned with:
+
+Open https://grafana.behappy.rest/ — **Messenger Overview** dashboard:
 - API RPS and latency (p50/p95/p99)
 - HTTP 5xx error rate
 - Active WebSocket connections
 - Container CPU and memory usage
 
-### Prometheus metrics (api_cpp)
+### Prometheus Metrics (api_cpp)
+
 ```
 messenger_http_requests_total{method,path,status}     counter
 messenger_http_request_duration_seconds{method,path}  histogram
@@ -319,64 +420,9 @@ messenger_ws_connections_active                        gauge
 messenger_ws_connections_total                         counter
 ```
 
-## Project Structure
-
-```
-.
-├── backend/                  C++ Drogon backend
-│   ├── src/
-│   │   ├── main.cpp
-│   │   ├── config/Config.h
-│   │   ├── services/         JwtService, MetricsService
-│   │   ├── filters/          AuthFilter (JWT validation)
-│   │   ├── controllers/      Auth, Users, Chats, Messages, Files
-│   │   └── ws/               WebSocket handler
-│   ├── tests/                GTest unit tests
-│   ├── CMakeLists.txt
-│   ├── CMakePresets.json
-│   └── Dockerfile
-├── migrations/               Flyway SQL migrations (V1–V4)
-├── infra/
-│   ├── nginx/                nginx.conf (TLS reverse proxy)
-│   ├── prometheus/           Prometheus config
-│   ├── grafana/              Grafana provisioning + dashboards
-│   └── scripts/              Bootstrap, deploy, smoke test
-├── simple-messenger/         Legacy Flask app (existing UI)
-├── docs/
-│   ├── architecture.md       System design + scaling strategy
-│   ├── mobile.md             iOS/Swift API contract
-│   └── env-vars.md           Environment variable reference
-├── docker-compose.yml        Main orchestration file
-├── docker-compose.prod.yml   Production overrides (TLS, no dev ports)
-├── .env.example              Environment template
-├── Makefile                  Convenience commands
-└── README.md                 This file
-```
-
-## Architecture
-
-See [docs/architecture.md](docs/architecture.md) for:
-- Full system diagram
-- Data flow diagrams
-- Why PostgreSQL
-- Why Drogon
-- Scaling strategy to millions of users
-
-## iOS Mobile Client
-
-See [docs/mobile.md](docs/mobile.md) for:
-- Complete API contract
-- Request/response schemas
-- WebSocket protocol
-- iOS implementation notes
+---
 
 ## Troubleshooting
-
-**502 Bad Gateway at /**
-```bash
-docker logs repo-api_legacy-1
-# Flask must listen on 0.0.0.0:5000, not 127.0.0.1:5000
-```
 
 **Flyway fails on first start**
 ```bash
@@ -388,6 +434,7 @@ make logs svc=flyway
 ```bash
 make logs svc=api_cpp
 # Check JWT_SECRET is set and is at least 16 characters
+# Check Redis DNS is resolvable (retry loop handles temporary failures)
 ```
 
 **MinIO bucket not created**
@@ -395,23 +442,44 @@ make logs svc=api_cpp
 make logs svc=minio_init
 # Manual fix:
 docker compose exec minio mc alias set local http://localhost:9000 minioadmin changeme_minio
-docker compose exec minio mc mb local/messenger-files
+docker compose exec minio mc mb local/bh-uploads
 ```
 
-**Check all container health**
+**Redis pub/sub not working (presence/typing broken)**
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
-docker logs repo-nginx-1 --tail 50
-docker logs repo-api_cpp-1 --tail 50
+# Redis DNS race at startup — api_cpp retries 15 times.
+# If still failing, restart api_cpp after Redis is healthy.
+docker compose restart api_cpp
 ```
 
 **TLS cert renewal**
 ```bash
-sudo certbot renew --dry-run   # test renewal
+sudo certbot renew --dry-run
 systemctl list-timers | grep certbot
 ```
 
-**Windows: cAdvisor fails to start**
-- cAdvisor uses Linux cgroups. On Windows/macOS Docker Desktop, either remove the
-  `cadvisor` service from `docker-compose.yml` or ignore its failure — all other
-  services work normally.
+**Nomad job status**
+```bash
+nomad job status messenger
+consul catalog services
+curl https://api.behappy.rest/health
+```
+
+---
+
+## Architecture Deep Dive
+
+See [docs/architecture.md](docs/architecture.md) for:
+- Full system diagram with all API endpoints
+- Data flow diagrams (auth, messaging, file upload, WebSocket)
+- Database schema (all 20+ tables)
+- Scaling strategy (10K → 100M users)
+- Technology choices (why PostgreSQL, why Drogon)
+
+## Deployment Runbook
+
+See [docs/DEPLOY.md](docs/DEPLOY.md) for server bootstrap, Vault/Consul/Nomad setup, and operational procedures.
+
+## Environment Variables
+
+See [docs/env-vars.md](docs/env-vars.md) for the full reference of all configuration options.
