@@ -19,6 +19,11 @@
     </div>
 
     <div class="msg-content-wrap">
+      <!-- Forwarded attribution -->
+      <div v-if="forwardedLabel" class="msg-forwarded-label">
+        {{ forwardedLabel }}
+      </div>
+
       <!-- Reply quote -->
       <div
         v-if="message.reply_to_message_id"
@@ -89,6 +94,7 @@ import Badge from '@/components/ui/Badge.vue'
 import type { Message, Sticker } from '@/api/types'
 import { useSelectionStore } from '@/stores/selection'
 import { useChatsStore } from '@/stores/chats'
+import { useAuthStore } from '@/stores/auth'
 import { useLongPress } from '@/composables/useLongPress'
 
 const props = defineProps<{
@@ -151,6 +157,18 @@ function onRowClick() {
     selectionStore.toggleMessage(props.message.id)
   }
 }
+
+const authStore = useAuthStore()
+
+const forwardedLabel = computed(() => {
+  if (!props.message.forwarded_from_chat_id) return null
+  const origUserId = props.message.forwarded_from_user_id
+  // If the original sender is myself, don't show "Forwarded from" — it's just my message
+  if (origUserId && origUserId === authStore.user?.id) return null
+  const name = props.message.forwarded_from_display_name
+  if (name) return `Forwarded from ${name}`
+  return 'Forwarded'
+})
 
 const stickers = inject<{ value: Sticker[] }>('stickers', ref([]))
 

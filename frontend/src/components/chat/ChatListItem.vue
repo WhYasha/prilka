@@ -18,7 +18,7 @@
       @click="emit('select')"
       @contextmenu.prevent="emit('contextmenu', $event)"
     >
-      <Avatar :name="displayName" :url="chat.type === 'direct' ? chat.other_avatar_url : chat.avatar_url" size="sm" :online="isOnline" />
+      <Avatar :name="displayName" :url="isSelfChat ? (authStore.user?.avatar_url || null) : (chat.type === 'direct' ? chat.other_avatar_url : chat.avatar_url)" size="sm" :online="isOnline" />
       <div class="chat-item-info">
         <div class="chat-item-top">
           <span class="chat-item-name">
@@ -58,6 +58,7 @@
 import { computed, ref } from 'vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import { useChatsStore } from '@/stores/chats'
+import { useAuthStore } from '@/stores/auth'
 import type { Chat } from '@/api/types'
 
 const props = defineProps<{
@@ -66,6 +67,11 @@ const props = defineProps<{
 }>()
 
 const chatsStore = useChatsStore()
+const authStore = useAuthStore()
+
+const isSelfChat = computed(() => {
+  return props.chat.type === 'direct' && !props.chat.other_user_id
+})
 
 const isOnline = computed(() => {
   if (props.chat.type !== 'direct' || !props.chat.other_user_id) return null
@@ -84,6 +90,7 @@ const emit = defineEmits<{
 
 const displayName = computed(() => {
   const c = props.chat
+  if (isSelfChat.value) return 'Saved Messages'
   if (c.type === 'channel' || c.type === 'group') return c.title || c.name || 'Untitled'
   return c.other_display_name || c.other_username || c.title || c.name || 'Chat'
 })

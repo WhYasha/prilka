@@ -23,7 +23,13 @@ static std::unordered_map<long long,
 bool WsHandler::isUserOnline(long long userId) {
     std::lock_guard<std::mutex> lk(s_userMu);
     auto it = s_userConns.find(userId);
-    return it != s_userConns.end() && !it->second.empty();
+    if (it == s_userConns.end() || it->second.empty()) return false;
+    // User is online only if at least one connection is active (not away)
+    for (const auto& conn : it->second) {
+        auto ctx = conn->getContext<ConnCtx>();
+        if (ctx && ctx->active) return true;
+    }
+    return false;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -254,22 +260,38 @@ void WsHandler::handleConnectionClosed(const drogon::WebSocketConnectionPtr& con
                 }
             }
 
-            // Remove from user connections and broadcast offline if last
+            // Remove from user connections and broadcast offline if user state changed
             if (ctx->authed && ctx->userId > 0) {
-                bool nowOffline = false;
+                bool shouldBroadcastOffline = false;
                 {
                     std::lock_guard<std::mutex> lk(s_userMu);
                     auto it = s_userConns.find(ctx->userId);
                     if (it != s_userConns.end()) {
                         auto& vec = it->second;
+                        // Was user online (any active connection) before removing?
+                        bool wasOnline = false;
+                        for (const auto& c : vec) {
+                            auto cctx = c->getContext<ConnCtx>();
+                            if (cctx && cctx->active) { wasOnline = true; break; }
+                        }
+                        // Remove this connection
                         vec.erase(std::remove(vec.begin(), vec.end(), conn), vec.end());
-                        nowOffline = vec.empty();
-                        if (nowOffline) s_userConns.erase(it);
+                        if (vec.empty()) {
+                            s_userConns.erase(it);
+                            shouldBroadcastOffline = wasOnline;
+                        } else {
+                            // Check if any remaining connection is still active
+                            bool anyActive = false;
+                            for (const auto& c : vec) {
+                                auto cctx = c->getContext<ConnCtx>();
+                                if (cctx && cctx->active) { anyActive = true; break; }
+                            }
+                            shouldBroadcastOffline = wasOnline && !anyActive;
+                        }
                     }
                 }
-                if (nowOffline) {
+                if (shouldBroadcastOffline) {
                     broadcastPresence(ctx->userId, ctx->username, "offline");
-                    // Update last_activity
                     auto db = drogon::app().getDbClient();
                     db->execSqlAsync(
                         "UPDATE users SET last_activity = NOW() WHERE id = $1",
@@ -316,6 +338,8 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
             ctx->userId  = claims->userId;
             ctx->authed  = true;
             ctx->isAdmin = claims->isAdmin;
+            // Accept initial active state from client (default true for backward compat)
+            ctx->active  = msg.get("active", true).asBool();
 
             // Update last_activity and fetch username for typing/presence
             auto db = drogon::app().getDbClient();
@@ -324,14 +348,21 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                 [this, ctx, conn](const drogon::orm::Result& r) {
                     if (!r.empty()) ctx->username = r[0]["username"].as<std::string>();
                     // Track user connection for presence
-                    bool wasOffline = false;
+                    bool shouldBroadcastOnline = false;
                     {
                         std::lock_guard<std::mutex> lk(s_userMu);
                         auto& vec = s_userConns[ctx->userId];
-                        wasOffline = vec.empty();
+                        // Was user already online (any existing active connection)?
+                        bool wasOnline = false;
+                        for (const auto& c : vec) {
+                            auto cctx = c->getContext<ConnCtx>();
+                            if (cctx && cctx->active) { wasOnline = true; break; }
+                        }
                         vec.push_back(conn);
+                        // Broadcast online only if this connection is active and user wasn't already
+                        shouldBroadcastOnline = ctx->active && !wasOnline;
                     }
-                    if (wasOffline) {
+                    if (shouldBroadcastOnline) {
                         broadcastPresence(ctx->userId, ctx->username, "online");
                     }
                 },
@@ -411,6 +442,57 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
 
             // Publish via Redis so all nodes get it
             WsDispatch::publishMessage(chatId, payload);
+            return;
+        }
+
+        // ── presence_update ─────────────────────────────────────────────
+        if (type == "presence_update") {
+            std::string status = msg["status"].asString();
+            if (status != "active" && status != "away") {
+                sendError(conn, "Invalid presence status");
+                return;
+            }
+
+            bool newActive = (status == "active");
+            if (ctx->active == newActive) return; // No change
+
+            bool broadcastOnline  = false;
+            bool broadcastOffline = false;
+            {
+                std::lock_guard<std::mutex> lk(s_userMu);
+                // Check if any OTHER connection is currently active
+                bool hadOtherActive = false;
+                auto it = s_userConns.find(ctx->userId);
+                if (it != s_userConns.end()) {
+                    for (const auto& c : it->second) {
+                        if (c == conn) continue;
+                        auto cctx = c->getContext<ConnCtx>();
+                        if (cctx && cctx->active) { hadOtherActive = true; break; }
+                    }
+                }
+                // Apply the change
+                ctx->active = newActive;
+
+                if (newActive && !hadOtherActive) {
+                    // Was offline (no active connections), now online
+                    broadcastOnline = true;
+                } else if (!newActive && !hadOtherActive) {
+                    // This was the only active connection, now offline
+                    broadcastOffline = true;
+                }
+            }
+
+            if (broadcastOnline) {
+                broadcastPresence(ctx->userId, ctx->username, "online");
+            } else if (broadcastOffline) {
+                broadcastPresence(ctx->userId, ctx->username, "offline");
+                auto db = drogon::app().getDbClient();
+                db->execSqlAsync(
+                    "UPDATE users SET last_activity = NOW() WHERE id = $1",
+                    [](const drogon::orm::Result&) {},
+                    [](const drogon::orm::DrogonDbException&) {},
+                    ctx->userId);
+            }
             return;
         }
 

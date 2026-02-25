@@ -105,8 +105,9 @@ const pinned = computed(() => filteredChats.value.filter((c) => c.is_pinned && !
 const favorites = computed(() => filteredChats.value.filter((c) => c.is_favorite && !c.is_pinned))
 const rest = computed(() => filteredChats.value.filter((c) => !c.is_favorite && !c.is_pinned))
 
-function chatDisplayName(c: { type: string; title?: string | null; name?: string | null; other_display_name?: string; other_username?: string }): string {
+function chatDisplayName(c: { type: string; title?: string | null; name?: string | null; other_display_name?: string; other_username?: string; other_user_id?: number }): string {
   if (c.type === 'channel' || c.type === 'group') return c.title || c.name || 'Untitled'
+  if (c.type === 'direct' && !c.other_user_id) return 'Saved Messages'
   return c.other_display_name || c.other_username || c.title || c.name || 'Chat'
 }
 

@@ -8,9 +8,10 @@
 /// WebSocket endpoint: /ws
 /// Protocol:
 ///   Client → Server:
-///     { "type": "auth",      "token": "<access-jwt>" }
+///     { "type": "auth",      "token": "<access-jwt>", "active": true|false }
 ///     { "type": "subscribe", "chat_id": 42 }
 ///     { "type": "typing",    "chat_id": 42 }
+///     { "type": "presence_update", "status": "active"|"away" }
 ///     { "type": "ping" }
 ///
 ///   Server → Client:
@@ -53,6 +54,7 @@ private:
         long long userId   = 0;
         bool      authed   = false;
         bool      isAdmin  = false;
+        bool      active   = true;   // Whether this connection's tab/window is visible+focused
         std::string username;
         std::vector<long long> subscriptions;
     };
