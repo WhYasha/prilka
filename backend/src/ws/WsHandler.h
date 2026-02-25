@@ -25,6 +25,7 @@
 ///     { "type": "message_updated", "chat_id": 42, "message_id": 99, "content": "edited text", "updated_at": "..." }
 ///     { "type": "message_pinned", "chat_id": 42, "message_id": 99, "pinned_by": 7, "message": {...} }
 ///     { "type": "message_unpinned", "chat_id": 42, "message_id": 99 }
+///     { "type": "read_receipt", "chat_id": 42, "user_id": 7, "last_read_msg_id": 500 }
 ///
 /// Fan-out uses Redis Pub/Sub channel "chat:<chat_id>"
 class WsHandler : public drogon::WebSocketController<WsHandler> {

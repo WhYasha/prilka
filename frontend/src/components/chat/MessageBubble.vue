@@ -23,7 +23,7 @@
       <template v-if="message.message_type === 'sticker'">
         <div class="msg-bubble sticker-bubble">
           <img class="sticker-img" :src="stickerUrl" :alt="message.sticker_label || 'sticker'" />
-          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
+          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}<span v-if="isMine && readReceiptIndicator" class="msg-read-check" :class="readReceiptIndicator.cls">{{ readReceiptIndicator.text }}</span></div>
         </div>
       </template>
 
@@ -55,7 +55,7 @@
             </div>
             <span class="voice-dur">{{ voiceTimeDisplay }}</span>
           </div>
-          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
+          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}<span v-if="isMine && readReceiptIndicator" class="msg-read-check" :class="readReceiptIndicator.cls">{{ readReceiptIndicator.text }}</span></div>
         </div>
       </template>
 
@@ -79,7 +79,7 @@
             </div>
           </div>
           <div class="msg-text" v-html="renderedContent" />
-          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}</div>
+          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}<span v-if="isMine && readReceiptIndicator" class="msg-read-check" :class="readReceiptIndicator.cls">{{ readReceiptIndicator.text }}</span></div>
         </div>
       </template>
 
@@ -112,6 +112,7 @@ import type { Message, Sticker } from '@/api/types'
 import { useSelectionStore } from '@/stores/selection'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
 import { useLongPress } from '@/composables/useLongPress'
 import { useMessagesStore } from '@/stores/messages'
 
@@ -182,6 +183,33 @@ function onRowClick() {
 }
 
 const authStore = useAuthStore()
+const settingsStore = useSettingsStore()
+
+const readReceiptIndicator = computed(() => {
+  if (!settingsStore.readReceiptsEnabled) return null
+  const chat = chatsStore.activeChat
+  if (!chat) return null
+  const chatId = chat.id
+
+  // Self-chat (Saved Messages): always double-check
+  if (chat.type === 'direct' && chat.other_user_id === authStore.user?.id) {
+    return { text: '\u2713\u2713', cls: 'read' }
+  }
+
+  if (chat.type === 'direct') {
+    const isRead = messagesStore.isMessageRead(chatId, props.message.id, chat.other_user_id)
+    return isRead
+      ? { text: '\u2713\u2713', cls: 'read' }
+      : { text: '\u2713', cls: 'sent' }
+  }
+
+  // Group/channel: show read count
+  const count = messagesStore.getReadCount(chatId, props.message.id)
+  if (count > 0) {
+    return { text: `\u2713\u2713 ${count}`, cls: 'read' }
+  }
+  return { text: '\u2713', cls: 'sent' }
+})
 
 const forwardedLabel = computed(() => {
   if (!props.message.forwarded_from_chat_id) return null

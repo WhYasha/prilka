@@ -772,6 +772,37 @@ else:
     check("GET /chats/{id} -> has avatar_url", False, "skipped")
     check("GET /chats -> group has member_count", False, "skipped")
 
+# ── 21. Read Receipts ─────────────────────────────────────────────────────
+print("\n[21] Read Receipts")
+
+# POST /chats/{id}/read -> 204
+s, b = req("POST", "/chats/" + str(chat_id) + "/read", token=token)
+check("POST /chats/{id}/read -> 204", s == 204, "status=" + str(s))
+
+# GET /chats/{id}/read-receipts -> 200
+s, b = req("GET", "/chats/" + str(chat_id) + "/read-receipts", token=token)
+check("GET /chats/{id}/read-receipts -> 200", s == 200 and isinstance(b, list),
+      str(len(b)) + " receipt(s)" if isinstance(b, list) else "status=" + str(s))
+
+# GET /settings includes read_receipts_enabled
+s, b = req("GET", "/settings", token=token)
+check("GET /settings has read_receipts_enabled",
+      s == 200 and isinstance(b, dict) and "read_receipts_enabled" in b,
+      "read_receipts_enabled=" + str(b.get("read_receipts_enabled")) if isinstance(b, dict) else "")
+
+# Disable read receipts
+s, b = req("PUT", "/settings", {"read_receipts_enabled": False}, token=token)
+check("PUT /settings read_receipts_enabled=false -> 204", s == 204, "status=" + str(s))
+
+# With read receipts disabled, GET read-receipts returns empty
+s, b = req("GET", "/chats/" + str(chat_id) + "/read-receipts", token=token)
+check("GET read-receipts (disabled) -> empty",
+      s == 200 and isinstance(b, list) and len(b) == 0,
+      str(len(b)) + " receipt(s)" if isinstance(b, list) else "status=" + str(s))
+
+# Re-enable read receipts (restore default)
+req("PUT", "/settings", {"read_receipts_enabled": True}, token=token)
+
 # ── 13. Metrics ────────────────────────────────────────────────────────────
 print("\n[13] Metrics")
 try:

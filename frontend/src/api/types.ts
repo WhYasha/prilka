@@ -93,6 +93,13 @@ export interface Settings {
   notifications_enabled: boolean
   language: string
   last_seen_visibility: 'everyone' | 'approx_only' | 'nobody'
+  read_receipts_enabled: boolean
+}
+
+export interface ReadReceipt {
+  user_id: number
+  last_read_msg_id: number
+  read_at: string
 }
 
 export interface Invite {

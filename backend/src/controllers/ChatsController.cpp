@@ -1,6 +1,7 @@
 #include "ChatsController.h"
 #include "../config/Config.h"
 #include "../utils/MinioPresign.h"
+#include "../ws/WsHandler.h"
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
 
@@ -527,16 +528,91 @@ void ChatsController::markRead(const drogon::HttpRequestPtr& req,
         "SELECT $1, $2, COALESCE(MAX(m.id), 0), NOW() FROM messages m WHERE m.chat_id = $2 "
         "ON CONFLICT (user_id, chat_id) DO UPDATE SET "
         "  last_read_msg_id = GREATEST(chat_last_read.last_read_msg_id, EXCLUDED.last_read_msg_id), "
-        "  read_at = NOW()",
-        [cb](const drogon::orm::Result&) mutable {
+        "  read_at = NOW() "
+        "RETURNING last_read_msg_id",
+        [cb, me, chatId](const drogon::orm::Result& r) mutable {
+            // Return 204 immediately
             auto resp = drogon::HttpResponse::newHttpResponse();
             resp->setStatusCode(drogon::k204NoContent);
             cb(resp);
+
+            // Fire-and-forget: broadcast read receipt if privacy allows
+            long long lastReadMsgId = 0;
+            if (!r.empty() && !r[0]["last_read_msg_id"].isNull()) {
+                lastReadMsgId = r[0]["last_read_msg_id"].as<long long>();
+            }
+            if (lastReadMsgId <= 0) return;
+
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "SELECT COALESCE(read_receipts_enabled, true) AS rr FROM user_settings WHERE user_id = $1",
+                [me, chatId, lastReadMsgId](const drogon::orm::Result& sr) {
+                    bool enabled = sr.empty() ? true : sr[0]["rr"].as<bool>();
+                    if (!enabled) return;
+                    Json::Value payload;
+                    payload["type"] = "read_receipt";
+                    payload["chat_id"] = Json::Int64(chatId);
+                    payload["user_id"] = Json::Int64(me);
+                    payload["last_read_msg_id"] = Json::Int64(lastReadMsgId);
+                    WsDispatch::publishMessage(chatId, payload);
+                },
+                [](const drogon::orm::DrogonDbException& e) {
+                    LOG_ERROR << "markRead read_receipts check: " << e.base().what();
+                }, me);
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "markRead: " << e.base().what();
             cb(jsonErr("Internal error", drogon::k500InternalServerError));
         }, me, chatId);
+}
+
+// GET /chats/{id}/read-receipts — privacy-filtered read receipt data for a chat
+void ChatsController::getReadReceipts(const drogon::HttpRequestPtr& req,
+                                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                       long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+
+    // First check if the caller has read receipts enabled
+    db->execSqlAsync(
+        "SELECT COALESCE(read_receipts_enabled, true) AS rr FROM user_settings WHERE user_id = $1",
+        [me, chatId, cb](const drogon::orm::Result& sr) mutable {
+            bool callerEnabled = sr.empty() ? true : sr[0]["rr"].as<bool>();
+            if (!callerEnabled) {
+                // Privacy: caller disabled read receipts → return empty
+                Json::Value arr(Json::arrayValue);
+                cb(drogon::HttpResponse::newHttpJsonResponse(arr));
+                return;
+            }
+            // Query read receipts for other members, filtering out users who disabled
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "SELECT clr.user_id, clr.last_read_msg_id, clr.read_at "
+                "FROM chat_last_read clr "
+                "JOIN chat_members cm ON cm.chat_id = clr.chat_id AND cm.user_id = clr.user_id "
+                "LEFT JOIN user_settings us ON us.user_id = clr.user_id "
+                "WHERE clr.chat_id = $1 AND clr.user_id != $2 "
+                "  AND COALESCE(us.read_receipts_enabled, true) = true",
+                [cb](const drogon::orm::Result& r) mutable {
+                    Json::Value arr(Json::arrayValue);
+                    for (const auto& row : r) {
+                        Json::Value item;
+                        item["user_id"] = Json::Int64(row["user_id"].as<long long>());
+                        item["last_read_msg_id"] = Json::Int64(row["last_read_msg_id"].as<long long>());
+                        item["read_at"] = row["read_at"].as<std::string>();
+                        arr.append(item);
+                    }
+                    cb(drogon::HttpResponse::newHttpJsonResponse(arr));
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "getReadReceipts: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, chatId, me);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "getReadReceipts settings check: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, me);
 }
 
 // GET /chats/by-name/{publicName} (public endpoint, no AuthFilter)

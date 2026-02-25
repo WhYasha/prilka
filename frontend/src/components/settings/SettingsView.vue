@@ -112,6 +112,26 @@
               <option value="nobody">Nobody</option>
             </select>
           </div>
+          <div class="menu-item menu-item--toggle" @click="readReceipts = !readReceipts">
+            <component
+              :is="readReceipts ? Eye : EyeOff"
+              class="menu-item__icon"
+              :size="24"
+              :stroke-width="1.8"
+            />
+            <span class="menu-item__label">Read Receipts</span>
+            <span class="toggle-status" :class="{ 'toggle-status--on': readReceipts }">
+              {{ readReceipts ? 'Enabled' : 'Disabled' }}
+            </span>
+            <span
+              class="toggle-switch"
+              :class="{ 'toggle-switch--on': readReceipts }"
+              role="switch"
+              :aria-checked="readReceipts"
+            >
+              <span class="toggle-switch__thumb" />
+            </span>
+          </div>
         </div>
 
         <div class="settings-divider" />
@@ -151,6 +171,7 @@ const theme = ref('light')
 const notifications = ref(true)
 const language = ref('en')
 const lastSeenVisibility = ref<'everyone' | 'approx_only' | 'nobody'>('everyone')
+const readReceipts = ref(true)
 
 watch(notifications, async (enabled) => {
   if (enabled && 'Notification' in window) {
@@ -167,6 +188,7 @@ onMounted(() => {
   notifications.value = settingsStore.notificationsEnabled
   language.value = settingsStore.language
   lastSeenVisibility.value = settingsStore.lastSeenVisibility
+  readReceipts.value = settingsStore.readReceiptsEnabled
 })
 
 async function saveSettings() {
@@ -176,6 +198,7 @@ async function saveSettings() {
       notifications_enabled: notifications.value,
       language: language.value,
       last_seen_visibility: lastSeenVisibility.value,
+      read_receipts_enabled: readReceipts.value,
     })
     showToast('Settings saved')
     emit('close')

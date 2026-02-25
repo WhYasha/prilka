@@ -13,7 +13,8 @@ public:
     ADD_METHOD_TO(ChatsController::muteChat,       "/chats/{1}/mute",     drogon::Post,   "AuthFilter");
     ADD_METHOD_TO(ChatsController::unmuteChat,     "/chats/{1}/mute",     drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(ChatsController::leaveChat,      "/chats/{1}/leave",    drogon::Delete, "AuthFilter");
-    ADD_METHOD_TO(ChatsController::markRead,      "/chats/{1}/read",     drogon::Post,   "AuthFilter");
+    ADD_METHOD_TO(ChatsController::markRead,        "/chats/{1}/read",          drogon::Post,   "AuthFilter");
+    ADD_METHOD_TO(ChatsController::getReadReceipts, "/chats/{1}/read-receipts", drogon::Get,    "AuthFilter");
     ADD_METHOD_TO(ChatsController::pinChat,        "/chats/{1}/pin",      drogon::Post,   "AuthFilter");
     ADD_METHOD_TO(ChatsController::unpinChat,      "/chats/{1}/pin",      drogon::Delete, "AuthFilter");
     ADD_METHOD_TO(ChatsController::archiveChat,    "/chats/{1}/archive",  drogon::Post,   "AuthFilter");
@@ -62,6 +63,10 @@ public:
     void markRead(const drogon::HttpRequestPtr& req,
                   std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                   long long chatId);
+
+    void getReadReceipts(const drogon::HttpRequestPtr& req,
+                         std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                         long long chatId);
 
     void pinChat(const drogon::HttpRequestPtr& req,
                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,

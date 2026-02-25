@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import * as messagesApi from '@/api/messages'
 import * as reactionsApi from '@/api/reactions'
+import * as chatsApi from '@/api/chats'
 import type { Message } from '@/api/types'
 
 export const useMessagesStore = defineStore('messages', () => {
@@ -321,6 +322,52 @@ export const useMessagesStore = defineStore('messages', () => {
     return messagesByChat.value[chatId] || []
   }
 
+  // ── Read Receipts ──────────────────────────────────────────────────────
+  // readReceipts[chatId][userId] = lastReadMsgId
+  const readReceipts = ref<Record<number, Record<number, number>>>({})
+
+  function applyReadReceipt(chatId: number, userId: number, lastReadMsgId: number) {
+    if (!readReceipts.value[chatId]) {
+      readReceipts.value[chatId] = {}
+    }
+    const current = readReceipts.value[chatId][userId] || 0
+    if (lastReadMsgId > current) {
+      readReceipts.value[chatId][userId] = lastReadMsgId
+    }
+  }
+
+  async function loadReadReceipts(chatId: number) {
+    try {
+      const receipts = await chatsApi.getReadReceipts(chatId)
+      if (!readReceipts.value[chatId]) {
+        readReceipts.value[chatId] = {}
+      }
+      for (const r of receipts) {
+        readReceipts.value[chatId][r.user_id] = r.last_read_msg_id
+      }
+    } catch (e) {
+      console.error('Failed to load read receipts', e)
+    }
+  }
+
+  /** DM: has the other user read this message? */
+  function isMessageRead(chatId: number, messageId: number, otherUserId?: number): boolean {
+    const chatReceipts = readReceipts.value[chatId]
+    if (!chatReceipts) return false
+    if (otherUserId) {
+      return (chatReceipts[otherUserId] || 0) >= messageId
+    }
+    // Any user read it
+    return Object.values(chatReceipts).some((lastRead) => lastRead >= messageId)
+  }
+
+  /** Group: how many members have read up to this message? */
+  function getReadCount(chatId: number, messageId: number): number {
+    const chatReceipts = readReceipts.value[chatId]
+    if (!chatReceipts) return 0
+    return Object.values(chatReceipts).filter((lastRead) => lastRead >= messageId).length
+  }
+
   return {
     messagesByChat,
     lastMsgId,
@@ -349,5 +396,10 @@ export const useMessagesStore = defineStore('messages', () => {
     deletingMessages,
     markForDeletion,
     isDeleting,
+    readReceipts,
+    applyReadReceipt,
+    loadReadReceipts,
+    isMessageRead,
+    getReadCount,
   }
 })

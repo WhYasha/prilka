@@ -8,6 +8,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const notificationsEnabled = ref(true)
   const language = ref('en')
   const lastSeenVisibility = ref<'everyone' | 'approx_only' | 'nobody'>('everyone')
+  const readReceiptsEnabled = ref(true)
 
   function applyTheme(t: string) {
     theme.value = t
@@ -22,6 +23,7 @@ export const useSettingsStore = defineStore('settings', () => {
       notificationsEnabled.value = s.notifications_enabled
       language.value = s.language || 'en'
       lastSeenVisibility.value = s.last_seen_visibility || 'everyone'
+      readReceiptsEnabled.value = s.read_receipts_enabled !== false
     } catch (e) {
       console.error('Failed to load settings', e)
     }
@@ -33,6 +35,7 @@ export const useSettingsStore = defineStore('settings', () => {
     if (s.notifications_enabled !== undefined) notificationsEnabled.value = s.notifications_enabled
     if (s.language) language.value = s.language
     if (s.last_seen_visibility) lastSeenVisibility.value = s.last_seen_visibility
+    if (s.read_receipts_enabled !== undefined) readReceiptsEnabled.value = s.read_receipts_enabled
   }
 
   // Apply theme on init
@@ -43,6 +46,7 @@ export const useSettingsStore = defineStore('settings', () => {
     notificationsEnabled,
     language,
     lastSeenVisibility,
+    readReceiptsEnabled,
     applyTheme,
     loadSettings,
     saveSettings,

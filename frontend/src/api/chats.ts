@@ -1,5 +1,5 @@
 import api from './client'
-import type { Chat, ChatMember } from './types'
+import type { Chat, ChatMember, ReadReceipt } from './types'
 
 export async function listChats(): Promise<Chat[]> {
   const { data } = await api.get<Chat[]>('/chats')
@@ -81,5 +81,10 @@ export async function updateChat(
   payload: { title?: string; description?: string; public_name?: string },
 ): Promise<Chat> {
   const { data } = await api.patch<Chat>(`/chats/${id}`, payload)
+  return data
+}
+
+export async function getReadReceipts(chatId: number): Promise<ReadReceipt[]> {
+  const { data } = await api.get<ReadReceipt[]>(`/chats/${chatId}/read-receipts`)
   return data
 }

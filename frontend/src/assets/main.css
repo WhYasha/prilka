@@ -630,6 +630,18 @@ body {
 .msg-edited-label {
   font-style: italic;
 }
+.msg-read-check {
+  margin-left: 2px;
+  letter-spacing: -2px;
+  font-size: .75rem;
+}
+.msg-read-check.sent {
+  opacity: 0.6;
+}
+.msg-read-check.read {
+  color: var(--accent, #4fc3f7);
+  opacity: 1;
+}
 
 /* Sticker timestamp – semi-transparent pill below sticker */
 .sticker-bubble .msg-time {

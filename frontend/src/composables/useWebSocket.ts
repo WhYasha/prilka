@@ -258,6 +258,13 @@ export function useWebSocket() {
         messagesStore.applyReactionUpdate(chatId, messageId, action, emoji, userId === authStore.user?.id)
         break
       }
+      case 'read_receipt': {
+        const chatId = data.chat_id as number
+        const userId = data.user_id as number
+        const lastReadMsgId = data.last_read_msg_id as number
+        messagesStore.applyReadReceipt(chatId, userId, lastReadMsgId)
+        break
+      }
     }
   }
 

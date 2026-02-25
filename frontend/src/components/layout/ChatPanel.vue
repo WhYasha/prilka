@@ -387,10 +387,11 @@ watch(
 
     if (!chatId) return
 
-    // Load messages and pinned message
+    // Load messages, pinned message, and read receipts
     await Promise.all([
       messagesStore.loadMessages(chatId),
       messagesStore.loadPinnedMessage(chatId),
+      messagesStore.loadReadReceipts(chatId),
     ])
     await nextTick()
     scrollToBottom()
