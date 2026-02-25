@@ -2,7 +2,7 @@
   <div
     class="msg-row"
     :data-message-id="message.id"
-    :class="[isMine ? 'mine' : 'theirs', { selected: isSelected, 'msg-deleting': isBeingDeleted }]"
+    :class="[isMine ? 'mine' : 'theirs', { selected: isSelected, 'msg-deleting': isBeingDeleted, 'msg-new': isFreshSend }]"
     @contextmenu.prevent="onContextMenu"
     v-bind="longPressHandlers"
     @click="onRowClick"
@@ -116,6 +116,9 @@ const messagesStore = useMessagesStore()
 
 const isSelected = computed(() => selectionStore.isSelected(props.message.id))
 const isBeingDeleted = computed(() => messagesStore.deletingMessages.has(props.message.id))
+
+const lastSentMessageId = inject<{ value: number | null }>('lastSentMessageId', ref(null))
+const isFreshSend = computed(() => props.isMine && props.message.id === lastSentMessageId.value)
 
 const { onPointerDown, onPointerUp, onPointerMove } = useLongPress({
   delay: 500,
