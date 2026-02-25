@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { useChatsStore } from '@/stores/chats'
+import { useAuthStore } from '@/stores/auth'
 import { formatLastSeen } from '@/utils/formatLastSeen'
 import { getUser } from '@/api/users'
 import Avatar from '@/components/ui/Avatar.vue'
@@ -32,12 +33,19 @@ const emit = defineEmits<{
 }>()
 
 const chatsStore = useChatsStore()
+const authStore = useAuthStore()
 
 const chat = computed(() => chatsStore.activeChat)
+
+const isSelfChat = computed(() => {
+  const c = chat.value
+  return c?.type === 'direct' && !c.other_user_id
+})
 
 const displayName = computed(() => {
   const c = chat.value
   if (!c) return '---'
+  if (isSelfChat.value) return 'Saved Messages'
   if (c.type === 'channel' || c.type === 'group') return c.title || c.name || 'Untitled'
   return c.other_display_name || c.other_username || c.title || c.name || 'Chat'
 })
@@ -45,6 +53,7 @@ const displayName = computed(() => {
 const chatAvatarUrl = computed(() => {
   const c = chat.value
   if (!c) return undefined
+  if (isSelfChat.value) return authStore.user?.avatar_url
   if (c.type === 'direct') return c.other_avatar_url
   return c.avatar_url
 })
@@ -72,6 +81,7 @@ const subtitle = computed(() => {
 
   const c = chat.value
   if (!c) return ''
+  if (isSelfChat.value) return 'personal storage'
   if (c.type === 'channel') {
     const count = c.member_count ?? 0
     return `${count} subscriber${count !== 1 ? 's' : ''}`

@@ -47,6 +47,60 @@ export function useWebSocket() {
   let reconnectDelay = 1000
   let intentionalClose = false
 
+  // ── Presence: visibility/focus tracking ──────────────────────────────
+  let awayTimer: ReturnType<typeof setTimeout> | null = null
+  let isAppActive = !document.hidden && document.hasFocus()
+  let presenceTrackingSetup = false
+
+  function sendPresenceUpdate(status: 'active' | 'away') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'presence_update', status }))
+    }
+  }
+
+  function checkAppActive() {
+    const active = !document.hidden && document.hasFocus()
+
+    if (active && !isAppActive) {
+      // Becoming active: cancel pending away, send immediately
+      if (awayTimer) {
+        clearTimeout(awayTimer)
+        awayTimer = null
+      }
+      isAppActive = true
+      sendPresenceUpdate('active')
+    } else if (!active && isAppActive) {
+      // Becoming away: debounce 3 seconds to avoid spam on quick alt-tabs
+      if (!awayTimer) {
+        awayTimer = setTimeout(() => {
+          awayTimer = null
+          isAppActive = false
+          sendPresenceUpdate('away')
+        }, 3000)
+      }
+    }
+  }
+
+  function setupPresenceTracking() {
+    if (presenceTrackingSetup) return
+    presenceTrackingSetup = true
+    document.addEventListener('visibilitychange', checkAppActive)
+    window.addEventListener('focus', checkAppActive)
+    window.addEventListener('blur', checkAppActive)
+  }
+
+  function teardownPresenceTracking() {
+    if (!presenceTrackingSetup) return
+    presenceTrackingSetup = false
+    document.removeEventListener('visibilitychange', checkAppActive)
+    window.removeEventListener('focus', checkAppActive)
+    window.removeEventListener('blur', checkAppActive)
+    if (awayTimer) {
+      clearTimeout(awayTimer)
+      awayTimer = null
+    }
+  }
+
   function getWsUrl() {
     const token = localStorage.getItem('access_token')
     if (!token) return null
@@ -73,10 +127,13 @@ export function useWebSocket() {
       connected.value = true
       reconnectDelay = 1000
 
-      // Send auth
+      // Compute current visibility state for auth message
+      isAppActive = !document.hidden && document.hasFocus()
+
+      // Send auth with current active state
       const token = localStorage.getItem('access_token')
       if (token) {
-        ws!.send(JSON.stringify({ type: 'auth', token }))
+        ws!.send(JSON.stringify({ type: 'auth', token, active: isAppActive }))
       }
 
       // Subscribe to all chats
@@ -85,8 +142,9 @@ export function useWebSocket() {
         ws!.send(JSON.stringify({ type: 'subscribe', chat_id: chat.id }))
       }
 
-      // Start heartbeat
+      // Start heartbeat and presence tracking
       startHeartbeat()
+      setupPresenceTracking()
     }
 
     ws.onmessage = (event) => {
@@ -158,7 +216,9 @@ export function useWebSocket() {
         if (status === 'online') {
           chatsStore.setUserOnline(userId)
         } else if (status === 'offline') {
-          chatsStore.setUserOffline(userId, lastSeenAt, lastSeenBucket)
+          // Use current time as fallback so UI shows "last seen just now"
+          const effectiveLastSeenAt = lastSeenAt || new Date().toISOString()
+          chatsStore.setUserOffline(userId, effectiveLastSeenAt, lastSeenBucket)
         }
         break
       }
@@ -241,6 +301,7 @@ export function useWebSocket() {
   function disconnect() {
     intentionalClose = true
     stopHeartbeat()
+    teardownPresenceTracking()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
