@@ -76,8 +76,7 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
               "JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = $1 "
               "JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = $2 "
               "WHERE c.type = 'direct' LIMIT 1";
-        db->execSqlAsync(dmLookupSql,
-            [cb, type, title, otherId, members, me, name, description, publicName]
+        auto dmLookupCb = [cb, type, title, otherId, members, me, name, description, publicName, selfChat]
             (const drogon::orm::Result& r) mutable {
                 if (!r.empty()) {
                     // Return existing DM
@@ -127,11 +126,16 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                         LOG_ERROR << "createChat direct: " << e.base().what();
                         cb(jsonErr("Internal error", drogon::k500InternalServerError));
                     }, type, name, title, description, publicName, me);
-            },
-            [cb](const drogon::orm::DrogonDbException& e) mutable {
+            };
+        auto dmLookupErr = [cb](const drogon::orm::DrogonDbException& e) mutable {
                 LOG_ERROR << "DM lookup: " << e.base().what();
                 cb(jsonErr("Internal error", drogon::k500InternalServerError));
-            }, me, otherId);
+            };
+        if (selfChat) {
+            db->execSqlAsync(dmLookupSql, dmLookupCb, dmLookupErr, me);
+        } else {
+            db->execSqlAsync(dmLookupSql, dmLookupCb, dmLookupErr, me, otherId);
+        }
         return;
     }
 
