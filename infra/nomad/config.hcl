@@ -7,11 +7,14 @@
 
 data_dir = "/opt/messenger/nomad/data"
 
-# Bind to localhost only (single-node, no federation)
-bind_addr = "0.0.0.0"
+# Single-node: bind to all interfaces but advertise on localhost.
+# The advertise block prevents "unsafe localhost" errors.
+bind_addr = "127.0.0.1"
 
-addresses {
+advertise {
   http = "127.0.0.1"
+  rpc  = "127.0.0.1"
+  serf = "127.0.0.1"
 }
 
 # ── Server (leader election — single node bootstrap) ──────────────────────────
