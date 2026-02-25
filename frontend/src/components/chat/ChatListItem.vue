@@ -18,7 +18,7 @@
       @click="emit('select')"
       @contextmenu.prevent="emit('contextmenu', $event)"
     >
-      <Avatar :name="displayName" :url="chat.other_avatar_url" size="sm" :online="isOnline" />
+      <Avatar :name="displayName" :url="chat.type === 'direct' ? chat.other_avatar_url : chat.avatar_url" size="sm" :online="isOnline" />
       <div class="chat-item-info">
         <div class="chat-item-top">
           <span class="chat-item-name">

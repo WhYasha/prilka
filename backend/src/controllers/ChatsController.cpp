@@ -184,6 +184,9 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    COALESCE(ou.display_name, ou.username) AS other_display_name, "
         "    ouf.bucket      AS other_avatar_bucket, "
         "    ouf.object_key  AS other_avatar_key, "
+        "    caf.bucket      AS chat_avatar_bucket, "
+        "    caf.object_key  AS chat_avatar_key, "
+        "    (SELECT COUNT(*) FROM chat_members cm3 WHERE cm3.chat_id = c.id) AS member_count, "
         "    (cf.chat_id IS NOT NULL) AS is_favorite, "
         "    (cms.user_id IS NOT NULL) AS is_muted, "
         "    (pc.chat_id IS NOT NULL) AS is_pinned, "
@@ -200,6 +203,7 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
         "    WHERE cm2.chat_id = c.id AND cm2.user_id != $1 AND c.type = 'direct' LIMIT 1 "
         ") ou ON c.type = 'direct' "
         "LEFT JOIN files ouf ON ouf.id = ou.avatar_file_id "
+        "LEFT JOIN files caf ON caf.id = c.avatar_file_id "
         "LEFT JOIN chat_favorites cf ON cf.chat_id = c.id AND cf.user_id = $1 "
         "LEFT JOIN chat_mute_settings cms ON cms.chat_id = c.id AND cms.user_id = $1 "
         "LEFT JOIN chat_last_read clr ON clr.chat_id = c.id AND clr.user_id = $1 "
@@ -242,6 +246,13 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
                     chat["other_display_name"] = Json::Value();
                     chat["other_avatar_url"]   = Json::Value();
                 }
+
+                // Chat avatar (groups/channels)
+                std::string chatAvBucket = row["chat_avatar_bucket"].isNull() ? "" : row["chat_avatar_bucket"].as<std::string>();
+                std::string chatAvKey    = row["chat_avatar_key"].isNull()    ? "" : row["chat_avatar_key"].as<std::string>();
+                std::string chatAvUrl    = avatarUrl(chatAvBucket, chatAvKey);
+                chat["avatar_url"] = chatAvUrl.empty() ? Json::Value() : Json::Value(chatAvUrl);
+                chat["member_count"] = Json::Int64(row["member_count"].isNull() ? 0 : row["member_count"].as<long long>());
 
                 arr.append(chat);
             }
@@ -422,9 +433,11 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
     long long me = req->getAttributes()->get<long long>("user_id");
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
-        "SELECT c.id, c.type, c.name, c.title, c.description, c.public_name, c.owner_id, c.created_at "
+        "SELECT c.id, c.type, c.name, c.title, c.description, c.public_name, c.owner_id, c.created_at, "
+        "    caf.bucket AS chat_avatar_bucket, caf.object_key AS chat_avatar_key "
         "FROM chats c "
         "JOIN chat_members cm ON cm.chat_id = c.id "
+        "LEFT JOIN files caf ON caf.id = c.avatar_file_id "
         "WHERE c.id = $1 AND cm.user_id = $2",
         [cb, chatId, me](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
@@ -438,6 +451,12 @@ void ChatsController::getChat(const drogon::HttpRequestPtr& req,
             chat["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
             chat["owner_id"]    = Json::Int64(row["owner_id"].as<long long>());
             chat["created_at"]  = row["created_at"].as<std::string>();
+
+            // Chat avatar
+            std::string chatAvBucket = row["chat_avatar_bucket"].isNull() ? "" : row["chat_avatar_bucket"].as<std::string>();
+            std::string chatAvKey    = row["chat_avatar_key"].isNull()    ? "" : row["chat_avatar_key"].as<std::string>();
+            std::string chatAvUrl    = avatarUrl(chatAvBucket, chatAvKey);
+            chat["avatar_url"] = chatAvUrl.empty() ? Json::Value() : Json::Value(chatAvUrl);
 
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(

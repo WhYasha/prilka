@@ -4,7 +4,7 @@
     <Avatar
       class="chat-header-avatar"
       :name="displayName"
-      :url="chat?.other_avatar_url"
+      :url="chatAvatarUrl"
       :online="isOnline"
       size="sm"
       @click="handleProfileClick"
@@ -40,6 +40,13 @@ const displayName = computed(() => {
   if (!c) return '---'
   if (c.type === 'channel' || c.type === 'group') return c.title || c.name || 'Untitled'
   return c.other_display_name || c.other_username || c.title || c.name || 'Chat'
+})
+
+const chatAvatarUrl = computed(() => {
+  const c = chat.value
+  if (!c) return undefined
+  if (c.type === 'direct') return c.other_avatar_url
+  return c.avatar_url
 })
 
 const typingNames = computed(() => {

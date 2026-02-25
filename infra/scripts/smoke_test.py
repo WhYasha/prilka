@@ -616,6 +616,43 @@ s, b = req("GET", "/chats/" + str(chat_id) + "/messages/search?q=smoke&before_id
 check("GET /messages/search?before_id -> 200", s == 200 and isinstance(b, list),
       str(len(b)) + " result(s)" if isinstance(b, list) else "status=" + str(s))
 
+# ── 20. Chat Avatar ──────────────────────────────────────────────────────
+print("\n[20] Chat Avatar")
+
+if group_id and file_id:
+    # Set the avatar on the group chat
+    s, b = req("POST", "/chats/" + str(group_id) + "/avatar",
+               {"file_id": file_id}, token=token)
+    check("POST /chats/{id}/avatar -> 200", s == 200 and isinstance(b, dict) and b.get("avatar_url") is not None,
+          "avatar_url=" + str(b.get("avatar_url", ""))[:60] if isinstance(b, dict) else "status=" + str(s))
+
+    # Verify avatar_url in GET /chats
+    s, b = req("GET", "/chats", token=token)
+    group_in_list = None
+    for c in (b if isinstance(b, list) else []):
+        if c.get("id") == group_id:
+            group_in_list = c
+            break
+    has_avatar_in_list = group_in_list is not None and group_in_list.get("avatar_url") is not None
+    check("GET /chats -> group has avatar_url", s == 200 and has_avatar_in_list,
+          "avatar_url=" + str(group_in_list.get("avatar_url", ""))[:60] if group_in_list else "group not found")
+
+    # Verify avatar_url in GET /chats/{id}
+    s, b = req("GET", "/chats/" + str(group_id), token=token)
+    has_avatar_detail = isinstance(b, dict) and b.get("avatar_url") is not None
+    check("GET /chats/{id} -> has avatar_url", s == 200 and has_avatar_detail,
+          "avatar_url=" + str(b.get("avatar_url", ""))[:60] if isinstance(b, dict) else "status=" + str(s))
+
+    # Verify member_count in GET /chats
+    has_member_count = group_in_list is not None and isinstance(group_in_list.get("member_count"), int) and group_in_list["member_count"] > 0
+    check("GET /chats -> group has member_count", has_member_count,
+          "member_count=" + str(group_in_list.get("member_count")) if group_in_list else "group not found")
+else:
+    check("POST /chats/{id}/avatar -> 200", False, "no group or file")
+    check("GET /chats -> group has avatar_url", False, "skipped")
+    check("GET /chats/{id} -> has avatar_url", False, "skipped")
+    check("GET /chats -> group has member_count", False, "skipped")
+
 # ── 13. Metrics ────────────────────────────────────────────────────────────
 print("\n[13] Metrics")
 try:
