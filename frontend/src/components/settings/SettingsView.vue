@@ -32,6 +32,10 @@
 
         <!-- Appearance -->
         <div class="settings-group">
+          <div class="settings-section-title">
+            <Palette :size="18" :stroke-width="1.8" />
+            <span>Appearance</span>
+          </div>
           <div class="menu-item menu-item--setting">
             <Palette class="menu-item__icon" :size="24" :stroke-width="1.8" />
             <span class="menu-item__label">Theme</span>
@@ -44,29 +48,18 @@
 
         <div class="settings-divider" />
 
-        <!-- Night Mode toggle (Telegram-style) -->
-        <div class="settings-group">
-          <div class="menu-item menu-item--toggle" @click="toggleNightMode">
-            <Moon class="menu-item__icon" :size="24" :stroke-width="1.8" />
-            <span class="menu-item__label">Night Mode</span>
-            <span
-              class="toggle-switch"
-              :class="{ 'toggle-switch--on': theme === 'dark' }"
-              role="switch"
-              :aria-checked="theme === 'dark'"
-            >
-              <span class="toggle-switch__thumb" />
-            </span>
-          </div>
-        </div>
-
-        <div class="settings-divider" />
-
         <!-- Notifications -->
         <div class="settings-group">
+          <div class="settings-section-title">
+            <Bell :size="18" :stroke-width="1.8" />
+            <span>Notifications</span>
+          </div>
           <div class="menu-item menu-item--toggle" @click="notifications = !notifications">
             <Bell class="menu-item__icon" :size="24" :stroke-width="1.8" />
             <span class="menu-item__label">Notifications</span>
+            <span class="toggle-status" :class="{ 'toggle-status--on': notifications }">
+              {{ notifications ? 'Enabled' : 'Disabled' }}
+            </span>
             <span
               class="toggle-switch"
               :class="{ 'toggle-switch--on': notifications }"
@@ -82,6 +75,10 @@
 
         <!-- Language -->
         <div class="settings-group">
+          <div class="settings-section-title">
+            <Globe :size="18" :stroke-width="1.8" />
+            <span>Language</span>
+          </div>
           <div class="menu-item menu-item--setting">
             <Globe class="menu-item__icon" :size="24" :stroke-width="1.8" />
             <span class="menu-item__label">Language</span>
@@ -97,7 +94,10 @@
 
         <!-- Privacy -->
         <div class="settings-group">
-          <h4 class="form-section-heading">Privacy</h4>
+          <div class="settings-section-title">
+            <Eye :size="18" :stroke-width="1.8" />
+            <span>Privacy</span>
+          </div>
           <div class="menu-item menu-item--setting">
             <component
               :is="lastSeenVisibility === 'nobody' ? EyeOff : Eye"
@@ -139,7 +139,6 @@ import {
   Globe,
   Eye,
   EyeOff,
-  Moon,
 } from 'lucide-vue-next'
 
 const emit = defineEmits<{ close: [] }>()
@@ -169,10 +168,6 @@ onMounted(() => {
   language.value = settingsStore.language
   lastSeenVisibility.value = settingsStore.lastSeenVisibility
 })
-
-function toggleNightMode() {
-  theme.value = theme.value === 'dark' ? 'light' : 'dark'
-}
 
 async function saveSettings() {
   try {
@@ -234,9 +229,32 @@ async function saveSettings() {
   padding: 0.25rem 0;
 }
 
-.settings-group .form-section-heading {
-  padding: 0.25rem 0 0;
-  margin: 0 0 0.25rem;
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.25rem 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted, var(--text-secondary));
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.settings-section-title svg {
+  flex-shrink: 0;
+  color: var(--text-muted, var(--text-secondary));
+}
+
+.toggle-status {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-right: 0.25rem;
+}
+
+.toggle-status--on {
+  color: var(--accent, var(--primary));
 }
 
 .menu-item--setting,

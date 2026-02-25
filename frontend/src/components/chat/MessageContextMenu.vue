@@ -219,13 +219,14 @@ function handleDelete() {
   position: fixed;
   z-index: 9999;
   min-width: 180px;
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--ctx-menu-bg);
+  border: 1px solid var(--ctx-menu-border);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--ctx-menu-shadow);
   padding: 4px 0;
   display: flex;
   flex-direction: column;
+  animation: ctx-menu-in var(--transition-fast) ease;
 }
 
 .ctx-item {
@@ -236,13 +237,13 @@ function handleDelete() {
   background: none;
   text-align: left;
   font-size: 14px;
-  color: var(--text-primary, #333);
+  color: var(--ctx-menu-text);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .ctx-item:hover:not(:disabled) {
-  background: var(--bg-hover, #f0f0f0);
+  background: var(--ctx-menu-hover);
 }
 
 .ctx-item:disabled {
@@ -251,6 +252,6 @@ function handleDelete() {
 }
 
 .ctx-delete {
-  color: var(--danger, #e53935);
+  color: var(--danger);
 }
 </style>

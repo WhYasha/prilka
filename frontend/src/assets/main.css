@@ -66,6 +66,13 @@ textarea, input, select { font-family: inherit; }
   --settings-row-hover:    rgba(0,0,0,.04);
   --profile-header-bg:     var(--sidebar-bg);
   --profile-cover-gradient:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.45) 100%);
+
+  /* ── Context menu tokens ────────────────────────────────── */
+  --ctx-menu-bg:           var(--surface);
+  --ctx-menu-text:         var(--text);
+  --ctx-menu-hover:        var(--input-bg);
+  --ctx-menu-border:       var(--border);
+  --ctx-menu-shadow:       0 4px 20px rgba(0,0,0,.15);
 }
 
 /* ── Dark mode tokens ───────────────────────────────────────── */
@@ -110,6 +117,13 @@ textarea, input, select { font-family: inherit; }
   --settings-row-hover:    rgba(255,255,255,.06);
   --profile-header-bg:     var(--sidebar-bg);
   --profile-cover-gradient:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.6) 100%);
+
+  /* ── Context menu tokens (dark) ─────────────────────────── */
+  --ctx-menu-bg:           var(--surface);
+  --ctx-menu-text:         var(--text);
+  --ctx-menu-hover:        var(--input-bg);
+  --ctx-menu-border:       var(--border);
+  --ctx-menu-shadow:       0 4px 20px rgba(0,0,0,.4);
 }
 
 /* ── Animation keyframes ────────────────────────────────────── */
@@ -130,6 +144,40 @@ textarea, input, select { font-family: inherit; }
 @keyframes profileSlideIn {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Typing indicator bounce ────────────────────────────────── */
+@keyframes typing-dot-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+/* ── Message send entrance ──────────────────────────────────── */
+@keyframes msg-send-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* ── Message delete exit ────────────────────────────────────── */
+@keyframes msg-delete-out {
+  from { opacity: 1; max-height: 200px; }
+  to   { opacity: 0; max-height: 0; }
+}
+
+/* ── Context menu appear ────────────────────────────────────── */
+@keyframes ctx-menu-in {
+  from { transform: scale(.95); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* ── Message row animation classes ──────────────────────────── */
+.msg-row.msg-deleting {
+  animation: msg-delete-out .3s ease forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+.msg-row.msg-new {
+  animation: msg-send-in var(--transition-normal) ease;
 }
 
 html, body { height: 100%; }
@@ -166,10 +214,11 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   padding: .65rem 1.25rem; border: none; border-radius: 8px;
   font-size: 1rem; font-weight: 600;
-  cursor: pointer; transition: background .15s, opacity .15s;
+  cursor: pointer; transition: background .15s, opacity .15s, transform var(--transition-fast);
 }
+.btn:active { transform: scale(0.97); }
 .btn-primary  { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-dark); }
+.btn-primary:hover { background: var(--accent-dark); transform: translateY(-1px); }
 .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
 .btn-full     { width: 100%; margin-top: .5rem; }
 .btn-outline  { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); border-radius: 8px; }
@@ -185,10 +234,11 @@ body {
   display: inline-flex; align-items: center; justify-content: center;
   background: none; border: none; border-radius: 50%;
   font-size: 1.15rem; color: var(--sidebar-txt);
-  cursor: pointer; transition: background .15s, color .15s;
+  cursor: pointer; transition: background .15s, color .15s, transform var(--transition-fast);
   flex-shrink: 0;
 }
 .icon-btn:hover { background: var(--sidebar-hover); color: var(--sidebar-txt-d); }
+.icon-btn:active { transform: scale(0.97); }
 
 /* ── Alerts ─────────────────────────────────────────────────── */
 .alert { padding: .75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: .9rem; }
@@ -224,11 +274,17 @@ body {
 }
 .drawer.open { transform: translateX(0); }
 .drawer-overlay {
-  display: none; position: fixed; inset: 0; z-index: 199;
+  position: fixed; inset: 0; z-index: 199;
   background: var(--modal-backdrop);
-  opacity: 0; transition: opacity var(--transition-normal) ease;
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transition: opacity var(--transition-normal) ease,
+              visibility 0s linear var(--transition-normal);
 }
-.drawer-overlay.visible { display: block; opacity: 1; }
+.drawer-overlay.visible {
+  visibility: visible; opacity: 1; pointer-events: auto;
+  transition: opacity var(--transition-normal) ease,
+              visibility 0s linear 0s;
+}
 
 .drawer-header {
   display: flex; align-items: center; gap: .5rem;
@@ -270,15 +326,29 @@ body {
 
 /* ── Sidebar resize handle ─────────────────────────────────── */
 .resize-handle {
-  width: 6px; flex-shrink: 0;
+  width: 8px; flex-shrink: 0;
   cursor: col-resize;
   background: transparent;
   position: relative;
   z-index: 10;
-  transition: background .15s;
 }
-.resize-handle:hover,
-.resize-handle:active {
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: var(--border);
+  opacity: .3;
+  transition: opacity var(--transition-fast) ease, background var(--transition-fast) ease;
+}
+.resize-handle:hover::after {
+  opacity: .7;
+  background: var(--accent);
+}
+.resize-handle:active::after {
+  opacity: 1;
   background: var(--accent);
 }
 
@@ -536,6 +606,7 @@ body {
 .emoji-pick-btn {
   width: 36px; height: 36px; background: none; border: none;
   border-radius: 8px; font-size: 1.25rem; cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast);
 }
 .emoji-pick-btn:hover { background: var(--input-bg); transform: scale(1.15); }
 
@@ -589,7 +660,7 @@ body {
 
 .composer-btn { color: var(--text-muted); }
 .send-btn { color: var(--accent); }
-.send-btn:hover { background: rgba(43,154,243,.1); color: var(--accent-dark); }
+.send-btn:hover { background: rgba(43,154,243,.1); color: var(--accent-dark); transform: translateY(-1px); }
 .record-btn.recording { color: var(--danger); animation: pulse 1s infinite; }
 
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
@@ -1027,21 +1098,24 @@ body {
 /* ── Context menu ───────────────────────────────────────────── */
 .context-menu {
   position: fixed; z-index: 9999;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--ctx-menu-bg);
+  border: 1px solid var(--ctx-menu-border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  box-shadow: var(--ctx-menu-shadow);
   min-width: 160px; overflow: hidden;
+  animation: ctx-menu-in var(--transition-fast) ease;
+  transform-origin: top left;
 }
 .ctx-item {
   display: flex; align-items: center; gap: .5rem;
   width: 100%; padding: .65rem 1rem;
   background: none; border: none;
-  font-size: .9rem; color: var(--text);
+  font-size: .9rem; color: var(--ctx-menu-text);
   cursor: pointer; text-align: left;
-  transition: background .1s;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
 }
-.ctx-item:hover { background: var(--input-bg); }
+.ctx-item:hover { background: var(--ctx-menu-hover); }
+.ctx-item:active { transform: scale(0.97); }
 .ctx-leave { color: var(--danger); }
 .ctx-delete { color: var(--danger); }
 
@@ -1166,6 +1240,7 @@ body {
   box-shadow: 0 8px 24px rgba(0,0,0,.18);
   min-width: 180px; overflow: hidden;
   padding: 4px 0;
+  animation: ctx-menu-in var(--transition-fast) ease;
 }
 .msg-context-menu-item {
   display: flex; align-items: center; gap: .6rem;
@@ -2008,4 +2083,14 @@ body {
   color: var(--text-muted); font-size: .85rem;
   text-align: center;
   display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Reduced motion preference ──────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -37,7 +37,7 @@ function close() {
 }
 
 .bottom-sheet {
-  background: var(--color-bg-primary, #fff);
+  background: var(--surface);
   border-radius: 16px 16px 0 0;
   width: 100%;
   max-width: 480px;
@@ -51,7 +51,7 @@ function close() {
   width: 36px;
   height: 4px;
   border-radius: 2px;
-  background: var(--color-border, #ccc);
+  background: var(--border);
   margin: 0 auto 12px;
 }
 

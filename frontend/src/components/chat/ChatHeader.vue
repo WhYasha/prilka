@@ -11,7 +11,7 @@
     />
     <div class="chat-header-info" @click="handleProfileClick">
       <div class="chat-header-name">{{ displayName }}</div>
-      <div v-if="subtitle" class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}</div>
+      <div v-if="subtitle" class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}<span v-if="isTyping" class="typing-dots"><span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" /></span></div>
     </div>
     <button class="icon-btn search-btn" aria-label="Search messages" @click="emit('openSearch')">&#128269;</button>
   </header>
@@ -73,10 +73,10 @@ const isOnline = computed(() => {
 
 const subtitle = computed(() => {
   if (typingNames.value.length === 1) {
-    return `${typingNames.value[0]} is typing...`
+    return `${typingNames.value[0]} is typing`
   }
   if (typingNames.value.length > 1) {
-    return `${typingNames.value.length} people typing...`
+    return `${typingNames.value.length} people typing`
   }
 
   const c = chat.value
@@ -142,3 +142,27 @@ function handleProfileClick() {
   }
 }
 </script>
+
+<style scoped>
+.typing-dots {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 2px;
+}
+
+.typing-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: typing-dot-bounce .6s infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: .15s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: .3s;
+}
+</style>

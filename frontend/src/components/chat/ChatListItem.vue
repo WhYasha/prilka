@@ -22,8 +22,8 @@
       <div class="chat-item-info">
         <div class="chat-item-top">
           <span class="chat-item-name">
-            <Megaphone v-if="chat.type === 'channel'" class="chat-type-icon" :size="16" :stroke-width="1.8" />
-            <Users v-else-if="chat.type === 'group'" class="chat-type-icon" :size="16" :stroke-width="1.8" />
+            <Megaphone v-if="chat.type === 'channel'" class="chat-type-icon" :size="14" :stroke-width="2" />
+            <Users v-else-if="chat.type === 'group'" class="chat-type-icon" :size="14" :stroke-width="2" />
             {{ displayName }}
             <Pin v-if="chat.is_pinned" class="status-icon" :size="14" :stroke-width="1.8" title="Pinned" />
             <BellOff v-if="chat.is_muted" class="status-icon status-icon-muted" :size="14" :stroke-width="1.8" title="Muted" />
@@ -211,7 +211,7 @@ function onTouchEnd() {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -226,7 +226,9 @@ function onTouchEnd() {
 
 .chat-type-icon {
   flex-shrink: 0;
-  color: var(--text-muted, #999);
+  color: var(--accent, var(--color-primary, #3390ec));
+  opacity: 0.65;
+  align-self: center;
 }
 
 .status-icon {

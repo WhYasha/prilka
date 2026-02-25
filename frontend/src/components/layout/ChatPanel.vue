@@ -158,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, inject, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, inject, provide, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatsStore } from '@/stores/chats'
 import { useMessagesStore } from '@/stores/messages'
@@ -208,6 +208,10 @@ const isRecording = ref(false)
 const myRole = ref<string>('member')
 const channelInfoModalOpen = ref(false)
 const searchMode = ref(false)
+
+// Message send animation
+const lastSentMessageId = ref<number | null>(null)
+provide('lastSentMessageId', lastSentMessageId)
 
 // New messages indicator state
 const isNearBottom = ref(true)
@@ -455,6 +459,8 @@ async function handleSendText(content: string, replyTo?: { messageId: number; se
       msg.sender_username = authStore.user.username
       msg.sender_display_name = authStore.user.display_name
     }
+    lastSentMessageId.value = msg.id
+    setTimeout(() => { if (lastSentMessageId.value === msg.id) lastSentMessageId.value = null }, 500)
     await nextTick()
     scrollToBottom()
     chatsStore.loadChats()
@@ -485,6 +491,8 @@ async function handleSendSticker(stickerId: number) {
       msg.sticker_url = localSticker.url
       msg.sticker_label = localSticker.label
     }
+    lastSentMessageId.value = msg.id
+    setTimeout(() => { if (lastSentMessageId.value === msg.id) lastSentMessageId.value = null }, 500)
     await nextTick()
     scrollToBottom()
     chatsStore.loadChats()
