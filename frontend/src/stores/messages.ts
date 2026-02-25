@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import * as messagesApi from '@/api/messages'
 import * as reactionsApi from '@/api/reactions'
 import type { Message } from '@/api/types'
@@ -12,6 +12,18 @@ export const useMessagesStore = defineStore('messages', () => {
   // Pinned message state
   const pinnedByChat = ref<Record<number, { message: Message; pinnedAt: string; pinnedBy: number } | null>>({})
   const pinnedDismissed = ref<Set<number>>(new Set())
+
+  // Animated deletion state
+  const deletingMessages = reactive(new Set<number>())
+
+  function markForDeletion(messageId: number): Promise<void> {
+    deletingMessages.add(messageId)
+    return new Promise((resolve) => setTimeout(resolve, 300))
+  }
+
+  function isDeleting(messageId: number): boolean {
+    return deletingMessages.has(messageId)
+  }
 
   async function loadReactions(chatId: number) {
     const msgs = messagesByChat.value[chatId]
@@ -196,11 +208,14 @@ export const useMessagesStore = defineStore('messages', () => {
 
   async function deleteMessage(chatId: number, messageId: number) {
     try {
+      await markForDeletion(messageId)
       await messagesApi.deleteMessage(chatId, messageId)
       removeMessage(chatId, messageId)
     } catch (e) {
       console.error('Failed to delete message', e)
       throw e
+    } finally {
+      deletingMessages.delete(messageId)
     }
   }
 
@@ -331,5 +346,8 @@ export const useMessagesStore = defineStore('messages', () => {
     applyMessagePinned,
     applyMessageUnpinned,
     dismissPin,
+    deletingMessages,
+    markForDeletion,
+    isDeleting,
   }
 })
