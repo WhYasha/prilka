@@ -206,10 +206,10 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
-  async function deleteMessage(chatId: number, messageId: number) {
+  async function deleteMessage(chatId: number, messageId: number, forEveryone = false) {
     try {
       await markForDeletion(messageId)
-      await messagesApi.deleteMessage(chatId, messageId)
+      await messagesApi.deleteMessage(chatId, messageId, forEveryone)
       removeMessage(chatId, messageId)
     } catch (e) {
       console.error('Failed to delete message', e)
