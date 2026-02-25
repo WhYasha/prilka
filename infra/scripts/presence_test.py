@@ -129,12 +129,28 @@ async def close_and_settle(ws, settle=3):
     await asyncio.sleep(settle)
 
 
+async def prime_redis_pipeline(ws, chat_id, timeout=5):
+    """Send a typing indicator and wait for it to round-trip through Redis.
+    This ensures the Redis subscriber is fully active before real tests."""
+    await ws.send(json.dumps({"type": "typing", "chat_id": chat_id}))
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            return False
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+            m = json.loads(raw)
+            if m.get("type") == "typing":
+                return True
+        except asyncio.TimeoutError:
+            return False
+
+
 async def run_tests():
     import websockets
 
     # ── Warmup: actively flush stale connections from prior tests ─────
-    # Connecting + disconnecting both users forces the server to prune any
-    # stale entries in s_userConns and process all pending Redis broadcasts.
     print("\n[0] Warmup: flushing stale connections")
     try:
         wf_a = await websockets.connect(WS, open_timeout=5)
@@ -148,11 +164,9 @@ async def run_tests():
         await wf_a.close()
     except Exception as e:
         print(f"  Warmup error (non-fatal): {e}")
-    # Wait for server to fully process disconnects + Redis propagation
     await asyncio.sleep(3)
 
-    # ── Test 1: Connect with active=true -> online broadcast ─────────
-    print("\n[1] Connect with active=true")
+    # ── Setup: connect A, subscribe, prime Redis pipeline ─────────
     ws_a = await websockets.connect(WS, open_timeout=5)
     await ws_a.send(json.dumps({"type": "auth", "token": token_a}))
     r = json.loads(await asyncio.wait_for(ws_a.recv(), timeout=3))
@@ -161,12 +175,19 @@ async def run_tests():
     await asyncio.wait_for(ws_a.recv(), timeout=3)  # subscribed
     await drain(ws_a)
 
-    # User B connects with active=true (default)
+    # Prime the Redis pub/sub pipeline — ensures the subscriber is fully
+    # active before we rely on it for presence broadcasts.
+    primed = await prime_redis_pipeline(ws_a, chat_id)
+    print(f"  Redis pipeline primed: {primed}")
+    await drain(ws_a)
+
+    # ── Test 1: Connect with active=true -> online broadcast ─────────
+    print("\n[1] Connect with active=true")
     ws_b = await websockets.connect(WS, open_timeout=5)
     await ws_b.send(json.dumps({"type": "auth", "token": token_b, "active": True}))
     await asyncio.wait_for(ws_b.recv(), timeout=3)  # auth_ok
 
-    ok, status = await recv_presence(ws_a, user_b_id, "online")
+    ok, status = await recv_presence(ws_a, user_b_id, "online", timeout=8)
     check("User B connects active=true -> A sees online", ok, f"status={status}")
     await close_and_settle(ws_b)
     await drain(ws_a, timeout=2)    # consume the offline + any stragglers
@@ -178,15 +199,15 @@ async def run_tests():
     await ws_b.send(json.dumps({"type": "auth", "token": token_b, "active": False}))
     await asyncio.wait_for(ws_b.recv(), timeout=3)  # auth_ok
 
-    # Read ALL messages for 3s — none should be an online presence for B
     ok, detail = await expect_no_presence(ws_a, user_b_id, "online")
     check("User B connects active=false -> A does NOT see online", ok, detail)
 
     # ── Test 3: Send presence_update active -> online broadcast ──────
     print("\n[3] presence_update: away -> active")
     await drain(ws_a)
+    await asyncio.sleep(0.5)
     await ws_b.send(json.dumps({"type": "presence_update", "status": "active"}))
-    ok, status = await recv_presence(ws_a, user_b_id, "online")
+    ok, status = await recv_presence(ws_a, user_b_id, "online", timeout=8)
     check("User B sends active -> A sees online", ok, f"status={status}")
 
     # ── Test 4: Send presence_update away -> offline broadcast ───────
