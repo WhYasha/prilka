@@ -635,6 +635,39 @@ void ChatsController::unarchiveChat(const drogon::HttpRequestPtr& req,
         }, me, chatId);
 }
 
+// DELETE /chats/{id} — delete chat permanently (owner only)
+void ChatsController::deleteChat(const drogon::HttpRequestPtr& req,
+                                  std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                  long long chatId) {
+    long long me = req->getAttributes()->get<long long>("user_id");
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(
+        "SELECT cm.role FROM chat_members cm WHERE cm.chat_id = $1 AND cm.user_id = $2",
+        [cb, chatId](const drogon::orm::Result& r) mutable {
+            if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
+            std::string role = r[0]["role"].as<std::string>();
+            if (role != "owner")
+                return cb(jsonErr("Only the chat owner can delete it", drogon::k403Forbidden));
+
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "DELETE FROM chats WHERE id = $1",
+                [cb](const drogon::orm::Result&) mutable {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k204NoContent);
+                    cb(resp);
+                },
+                [cb](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "deleteChat: " << e.base().what();
+                    cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                }, chatId);
+        },
+        [cb](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "deleteChat: " << e.base().what();
+            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+        }, me, chatId);
+}
+
 // PATCH /chats/{id} — update title, description, public_name (owner/admin only)
 void ChatsController::updateChat(const drogon::HttpRequestPtr& req,
                                   std::function<void(const drogon::HttpResponsePtr&)>&& cb,
