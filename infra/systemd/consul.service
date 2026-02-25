@@ -14,7 +14,7 @@ TimeoutStartSec=120
 TimeoutStopSec=30
 
 ExecStartPre=-/usr/bin/docker rm -f messenger-consul
-ExecStartPre=/usr/bin/docker network create messenger_net 2>/dev/null || true
+ExecStartPre=-/usr/bin/docker network create messenger_net
 
 ExecStart=/usr/bin/docker run --rm \
     --name messenger-consul \
