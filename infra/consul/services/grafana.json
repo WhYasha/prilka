@@ -1,0 +1,13 @@
+{
+  "service": {
+    "name": "grafana",
+    "port": 3000,
+    "tags": ["messenger", "monitoring", "dashboard"],
+    "check": {
+      "http": "http://grafana:3000/api/health",
+      "interval": "15s",
+      "timeout": "5s",
+      "deregister_critical_service_after": "30m"
+    }
+  }
+}

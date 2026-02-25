@@ -59,6 +59,24 @@ systemctl enable docker
 systemctl start docker
 log "Docker version: $(docker --version)"
 
+# ── 3b. Install HashiCorp tools (Vault, Consul, Nomad CLI) ───────────────────
+log "Installing HashiCorp repository..."
+curl -fsSL https://apt.releases.hashicorp.com/gpg \
+    | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+    https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+    > /etc/apt/sources.list.d/hashicorp.list
+apt-get update -qq
+apt-get install -y vault consul nomad
+log "Vault version:  $(vault --version)"
+log "Consul version: $(consul --version)"
+log "Nomad version:  $(nomad --version)"
+
+# ── 3c. Install certbot for TLS certificates ─────────────────────────────────
+log "Installing certbot..."
+apt-get install -y certbot
+log "Certbot version: $(certbot --version 2>&1)"
+
 # ── 4. Create deploy user ──────────────────────────────────────────────────────
 log "Creating user '${DEPLOY_USER}'..."
 if id "${DEPLOY_USER}" &>/dev/null; then
@@ -116,7 +134,7 @@ ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp   comment 'SSH'
 ufw allow 80/tcp   comment 'HTTP'
-# ufw allow 443/tcp comment 'HTTPS (enable when TLS ready)'
+ufw allow 443/tcp  comment 'HTTPS'
 ufw --force enable
 ufw status verbose
 
@@ -180,9 +198,19 @@ log "NEXT STEPS:"
 log "  1. Edit ${APP_DIR}/env/.env with real secrets"
 log "  2. Verify deploy user SSH login from another terminal:"
 log "       ssh deploy@<SERVER_IP>"
-log "  3. Start the stack:"
+log "  3. Create DNS A records for subdomains:"
+log "       api.behappy.rest, ws.behappy.rest, grafana.behappy.rest,"
+log "       minio-console.behappy.rest, downloads.behappy.rest"
+log "  4. Obtain wildcard TLS certificate:"
+log "       certbot certonly --manual --preferred-challenges dns"
+log "         -d behappy.rest -d '*.behappy.rest'"
+log "  5. Initialize Vault (one-time):"
+log "       docker compose up -d vault"
+log "       bash infra/vault/init.sh"
+log "  6. Start the stack:"
 log "       systemctl start messenger"
-log "  4. Check status:"
+log "  7. Check status:"
 log "       systemctl status messenger"
 log "       docker ps"
+log "       curl https://api.behappy.rest/health"
 log "============================================================"

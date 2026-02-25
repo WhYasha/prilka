@@ -1,0 +1,13 @@
+{
+  "service": {
+    "name": "minio",
+    "port": 9000,
+    "tags": ["messenger", "storage", "s3"],
+    "check": {
+      "http": "http://minio:9000/minio/health/live",
+      "interval": "15s",
+      "timeout": "10s",
+      "deregister_critical_service_after": "30m"
+    }
+  }
+}

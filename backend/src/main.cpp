@@ -168,10 +168,23 @@ int main(int argc, char* argv[]) {
     );
 
     // ── CORS support for SPA cross-origin requests ─────────────────────────
+    // Allows requests from the main domain and all subdomains (api., ws., etc.)
     drogon::app().registerPostHandlingAdvice(
         [](const drogon::HttpRequestPtr& req,
            const drogon::HttpResponsePtr& resp) {
-            resp->addHeader("Access-Control-Allow-Origin", "*");
+            const auto& origin = req->getHeader("Origin");
+            // Allow behappy.rest and all *.behappy.rest subdomains, plus localhost for dev
+            if (origin.empty() ||
+                origin == "https://behappy.rest" ||
+                origin == "http://behappy.rest" ||
+                (origin.size() > 13 && origin.substr(origin.size() - 13) == ".behappy.rest") ||
+                origin.find("localhost") != std::string::npos) {
+                resp->addHeader("Access-Control-Allow-Origin",
+                                origin.empty() ? "*" : origin);
+                resp->addHeader("Access-Control-Allow-Credentials", "true");
+            } else {
+                resp->addHeader("Access-Control-Allow-Origin", "https://behappy.rest");
+            }
             resp->addHeader("Access-Control-Allow-Methods",
                             "GET, POST, PUT, PATCH, DELETE, OPTIONS");
             resp->addHeader("Access-Control-Allow-Headers",

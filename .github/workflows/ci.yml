@@ -122,6 +122,9 @@ jobs:
     runs-on: [self-hosted, linux, x64, docker]
     env:
       COMPOSE_PROJECT_NAME: ci-smoke-${{ github.run_id }}
+      # Smoke test env overrides (CI talks directly to api_cpp, no APISIX)
+      SMOKE_API_URL: http://localhost:8080
+      SMOKE_WS_URL: ws://localhost:8080/ws
     steps:
       - uses: actions/checkout@v4
 

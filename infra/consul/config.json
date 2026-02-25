@@ -1,0 +1,19 @@
+{
+  "server": true,
+  "bootstrap_expect": 1,
+  "data_dir": "/consul/data",
+  "ui_config": {
+    "enabled": true
+  },
+  "client_addr": "0.0.0.0",
+  "bind_addr": "0.0.0.0",
+  "log_level": "INFO",
+  "enable_local_script_checks": true,
+  "dns_config": {
+    "allow_stale": true,
+    "max_stale": "30s"
+  },
+  "performance": {
+    "raft_multiplier": 1
+  }
+}

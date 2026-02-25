@@ -13,6 +13,9 @@ volumes:
   minio_data:
   prometheus_data:
   grafana_data:
+  vault_data:
+  consul_data:
+  nomad_data:
 
 services:
 
@@ -255,3 +258,98 @@ services:
   #   command:
   #     - "--housekeeping_interval=15s"
   #     - "--docker_only=true"
+
+  # ──────────────────────────────────────────────────────────
+  # Apache APISIX – API Gateway (standalone YAML mode)
+  # Replaces nginx; config in infra/apisix/
+  # ──────────────────────────────────────────────────────────
+  apisix:
+    image: apache/apisix:3.15.0-debian
+    restart: unless-stopped
+    volumes:
+      - ./infra/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./infra/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    ports:
+      - "9080:9080"    # HTTP  (dev)
+      - "9443:9443"    # HTTPS (dev)
+    depends_on:
+      - api_cpp
+      - grafana
+      - minio
+    networks:
+      - messenger_net
+
+  # ──────────────────────────────────────────────────────────
+  # HashiCorp Vault – Secrets Management
+  # UI: http://localhost:8200/ui
+  # ──────────────────────────────────────────────────────────
+  vault:
+    image: hashicorp/vault:1.15
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: "http://0.0.0.0:8200"
+      VAULT_API_ADDR: "http://vault:8200"
+    volumes:
+      - vault_data:/vault/data
+      - ./infra/vault/config.hcl:/vault/config/config.hcl:ro
+      - ./infra/vault/policies:/vault/policies:ro
+    command: vault server -config=/vault/config/config.hcl
+    ports:
+      - "8200:8200"
+    networks:
+      - messenger_net
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────────────
+  # HashiCorp Consul – Service Discovery + KV
+  # UI: http://localhost:8500/ui
+  # ──────────────────────────────────────────────────────────
+  consul:
+    image: hashicorp/consul:1.17
+    restart: unless-stopped
+    volumes:
+      - consul_data:/consul/data
+      - ./infra/consul/config.json:/consul/config/config.json:ro
+      - ./infra/consul/services:/consul/config/services:ro
+    command: consul agent -config-dir=/consul/config
+    ports:
+      - "8500:8500"    # HTTP API + UI
+      - "8600:8600/udp" # DNS
+    networks:
+      - messenger_net
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────────────────────
+  # HashiCorp Nomad – Container Orchestration
+  # UI: http://localhost:4646/ui
+  # NOTE: disabled by default in dev. Enable in prod via
+  # docker-compose.prod.yml or run Nomad natively on the host.
+  # ──────────────────────────────────────────────────────────
+  # nomad:
+  #   image: hashicorp/nomad:1.7
+  #   restart: unless-stopped
+  #   cap_add:
+  #     - SYS_ADMIN
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - nomad_data:/nomad/data
+  #     - ./infra/nomad/config.hcl:/nomad/config.hcl:ro
+  #   command: nomad agent -config=/nomad/config.hcl
+  #   ports:
+  #     - "4646:4646"
+  #   networks:
+  #     - messenger_net
+  #   depends_on:
+  #     - consul
+  #     - vault
