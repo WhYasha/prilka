@@ -403,6 +403,7 @@ job "messenger" {
 
     task "prometheus" {
       driver = "docker"
+      user   = "root"
 
       volume_mount {
         volume      = "prometheus_config"
@@ -447,6 +448,7 @@ job "messenger" {
 
     task "grafana" {
       driver = "docker"
+      user   = "root"
 
       vault {
         role = "nomad-workloads"
