@@ -1095,22 +1095,23 @@ body {
 /* ── Context menu ───────────────────────────────────────────── */
 .context-menu {
   position: fixed; z-index: 9999;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--ctx-menu-bg);
+  border: 1px solid var(--ctx-menu-border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  box-shadow: var(--ctx-menu-shadow);
   min-width: 160px; overflow: hidden;
   animation: ctx-menu-in var(--transition-fast) ease;
+  transform-origin: top left;
 }
 .ctx-item {
   display: flex; align-items: center; gap: .5rem;
   width: 100%; padding: .65rem 1rem;
   background: none; border: none;
-  font-size: .9rem; color: var(--text);
+  font-size: .9rem; color: var(--ctx-menu-text);
   cursor: pointer; text-align: left;
   transition: background .1s;
 }
-.ctx-item:hover { background: var(--input-bg); }
+.ctx-item:hover { background: var(--ctx-menu-hover); }
 .ctx-leave { color: var(--danger); }
 .ctx-delete { color: var(--danger); }
 
