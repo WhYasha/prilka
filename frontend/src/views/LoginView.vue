@@ -1,9 +1,14 @@
 <template>
-  <div class="auth-page">
-    <div class="auth-card">
-      <div class="auth-logo">&#128172;</div>
-      <h1 class="auth-title">Simple Messenger</h1>
-      <p class="auth-subtitle">Sign in to your account</p>
+  <div :class="['auth-page', { 'admin-login-page': isAdminHost }]">
+    <div :class="['auth-card', { 'admin-login-card': isAdminHost }]">
+      <div v-if="isAdminHost" class="admin-login-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <div v-else class="auth-logo">&#128172;</div>
+      <h1 class="auth-title">{{ isAdminHost ? 'Admin Panel' : 'Simple Messenger' }}</h1>
+      <p class="auth-subtitle">{{ isAdminHost ? 'Authorized personnel only' : 'Sign in to your account' }}</p>
 
       <div v-if="error" class="alert alert-error">{{ error }}</div>
 
@@ -34,12 +39,12 @@
             required
           />
         </div>
-        <button type="submit" class="btn btn-primary btn-full" :disabled="loading">
+        <button type="submit" :class="['btn', 'btn-full', isAdminHost ? 'btn-admin' : 'btn-primary']" :disabled="loading">
           {{ loading ? 'Signing in...' : 'Sign in' }}
         </button>
       </form>
 
-      <p class="auth-footer">
+      <p v-if="!isAdminHost" class="auth-footer">
         No account? <router-link to="/register">Register</router-link>
       </p>
     </div>
@@ -65,7 +70,12 @@ async function handleLogin() {
   error.value = ''
   loading.value = true
   try {
-    await authStore.login(username.value.trim(), password.value)
+    await authStore.login(username.value.trim(), password.value.trim())
+    if (isAdminHost && !authStore.isAdmin) {
+      authStore.logout()
+      error.value = 'Access denied. Admin privileges required.'
+      return
+    }
     router.push(isAdminHost ? '/admin' : '/app')
   } catch (e: unknown) {
     const err = e as { response?: { data?: { error?: string } } }

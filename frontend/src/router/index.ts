@@ -126,7 +126,10 @@ router.beforeEach(async (to) => {
   // Admin routes
   if (to.meta.admin) {
     if (!authStore.isLoggedIn) return '/login'
-    if (!authStore.isAdmin) return '/app'
+    if (!authStore.isAdmin) {
+      authStore.logout()
+      return '/login'
+    }
   }
 })
 

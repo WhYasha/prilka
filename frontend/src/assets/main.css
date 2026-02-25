@@ -254,6 +254,33 @@ body {
 .auth-footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
 .auth-footer a:hover { text-decoration: underline; }
 
+/* ── Admin Login ───────────────────────────────────────────── */
+.admin-login-page { background: #1a1f2e; }
+.admin-login-card {
+  background: #232838;
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+.admin-login-card .auth-title { color: #e8eaed; }
+.admin-login-card .auth-subtitle { color: #8892a4; }
+.admin-login-card label { color: #b0b8c4; }
+.admin-login-card input {
+  background: #1a1f2e; color: #e8eaed; border: 1px solid rgba(255,255,255,.12);
+}
+.admin-login-card input::placeholder { color: #555d6e; }
+.admin-login-card input:focus { border-color: #6366f1; outline: none; box-shadow: 0 0 0 2px rgba(99,102,241,.25); }
+.admin-login-card .alert-error { background: rgba(239,68,68,.15); color: #fca5a5; border: 1px solid rgba(239,68,68,.3); }
+.admin-login-icon {
+  text-align: center; margin-bottom: .5rem; color: #6366f1;
+}
+.btn-admin {
+  background: #6366f1; color: #fff; border: none; border-radius: 8px;
+  font-size: 1rem; font-weight: 600; padding: .65rem 1.25rem;
+  transition: background .15s;
+}
+.btn-admin:hover { background: #5558e6; }
+.btn-admin:disabled { opacity: .5; cursor: not-allowed; }
+
 /* ── Buttons ────────────────────────────────────────────────── */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
