@@ -96,71 +96,39 @@ routes:
             X-Frame-Options: SAMEORIGIN
 
   # ========================================================================
-  # Backward-compat proxies — /api/* and /ws on behappy.rest
-  # These keep the app working until subdomain DNS is set up.
-  # Once api.behappy.rest / ws.behappy.rest resolve, convert to 301 redirects.
+  # 301 redirects — old paths → subdomain URLs
   # ========================================================================
   - id: 30
-    name: api-compat
+    name: redirect-api
     uri: /api/*
     host: behappy.rest
     priority: 80
-    upstream_id: 1
     plugins:
-      proxy-rewrite:
+      redirect:
         regex_uri:
           - "^/api/(.*)"
-          - "/$1"
-      limit-req:
-        rate: 30
-        burst: 60
-        key: remote_addr
-        rejected_code: 429
-      response-rewrite:
-        headers:
-          set:
-            Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
-            X-Content-Type-Options: nosniff
-            X-Frame-Options: SAMEORIGIN
+          - "https://api.behappy.rest/$1"
+        ret_code: 301
 
   - id: 31
-    name: api-compat-bare
+    name: redirect-api-bare
     uri: /api
     host: behappy.rest
     priority: 80
-    upstream_id: 1
     plugins:
-      proxy-rewrite:
-        uri: /health
-      response-rewrite:
-        headers:
-          set:
-            Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
-            X-Content-Type-Options: nosniff
-            X-Frame-Options: SAMEORIGIN
+      redirect:
+        uri: "https://api.behappy.rest/"
+        ret_code: 301
 
   - id: 32
-    name: ws-compat
+    name: redirect-ws
     uri: /ws*
     host: behappy.rest
     priority: 80
-    upstream_id: 1
     plugins:
-      proxy-rewrite:
-        uri: /ws
-      serverless-pre-function:
-        phase: access
-        functions:
-          - "return function(conf, ctx) if ngx.var.http_upgrade and ngx.var.http_upgrade ~= '' then ngx.var.upstream_upgrade = ngx.var.http_upgrade; ngx.var.upstream_connection = 'Upgrade' end end"
-      response-rewrite:
-        headers:
-          set:
-            Strict-Transport-Security: "max-age=63072000; includeSubDomains; preload"
-            X-Content-Type-Options: nosniff
-    timeout:
-      connect: 5
-      send: 3600
-      read: 3600
+      redirect:
+        uri: "https://ws.behappy.rest/"
+        ret_code: 301
 
   - id: 33
     name: redirect-grafana
@@ -169,7 +137,9 @@ routes:
     priority: 80
     plugins:
       redirect:
-        uri: "https://grafana.behappy.rest/$1"
+        regex_uri:
+          - "^/grafana/(.*)"
+          - "https://grafana.behappy.rest/$1"
         ret_code: 301
 
   - id: 34
@@ -189,7 +159,9 @@ routes:
     priority: 80
     plugins:
       redirect:
-        uri: "https://minio-console.behappy.rest/$1"
+        regex_uri:
+          - "^/minio-console/(.*)"
+          - "https://minio-console.behappy.rest/$1"
         ret_code: 301
 
   - id: 36
@@ -209,7 +181,9 @@ routes:
     priority: 80
     plugins:
       redirect:
-        uri: "https://downloads.behappy.rest/$1"
+        regex_uri:
+          - "^/downloads/(.*)"
+          - "https://downloads.behappy.rest/$1"
         ret_code: 301
 
   - id: 38

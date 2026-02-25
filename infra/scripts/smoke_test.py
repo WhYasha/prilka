@@ -2,7 +2,7 @@
 """End-to-end smoke test for the Messenger API."""
 import json, os, sys, subprocess, urllib.request, urllib.error
 
-BASE  = os.environ.get("SMOKE_API_URL", "https://behappy.rest/api")
+BASE  = os.environ.get("SMOKE_API_URL", "https://api.behappy.rest")
 PASS  = "SmokeTest@2026"
 USER  = "smoketest_e2e"
 EMAIL = "smoketest@example.com"
@@ -316,7 +316,7 @@ ws_code = "\n".join([
     "except ImportError:",
     "    sys.exit(2)",
     "async def test():",
-    "    uri = '" + os.environ.get("SMOKE_WS_URL", "wss://behappy.rest/ws") + "?token=" + token + "'",
+    "    uri = '" + os.environ.get("SMOKE_WS_URL", "wss://ws.behappy.rest/ws") + "?token=" + token + "'",
     "    try:",
     "        async with websockets.connect(uri, open_timeout=5) as ws:",
     "            print('CONNECTED')",
@@ -377,7 +377,7 @@ if token_b and user_b_id and presence_chat:
         "except ImportError:",
         "    sys.exit(2)",
         "async def test():",
-        "    URI = '" + os.environ.get("SMOKE_WS_URL", "wss://behappy.rest/ws") + "'",
+        "    URI = '" + os.environ.get("SMOKE_WS_URL", "wss://ws.behappy.rest/ws") + "'",
         "    TOKEN_A = '" + token + "'",
         "    TOKEN_B = '" + token_b + "'",
         "    CHAT_ID = " + str(presence_chat),
