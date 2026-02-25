@@ -207,8 +207,9 @@ job "messenger" {
     }
 
     volume "migrations" {
-      type   = "host"
-      source = "migrations"
+      type      = "host"
+      source    = "migrations"
+      read_only = true
     }
 
     # ── MinIO bucket init (prestart) ────────────────────────────────────────
@@ -389,13 +390,15 @@ job "messenger" {
     }
 
     volume "prometheus_config" {
-      type   = "host"
-      source = "prometheus_config"
+      type      = "host"
+      source    = "prometheus_config"
+      read_only = true
     }
 
     volume "grafana_provisioning" {
-      type   = "host"
-      source = "grafana_provisioning"
+      type      = "host"
+      source    = "grafana_provisioning"
+      read_only = true
     }
 
     task "prometheus" {
