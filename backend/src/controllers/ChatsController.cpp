@@ -66,11 +66,17 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
     if (type == "direct") {
         long long otherId = selfChat ? me : members[1];
         auto db = drogon::app().getDbClient();
-        db->execSqlAsync(
-            "SELECT c.id FROM chats c "
-            "JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = $1 "
-            "JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = $2 "
-            "WHERE c.type = 'direct' LIMIT 1",
+        std::string dmLookupSql = selfChat
+            ? "SELECT c.id FROM chats c "
+              "JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = $1 "
+              "WHERE c.type = 'direct' "
+              "AND (SELECT COUNT(*) FROM chat_members cm3 WHERE cm3.chat_id = c.id) = 1 "
+              "LIMIT 1"
+            : "SELECT c.id FROM chats c "
+              "JOIN chat_members cm1 ON cm1.chat_id = c.id AND cm1.user_id = $1 "
+              "JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = $2 "
+              "WHERE c.type = 'direct' LIMIT 1";
+        db->execSqlAsync(dmLookupSql,
             [cb, type, title, otherId, members, me, name, description, publicName]
             (const drogon::orm::Result& r) mutable {
                 if (!r.empty()) {
