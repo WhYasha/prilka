@@ -1,10 +1,13 @@
 # ============================================================
 # Nomad Job Specification — Messenger Platform
-# Deploys the full messenger stack via Nomad.
+# Manages application services. Gateway/infra services
+# (Vault, Consul, APISIX) run as standalone systemd units.
 #
 # Prerequisites:
-#   - Vault and Consul running as standalone containers
 #   - Docker network "messenger_net" exists
+#   - Vault unsealed + secrets populated
+#   - Consul running with service registrations
+#   - APISIX running (systemd)
 #   - messenger-api:latest image built locally
 # ============================================================
 
@@ -183,17 +186,23 @@ job "messenger" {
   }
 
   # ========================================================================
-  # Task Group: MinIO Init (bucket setup — one-shot)
+  # Task Group: Initialization (minio-init, flyway — one-shot)
   # ========================================================================
-  group "minio-init" {
+  group "init" {
     count = 1
 
     restart {
       attempts = 3
-      delay    = "10s"
+      delay    = "15s"
       mode     = "fail"
     }
 
+    volume "migrations" {
+      type   = "host"
+      source = "migrations"
+    }
+
+    # ── MinIO bucket init ────────────────────────────────────────────────────
     task "minio-init" {
       driver = "docker"
 
@@ -222,18 +231,7 @@ job "messenger" {
         network_mode = "messenger_net"
         entrypoint   = ["/bin/sh", "-c"]
         args = [
-          <<-SCRIPT
-          sleep 5 &&
-          mc mb --ignore-existing local/bh-avatars &&
-          mc mb --ignore-existing local/bh-uploads &&
-          mc mb --ignore-existing local/bh-stickers &&
-          mc mb --ignore-existing local/bh-test-artifacts &&
-          mc anonymous set none local/bh-avatars &&
-          mc anonymous set none local/bh-uploads &&
-          mc anonymous set none local/bh-stickers &&
-          mc anonymous set none local/bh-test-artifacts &&
-          echo 'MinIO buckets ready.'
-          SCRIPT
+          "sleep 10 && mc mb --ignore-existing local/bh-avatars && mc mb --ignore-existing local/bh-uploads && mc mb --ignore-existing local/bh-stickers && mc mb --ignore-existing local/bh-test-artifacts && mc anonymous set none local/bh-avatars && mc anonymous set none local/bh-uploads && mc anonymous set none local/bh-stickers && mc anonymous set none local/bh-test-artifacts && echo 'MinIO buckets ready.'",
         ]
       }
 
@@ -242,25 +240,8 @@ job "messenger" {
         memory = 128
       }
     }
-  }
 
-  # ========================================================================
-  # Task Group: Migrations (flyway — one-shot)
-  # ========================================================================
-  group "migrations" {
-    count = 1
-
-    restart {
-      attempts = 3
-      delay    = "15s"
-      mode     = "fail"
-    }
-
-    volume "migrations" {
-      type   = "host"
-      source = "migrations"
-    }
-
+    # ── Flyway migrations ────────────────────────────────────────────────────
     task "flyway" {
       driver = "docker"
 
@@ -544,96 +525,6 @@ job "messenger" {
       service {
         name = "cadvisor"
         port = 8080
-      }
-    }
-  }
-
-  # ========================================================================
-  # Task Group: Gateway (APISIX)
-  # ========================================================================
-  group "gateway" {
-    count = 1
-
-    restart {
-      attempts = 3
-      delay    = "10s"
-      interval = "5m"
-      mode     = "delay"
-    }
-
-    volume "letsencrypt" {
-      type   = "host"
-      source = "letsencrypt"
-    }
-
-    volume "downloads" {
-      type   = "host"
-      source = "downloads"
-    }
-
-    volume "apisix_config" {
-      type   = "host"
-      source = "apisix_config"
-    }
-
-    task "apisix" {
-      driver = "docker"
-
-      # Run as root to read Let's Encrypt certs
-      user = "root"
-
-      volume_mount {
-        volume      = "letsencrypt"
-        destination = "/etc/letsencrypt"
-        read_only   = true
-      }
-
-      volume_mount {
-        volume      = "downloads"
-        destination = "/usr/share/nginx/html/downloads"
-        read_only   = true
-      }
-
-      volume_mount {
-        volume      = "apisix_config"
-        destination = "/apisix-config"
-        read_only   = true
-      }
-
-      config {
-        image        = "apache/apisix:3.15.0-debian"
-        hostname     = "apisix"
-        network_mode = "messenger_net"
-        port_map {
-          http  = 9080
-          https = 9443
-        }
-        volumes = [
-          "/opt/messenger/repo/infra/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro",
-          "/opt/messenger/repo/infra/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro",
-        ]
-      }
-
-      # Bind to host ports 80/443
-      resources {
-        cpu    = 500
-        memory = 256
-        network {
-          port "http"  { static = 80 }
-          port "https" { static = 443 }
-        }
-      }
-
-      service {
-        name = "apisix"
-        port = "http"
-        check {
-          type     = "http"
-          path     = "/health"
-          port     = "http"
-          interval = "10s"
-          timeout  = "5s"
-        }
       }
     }
   }

@@ -2,12 +2,10 @@
 # ============================================================
 # migrate-to-nomad.sh — Migrate from Docker Compose to Nomad
 #
-# This script:
-#   1. Copies Docker Compose volume data to Nomad-compatible volumes
-#   2. Stops the Docker Compose stack
-#   3. Starts standalone Vault + Consul + Nomad
-#   4. Runs the Nomad job
-#   5. Verifies health
+# Architecture after migration:
+#   Tier 0 (systemd): vault, consul, apisix, nomad
+#   Tier 1 (Nomad):   postgres, redis, minio, api_cpp,
+#                      prometheus, grafana, cadvisor
 #
 # IMPORTANT: This causes a brief service outage (~30-60 seconds).
 # Run during a maintenance window.
@@ -32,13 +30,18 @@ if [ "${1:-}" = "--rollback" ]; then
     log "Stopping Nomad job..."
     nomad job stop -purge messenger 2>/dev/null || true
 
-    log "Stopping Nomad, Consul, Vault services..."
+    log "Stopping standalone services..."
     systemctl stop nomad 2>/dev/null || true
+    systemctl stop apisix 2>/dev/null || true
     systemctl stop consul 2>/dev/null || true
     systemctl stop vault 2>/dev/null || true
-    systemctl disable nomad consul vault 2>/dev/null || true
+    systemctl disable nomad apisix consul vault 2>/dev/null || true
 
-    log "Starting Docker Compose stack..."
+    # Clean up standalone containers
+    docker rm -f messenger-vault messenger-consul messenger-apisix 2>/dev/null || true
+
+    log "Re-enabling Docker Compose stack..."
+    systemctl enable messenger
     systemctl start messenger
 
     log "Waiting for health check..."
@@ -57,7 +60,6 @@ fi
 # ── Pre-flight checks ─────────────────────────────────────────────────────────
 log "=== Pre-flight checks ==="
 
-# Check required tools
 for cmd in docker nomad consul vault jq; do
     if ! command -v "${cmd}" &>/dev/null; then
         err "${cmd} is not installed."
@@ -65,31 +67,28 @@ for cmd in docker nomad consul vault jq; do
     fi
 done
 
-# Check Vault credentials
 if [ ! -f "${APP_DIR}/vault/role-id" ] || [ ! -f "${APP_DIR}/vault/secret-id" ]; then
     err "Vault AppRole credentials not found at ${APP_DIR}/vault/"
-    err "Initialize Vault first: bash infra/vault/init.sh"
     exit 1
 fi
 
-# Check unseal keys
 if [ ! -f "${APP_DIR}/vault/unseal-keys.json" ]; then
     err "Vault unseal keys not found at ${APP_DIR}/vault/unseal-keys.json"
     exit 1
 fi
 
-# Build api_cpp image
-log "Building messenger-api:latest image..."
+# ── Step 1: Build api_cpp image ──────────────────────────────────────────────
+log "=== Step 1: Building messenger-api:latest image ==="
 docker build -t messenger-api:latest ./backend
 
-# ── Step 1: Detect and migrate Docker volumes ─────────────────────────────────
-log "=== Step 1: Migrating Docker volumes ==="
+# ── Step 2: Create Docker network + migrate volumes ──────────────────────────
+log "=== Step 2: Creating Docker network + migrating volumes ==="
+docker network create messenger_net 2>/dev/null || log "  Network messenger_net already exists."
 
-# Detect Docker Compose project name from running containers
+# Detect Docker Compose project name
 COMPOSE_PROJECT=$(docker ps --format '{{.Names}}' | grep postgres | head -1 | sed 's/-postgres.*//' || echo "repo")
 log "Detected Compose project: ${COMPOSE_PROJECT}"
 
-# Volume mapping: compose_name -> nomad_name
 declare -A VOLUMES=(
     ["${COMPOSE_PROJECT}_postgres_data"]="messenger-postgres-data"
     ["${COMPOSE_PROJECT}_redis_data"]="messenger-redis-data"
@@ -100,52 +99,39 @@ declare -A VOLUMES=(
 
 for SRC in "${!VOLUMES[@]}"; do
     DST="${VOLUMES[$SRC]}"
-
     if ! docker volume inspect "${SRC}" >/dev/null 2>&1; then
         log "  Source volume ${SRC} not found, skipping."
         continue
     fi
-
     if docker volume inspect "${DST}" >/dev/null 2>&1; then
         log "  Target volume ${DST} already exists, skipping copy."
         continue
     fi
-
     log "  Copying ${SRC} → ${DST}..."
     docker volume create "${DST}"
-    docker run --rm \
-        -v "${SRC}:/from:ro" \
-        -v "${DST}:/to" \
-        alpine sh -c "cp -a /from/. /to/"
+    docker run --rm -v "${SRC}:/from:ro" -v "${DST}:/to" alpine sh -c "cp -a /from/. /to/"
     log "  Done."
 done
 
-# ── Step 2: Create Docker network ────────────────────────────────────────────
-log "=== Step 2: Creating Docker network ==="
-docker network create messenger_net 2>/dev/null || log "  Network messenger_net already exists."
-
-# ── Step 3: Stop Docker Compose ──────────────────────────────────────────────
+# ── Step 3: Stop Docker Compose stack ────────────────────────────────────────
 log "=== Step 3: Stopping Docker Compose stack ==="
-systemctl stop messenger
-systemctl disable messenger
-
-# Clean up Compose containers (they may linger)
+systemctl stop messenger || true
+systemctl disable messenger || true
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down 2>/dev/null || true
 
-# ── Step 4: Install and start infrastructure services ─────────────────────────
-log "=== Step 4: Starting Vault + Consul + Nomad ==="
+# ── Step 4: Install systemd units + start infrastructure ─────────────────────
+log "=== Step 4: Starting infrastructure (Vault + Consul + APISIX + Nomad) ==="
 
-# Copy systemd units
 cp infra/systemd/vault.service /etc/systemd/system/
 cp infra/systemd/consul.service /etc/systemd/system/
+cp infra/systemd/apisix.service /etc/systemd/system/
 cp infra/systemd/nomad.service /etc/systemd/system/
 systemctl daemon-reload
 
-# Create Nomad data directory
 mkdir -p /opt/messenger/nomad/data
 
-# Start infrastructure services
-systemctl enable vault consul nomad
+# Start Vault first (needed by Nomad for secrets)
+systemctl enable vault
 systemctl start vault
 sleep 5
 
@@ -154,9 +140,18 @@ log "Unsealing Vault..."
 export VAULT_ADDR=http://127.0.0.1:8200
 bash infra/vault/unseal.sh
 
+# Start Consul (needed by Nomad for service registration)
+systemctl enable consul
 systemctl start consul
 sleep 3
 
+# Start APISIX (the gateway — needs to be running before health checks)
+systemctl enable apisix
+systemctl start apisix
+sleep 3
+
+# Start Nomad
+systemctl enable nomad
 systemctl start nomad
 sleep 5
 
@@ -182,13 +177,17 @@ if [ "${HEALTHY}" = "true" ]; then
     log "============================================================"
     log "Migration to Nomad complete!"
     log ""
+    log "Architecture:"
+    log "  Tier 0 (systemd): vault, consul, apisix, nomad"
+    log "  Tier 1 (Nomad):   postgres, redis, minio, api_cpp,"
+    log "                     prometheus, grafana, cadvisor"
+    log ""
     log "Verify:"
     log "  nomad job status messenger"
     log "  consul catalog services"
     log "  curl https://api.behappy.rest/health"
-    log "  curl -I https://grafana.behappy.rest/"
     log ""
-    log "Rollback (if needed):"
+    log "Rollback:"
     log "  sudo bash infra/scripts/migrate-to-nomad.sh --rollback"
     log "============================================================"
 else
