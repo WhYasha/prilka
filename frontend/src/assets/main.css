@@ -66,6 +66,13 @@ textarea, input, select { font-family: inherit; }
   --settings-row-hover:    rgba(0,0,0,.04);
   --profile-header-bg:     var(--sidebar-bg);
   --profile-cover-gradient:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.45) 100%);
+
+  /* ── Context menu tokens ────────────────────────────────── */
+  --ctx-menu-bg:           var(--surface);
+  --ctx-menu-text:         var(--text);
+  --ctx-menu-hover:        var(--input-bg);
+  --ctx-menu-border:       var(--border);
+  --ctx-menu-shadow:       0 4px 20px rgba(0,0,0,.15);
 }
 
 /* ── Dark mode tokens ───────────────────────────────────────── */
@@ -110,6 +117,13 @@ textarea, input, select { font-family: inherit; }
   --settings-row-hover:    rgba(255,255,255,.06);
   --profile-header-bg:     var(--sidebar-bg);
   --profile-cover-gradient:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.6) 100%);
+
+  /* ── Context menu tokens (dark) ─────────────────────────── */
+  --ctx-menu-bg:           var(--surface);
+  --ctx-menu-text:         var(--text);
+  --ctx-menu-hover:        var(--input-bg);
+  --ctx-menu-border:       var(--border);
+  --ctx-menu-shadow:       0 4px 20px rgba(0,0,0,.4);
 }
 
 /* ── Animation keyframes ────────────────────────────────────── */
