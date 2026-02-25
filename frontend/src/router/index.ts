@@ -91,10 +91,12 @@ const router = createRouter({
     },
     {
       path: '/',
-      redirect: '/app',
+      redirect: () => (window.location.hostname.startsWith('admin.') ? '/admin' : '/app'),
     },
   ],
 })
+
+const isAdminHost = window.location.hostname.startsWith('admin.')
 
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
@@ -118,7 +120,7 @@ router.beforeEach(async (to) => {
 
   // Guest-only routes (redirect logged-in users away)
   if (to.meta.guest && authStore.isLoggedIn) {
-    return '/app'
+    return isAdminHost ? '/admin' : '/app'
   }
 
   // Admin routes

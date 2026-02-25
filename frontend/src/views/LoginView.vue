@@ -59,12 +59,14 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 
+const isAdminHost = window.location.hostname.startsWith('admin.')
+
 async function handleLogin() {
   error.value = ''
   loading.value = true
   try {
     await authStore.login(username.value.trim(), password.value)
-    router.push('/app')
+    router.push(isAdminHost ? '/admin' : '/app')
   } catch (e: unknown) {
     const err = e as { response?: { data?: { error?: string } } }
     error.value = err.response?.data?.error || 'Login failed.'
