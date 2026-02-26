@@ -56,10 +56,6 @@ client {
     read_only = true
   }
 
-  host_volume "apisix_config" {
-    path      = "/opt/messenger/repo/infra/apisix"
-    read_only = true
-  }
 }
 
 # ── Consul integration (service registration + discovery) ─────────────────────

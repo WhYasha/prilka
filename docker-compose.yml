@@ -260,26 +260,6 @@ services:
   #     - "--docker_only=true"
 
   # ──────────────────────────────────────────────────────────
-  # Apache APISIX – API Gateway (standalone YAML mode)
-  # Replaces nginx; config in infra/apisix/
-  # ──────────────────────────────────────────────────────────
-  apisix:
-    image: apache/apisix:3.15.0-debian
-    restart: unless-stopped
-    volumes:
-      - ./infra/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
-      - ./infra/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
-    ports:
-      - "9080:9080"    # HTTP  (dev)
-      - "9443:9443"    # HTTPS (dev)
-    depends_on:
-      - api_cpp
-      - grafana
-      - minio
-    networks:
-      - messenger_net
-
-  # ──────────────────────────────────────────────────────────
   # HashiCorp Vault – Secrets Management
   # UI: http://localhost:8200/ui
   # ──────────────────────────────────────────────────────────

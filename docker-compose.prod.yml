@@ -13,17 +13,17 @@ networks:
 
 services:
 
-  # ── Close dev ports; traffic enters only through APISIX ────────────────────
+  # ── Close dev ports; traffic enters only through Nginx ─────────────────────
   postgres:
     ports: !reset []              # clear dev port mapping
 
   minio:
-    ports: !reset []              # APISIX proxies minio-console.behappy.rest -> :9001
+    ports: !reset []              # Nginx proxies minio-console.behappy.rest -> :9001
     environment:
       MINIO_BROWSER_REDIRECT_URL: "https://minio-console.behappy.rest/"
 
   api_cpp:
-    ports: !reset []              # clear dev port mapping; only APISIX exposes 80/443
+    ports: !reset []              # clear dev port mapping; only Nginx exposes 80/443
     restart: always
     environment:
       API_THREADS:     "0"        # auto = nproc
@@ -56,25 +56,6 @@ services:
       - "--housekeeping_interval=15s"
       - "--docker_only=true"
 
-  # ── APISIX reverse proxy (replaces nginx) ──────────────────────────────────
-  apisix:
-    restart: always
-    user: root              # Required to read Let's Encrypt certs (same as nginx)
-    ports: !override
-      - "80:9080"
-      - "443:9443"
-    volumes: !override
-      - ./infra/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
-      - ./infra/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - ./infra/nginx/downloads:/usr/share/nginx/html/downloads:ro
-      - /opt/messenger/certbot-webroot:/var/www/certbot:ro
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9080/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
   # ── Vault – production overrides ────────────────────────────────────────────
   vault:
     ports: !override
@@ -106,27 +87,5 @@ services:
   #     - consul
   #     - vault
 
-  # ── nginx (DEPRECATED – replaced by APISIX) ────────────────────────────────
-  # Kept commented out for rollback reference. Remove after APISIX is stable.
-  # nginx:
-  #   image: nginx:1.27-alpine
-  #   restart: always
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./infra/nginx/downloads:/usr/share/nginx/html/downloads:ro
-  #     - /etc/letsencrypt:/etc/letsencrypt:ro
-  #     - /opt/messenger/certbot-webroot:/var/www/certbot:ro
-  #   networks:
-  #     - messenger_net
-  #   depends_on:
-  #     - api_cpp
-  #     - grafana
-  #     - minio
-  #   healthcheck:
-  #     test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
-  #     interval: 15s
-  #     timeout: 5s
-  #     retries: 5
+  # ── Nginx reverse proxy runs via systemd (not Docker Compose) ──────────────
+  # See infra/systemd/nginx.service and infra/nginx/nginx.conf

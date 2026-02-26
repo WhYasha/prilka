@@ -8,10 +8,6 @@
 #   - Nomad: delegates to Nomad job scheduler
 #
 # Set DEPLOY_MODE=nomad to use Nomad orchestration.
-#
-# Reverse proxy selection:
-#   - PROXY_MODE=apisix (default): use APISIX as reverse proxy
-#   - PROXY_MODE=nginx: use Nginx as reverse proxy
 # ============================================================
 set -euo pipefail
 
@@ -20,7 +16,6 @@ REPO_DIR="${APP_DIR}/repo"
 ENV_FILE="${APP_DIR}/env/.env"
 VAULT_DIR="${APP_DIR}/vault"
 DEPLOY_MODE="${DEPLOY_MODE:-compose}"
-PROXY_MODE="${PROXY_MODE:-apisix}"
 
 log() { echo "[$(date +%T)] $*"; }
 
@@ -33,12 +28,6 @@ git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 
 # ── Copy production prometheus config ─────────────────────────────────────────
 cp infra/prometheus/prometheus.prod.yml infra/prometheus/prometheus.yml
-
-# ── Inject TLS certs into APISIX config (only for APISIX mode) ─────────────────
-if [ "${PROXY_MODE}" = "apisix" ]; then
-    log "Injecting TLS certificates into APISIX config..."
-    bash infra/scripts/inject-certs.sh "${REPO_DIR}"
-fi
 
 # ── Vault: unseal + render .env (Compose mode only) ──────────────────────────
 # In Nomad mode, Vault runs via systemd and secrets are injected directly
@@ -81,19 +70,14 @@ if [ "${DEPLOY_MODE}" = "nomad" ]; then
     # Build the api_cpp image (Nomad references it as messenger-api:local)
     docker build -t messenger-api:latest -t messenger-api:local ./backend
 
-    # Restart reverse proxy
-    if [ "${PROXY_MODE}" = "nginx" ]; then
-        log "Validating nginx config..."
-        docker run --rm --network messenger_net \
-            -v /opt/messenger/repo/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
-            -v /etc/letsencrypt:/etc/letsencrypt:ro \
-            nginx:1.27-alpine nginx -t
-        log "Restarting nginx..."
-        sudo systemctl restart nginx
-    else
-        log "Restarting APISIX..."
-        sudo systemctl restart apisix
-    fi
+    # Validate and restart Nginx reverse proxy
+    log "Validating nginx config..."
+    docker run --rm --network messenger_net \
+        -v /opt/messenger/repo/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+        -v /etc/letsencrypt:/etc/letsencrypt:ro \
+        nginx:1.27-alpine nginx -t
+    log "Restarting nginx..."
+    sudo systemctl restart nginx
 
     # Stamp deploy_ts so Nomad sees a job change and creates a new allocation
     sed -i "s/deploy_ts = .*/deploy_ts = \"$(date +%s)\"/" infra/nomad/jobs/messenger.nomad.hcl

@@ -1,6 +1,6 @@
-# Messenger – Production Deployment Runbook
+# BeHappy Messenger — Production Deployment Runbook
 
-Target: Debian 12 (Bookworm) · Docker Compose · HTTP only · systemd-managed
+Target: Debian 12 (Bookworm) · Nomad + Nginx · HTTPS · systemd-managed
 
 ---
 
@@ -31,11 +31,10 @@ What it does:
 - Places the ed25519 public key in `/home/deploy/.ssh/authorized_keys`
 - Hardens SSH (`PasswordAuthentication no`, `PermitRootLogin no`)
 - Validates `sshd_config` with `sshd -t` **before** reloading (safe)
-- UFW: allow 22/tcp, 80/tcp; default deny inbound
+- UFW: allow 22/tcp, 80/tcp, 443/tcp; default deny inbound
 - Fail2ban for SSH
 - Creates `/opt/messenger/{repo,env,data,backups,scripts}`
 - Clones the repo, copies `.env.example` → `/opt/messenger/env/.env`
-- Installs and enables systemd units
 
 **After bootstrap**, verify from a NEW terminal before closing the root session:
 
@@ -45,173 +44,235 @@ ssh -i ~/.ssh/messenger_deploy deploy@<SERVER_IP>
 
 ---
 
-## 3. Configure secrets
+## 3. Architecture Overview
 
-```bash
-ssh deploy@<SERVER_IP>
-nano /opt/messenger/env/.env    # chmod 600 already set by bootstrap
+### Tiered Architecture
+
+```
+Tier 0 (systemd):  Vault → Consul → Nginx → Nomad
+Tier 1 (Nomad):    PostgreSQL, Redis, MinIO, api_cpp, Prometheus, Grafana, cAdvisor
 ```
 
-Minimum values to change:
+### Tier 0 — systemd Services
 
-| Variable | Example |
-|---|---|
-| `POSTGRES_PASSWORD` | `openssl rand -hex 24` |
-| `REDIS_PASSWORD` | `openssl rand -hex 24` |
-| `MINIO_ROOT_PASSWORD` | `openssl rand -hex 24` |
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `GRAFANA_PASSWORD` | strong password |
+| Service | Unit | Container | Purpose |
+|---------|------|-----------|---------|
+| Vault | `vault.service` | `messenger-vault` | Secrets management (KV v2) |
+| Consul | `consul.service` | `messenger-consul` | Service discovery + health checks |
+| Nginx | `nginx.service` | `messenger-nginx` | TLS termination, reverse proxy |
+| Nomad | `nomad.service` | host-native | Container orchestration |
 
-The `.env` file lives only on the server at `/opt/messenger/env/.env`.
-It is **never** committed to git.
+Start order: Vault → unseal → Consul → Nginx → Nomad.
+All containers on `messenger_net` Docker network.
+
+### Tier 1 — Nomad Job `messenger`
+
+| Group | Tasks | Notes |
+|-------|-------|-------|
+| `infra` | PostgreSQL 16, Redis 7, MinIO | Stateful services with Docker volumes |
+| `app` | minio-init (prestart), Flyway (prestart), api_cpp (main) | Init tasks run before API |
+| `monitoring` | Prometheus, Grafana, cAdvisor | Observability stack |
 
 ---
 
-## 4. First deploy
+## 4. Install systemd services
 
 ```bash
-ssh deploy@<SERVER_IP>
-cd /opt/messenger/repo
-
-# Symlink .env into the repo directory
-ln -sf /opt/messenger/env/.env .env
-
-# Use production Prometheus config
-cp infra/prometheus/prometheus.prod.yml infra/prometheus/prometheus.yml
-
-# Start the stack
-sudo systemctl start messenger
-sudo systemctl status messenger
-
-# Watch startup logs
-journalctl -u messenger -f
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+sudo cp /opt/messenger/repo/infra/systemd/{vault,consul,nginx,nomad}.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable vault consul nginx nomad
 ```
 
 ---
 
-## 5. Verify the deployment
+## 5. Vault Setup
 
 ```bash
-# Containers running
-docker ps
+# Start Vault
+sudo systemctl start vault
 
-# Nginx + app health
-curl http://<SERVER_IP>/health          # nginx: "ok"
-curl http://<SERVER_IP>/api/health      # C++ backend JSON
-curl http://<SERVER_IP>/                # Flask frontend
+# Initialize (first time only — save the unseal keys!)
+export VAULT_ADDR=http://127.0.0.1:8200
+vault operator init -key-shares=5 -key-threshold=3
 
-# Prometheus targets
-curl -s http://<SERVER_IP>:9090/api/v1/targets | python3 -m json.tool
-# (Prometheus is NOT exposed on port 80 by design; check inside stack)
-docker exec messenger-prometheus-1 \
-    wget -qO- 'http://localhost:9090/api/v1/targets' | python3 -m json.tool
+# Save credentials securely
+mkdir -p /opt/messenger/vault
+# Store unseal keys in unseal-keys.json, root token in root-token
 
-# Grafana
-open http://<SERVER_IP>/grafana/        # login: admin / <GRAFANA_PASSWORD>
+# Unseal
+bash /opt/messenger/repo/infra/vault/unseal.sh
+
+# Enable KV v2 and create secrets
+vault secrets enable -path=secret kv-v2
+vault kv put secret/messenger/db host=postgres port=5432 ...
+vault kv put secret/messenger/redis host=redis port=6379 ...
+vault kv put secret/messenger/minio endpoint=http://minio:9000 ...
+vault kv put secret/messenger/jwt secret=<random-64-chars> ...
+vault kv put secret/messenger/server port=8080 threads=0 ...
+vault kv put secret/messenger/grafana user=admin password=<pass> ...
+
+# Enable JWT auth for Nomad workload identity
+vault auth enable -path=jwt-nomad jwt
+# Configure with Nomad's public key (see infra-migration-notes.md)
 ```
 
 ---
 
-## 6. UFW rules summary
+## 6. Consul Setup
+
+```bash
+sudo systemctl start consul
+
+# Verify
+consul catalog services
+```
+
+---
+
+## 7. Nginx Setup
+
+Nginx runs as a Docker container via systemd, reading config from `infra/nginx/nginx.conf`.
+
+```bash
+# Validate config before starting
+docker run --rm --network messenger_net \
+    -v /opt/messenger/repo/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+    -v /etc/letsencrypt:/etc/letsencrypt:ro \
+    nginx:1.27-alpine nginx -t
+
+# Start
+sudo systemctl start nginx
+
+# Verify
+curl -k https://localhost/health
+```
+
+### TLS Certificates
+
+Wildcard cert `*.behappy.rest` + `behappy.rest` via certbot + Cloudflare DNS plugin:
+
+```bash
+sudo certbot certonly --dns-cloudflare \
+    --dns-cloudflare-credentials /root/.cloudflare.ini \
+    -d 'behappy.rest' -d '*.behappy.rest'
+
+# Auto-renewal
+sudo certbot renew --dry-run
+systemctl list-timers | grep certbot
+```
+
+Nginx reads certs directly from `/etc/letsencrypt/live/behappy.rest/`.
+
+---
+
+## 8. Nomad Setup
+
+```bash
+# Start Nomad
+sudo systemctl start nomad
+
+# Verify
+export NOMAD_ADDR=http://127.0.0.1:4646
+nomad server members
+nomad node status
+```
+
+---
+
+## 9. Deploy / Update
+
+```bash
+# Standard deploy (Nomad mode)
+ssh deploy@behappy.rest 'DEPLOY_MODE=nomad bash /opt/messenger/repo/infra/scripts/02-deploy.sh'
+
+# What it does:
+# 1. git pull
+# 2. Build messenger-api:local Docker image
+# 3. Validate and restart Nginx
+# 4. Update deploy_ts in Nomad job spec (forces new allocation)
+# 5. nomad job run messenger.nomad.hcl
+```
+
+Typical deploy: ~30s (cached Docker layers).
+
+---
+
+## 10. Verify Deployment
+
+```bash
+# Nomad job status
+nomad job status messenger
+
+# Consul services
+consul catalog services
+
+# API health
+curl https://api.behappy.rest/health
+
+# Run test suites
+python3 infra/scripts/smoke_test.py      # 58 checks
+python3 infra/scripts/feature_test.py    # 23 checks
+python3 infra/scripts/presence_test.py   # 9 checks
+```
+
+---
+
+## 11. UFW Rules
 
 | Port | Protocol | Reason |
-|---|---|---|
+|------|----------|--------|
 | 22 | TCP | SSH |
-| 80 | TCP | HTTP (all app traffic via nginx) |
-| ~~443~~ | ~~TCP~~ | ~~HTTPS (TODO: enable when domain ready)~~ |
+| 80 | TCP | HTTP (ACME challenge + redirect to HTTPS) |
+| 443 | TCP | HTTPS (all app traffic via Nginx) |
 
-All other ports are blocked inbound.
-Internal service ports (5432, 6379, 9000, 9090, 3000, 8080) are not exposed
-to the host — traffic flows inside the `messenger_net` Docker bridge only.
+Internal: `allow from 172.19.0.0/16 to any port 4646 tcp` (Nginx → Nomad UI).
 
 ---
 
-## 7. sshd_config changes (summary)
-
-| Setting | Value | Why |
-|---|---|---|
-| `PasswordAuthentication` | `no` | key-only login |
-| `PermitRootLogin` | `no` | no direct root SSH |
-| `PubkeyAuthentication` | `yes` | explicit |
-| `X11Forwarding` | `no` | attack surface reduction |
-| `AllowTcpForwarding` | `no` | attack surface reduction |
-| `MaxAuthTries` | `3` | brute-force mitigation |
-
----
-
-## 8. systemd units
-
-| Unit | Purpose |
-|---|---|
-| `messenger.service` | Starts/stops the full Docker Compose stack |
-| `messenger-backup.service` | One-shot Postgres dump |
-| `messenger-backup.timer` | Triggers backup daily at 03:00 |
+## 12. Logs
 
 ```bash
-# Manage
-sudo systemctl start/stop/restart messenger
-sudo systemctl status messenger
+# Tier 0 services
+journalctl -u vault -f
+journalctl -u consul -f
+journalctl -u nginx -f
+journalctl -u nomad -f
 
-# Backup manually
-sudo systemctl start messenger-backup
+# Tier 1 services (via Nomad)
+nomad alloc logs <alloc-id>
+nomad alloc logs -stderr <alloc-id>
 
-# List timers
-systemctl list-timers --all | grep messenger
-```
-
----
-
-## 9. How to operate
-
-### Deploy / update
-
-```bash
-ssh deploy@<SERVER_IP>
-bash /opt/messenger/repo/infra/scripts/02-deploy.sh
-```
-
-Or manually:
-
-```bash
-cd /opt/messenger/repo
-git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-sudo systemctl restart messenger
-```
-
-### Logs
-
-```bash
-# All services
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
-
-# Single service
+# Docker Compose mode (fallback)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f api_cpp
-
-# systemd journal
-journalctl -u messenger -f
 ```
-
-### Rollback
-
-```bash
-cd /opt/messenger/repo
-git log --oneline -10                   # find the previous good commit
-git checkout <COMMIT_SHA>
-sudo systemctl restart messenger
-```
-
-### Rotate secrets
-
-1. Edit `/opt/messenger/env/.env` with new values
-2. Restart the stack: `sudo systemctl restart messenger`
-3. For JWT secret rotation: all existing tokens are invalidated immediately
-   (users will be asked to log in again — expected behaviour)
 
 ---
 
-## 10. Backups
+## 13. Rollback
+
+```bash
+# Code rollback
+cd /opt/messenger/repo
+git log --oneline -10
+git checkout <COMMIT_SHA>
+DEPLOY_MODE=nomad bash infra/scripts/02-deploy.sh
+
+# Nginx config rollback
+git checkout HEAD~1 -- infra/nginx/nginx.conf
+sudo systemctl restart nginx
+```
+
+---
+
+## 14. Rotate Secrets
+
+1. Update values in Vault: `vault kv put secret/messenger/jwt secret=<new>`
+2. Redeploy: `DEPLOY_MODE=nomad bash infra/scripts/02-deploy.sh`
+3. For JWT secret rotation: all existing tokens are invalidated (users re-login)
+
+---
+
+## 15. Backups
 
 ### Postgres
 
@@ -221,68 +282,48 @@ Automatic daily dump at 03:00 via `messenger-backup.timer`:
 /opt/messenger/backups/postgres_YYYYMMDD_HHMMSS.sql.gz
 ```
 
-Retention: 7 days (configurable in `backup-postgres.sh`).
-
-Restore:
+Retention: 7 days. Restore:
 
 ```bash
 gunzip -c /opt/messenger/backups/postgres_20260223_030000.sql.gz \
-    | docker exec -i messenger-postgres-1 \
-        psql -U messenger -d messenger
+    | docker exec -i messenger-postgres-1 psql -U messenger -d messenger
 ```
 
 ### MinIO
-
-Option A – mirror to local directory (live):
 
 ```bash
 docker run --rm --network messenger_net minio/mc \
     mirror local/messenger-files /opt/messenger/backups/minio/
 ```
 
-Option B – raw volume snapshot (stop MinIO first):
+---
 
-```bash
-sudo systemctl stop messenger
-docker run --rm \
-    -v messenger_minio_data:/src:ro \
-    -v /opt/messenger/backups/minio:/dst \
-    alpine tar czf /dst/minio_$(date +%Y%m%d).tar.gz -C /src .
-sudo systemctl start messenger
+## 16. Server File Paths
+
+```
+/opt/messenger/repo/                 Git repository
+/opt/messenger/env/.env              Legacy env file (Docker Compose mode)
+/opt/messenger/vault/                Vault credentials (unseal-keys, tokens, role/secret IDs)
+/opt/messenger/nomad/data/           Nomad data directory
+/opt/messenger/nomad/env             Nomad env file (VAULT_TOKEN)
+/etc/letsencrypt/live/behappy.rest/  TLS certificates
+/etc/systemd/system/{vault,consul,nginx,nomad}.service  systemd units
 ```
 
 ---
 
-## 11. Download links (Windows / macOS installers)
+## 17. Download Links (Desktop Installers)
 
-Files are served by nginx at:
+Files served by Nginx at `downloads.behappy.rest`:
 
 ```
-http://<SERVER_IP>/downloads/windows/BeHappySetup.exe
-http://<SERVER_IP>/downloads/macos/BeHappy.dmg
+https://downloads.behappy.rest/windows/BeHappySetup.exe
+https://downloads.behappy.rest/macos/BeHappy.dmg
 ```
 
-Upload artifacts when they are ready:
+Upload:
 
 ```bash
-scp BeHappySetup.exe deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/windows/
-scp BeHappy.dmg      deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/macos/
+scp BeHappySetup.exe deploy@behappy.rest:/opt/messenger/repo/infra/nginx/downloads/windows/
+scp BeHappy.dmg      deploy@behappy.rest:/opt/messenger/repo/infra/nginx/downloads/macos/
 ```
-
-The frontend (`app.html`) auto-detects the OS and shows the matching
-primary download button. Both platforms are always available under
-"Other platforms".
-
----
-
-## 12. TODO: Enable HTTPS
-
-When a domain is available:
-
-1. Point DNS A-record to `<SERVER_IP>`
-2. Open UFW port 443: `sudo ufw allow 443/tcp`
-3. Obtain TLS certificate (e.g. Certbot + standalone, or Caddy auto-HTTPS)
-4. In `infra/nginx/nginx.conf`:
-   - Add `listen 443 ssl;` server block with `ssl_certificate` paths
-   - Change port-80 block to `return 301 https://$host$request_uri;`
-5. Restart nginx: `docker compose ... restart nginx`

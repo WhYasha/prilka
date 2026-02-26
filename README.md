@@ -1,8 +1,8 @@
-# Messenger Platform
+# BeHappy Messenger
 
 A production-grade messenger with a **C++ Drogon backend**, **Vue 3 + TypeScript SPA**,
 **Tauri desktop app**, PostgreSQL, Redis, MinIO — orchestrated by **Nomad** with
-**Vault** secrets, **Consul** service discovery, and **APISIX** reverse proxy.
+**Vault** secrets, **Consul** service discovery, and **Nginx** reverse proxy.
 
 ```
                   Browser / Desktop (Tauri)
@@ -11,7 +11,7 @@ A production-grade messenger with a **C++ Drogon backend**, **Vue 3 + TypeScript
                 │ HTTPS + WSS     │
                 ▼                 │
      ┌──────────────────────────────────────────────────────────┐
-     │             APISIX (TLS termination, reverse proxy)      │
+     │             Nginx (TLS termination, reverse proxy)        │
      │   behappy.rest      → Drogon SPA                         │
      │   api.behappy.rest  → api_cpp:8080 (REST, rate-limited)  │
      │   ws.behappy.rest   → api_cpp:8080 (WebSocket)           │
@@ -39,20 +39,21 @@ A production-grade messenger with a **C++ Drogon backend**, **Vue 3 + TypeScript
 
 ## Features
 
-- **Real-time messaging** — WebSocket with Redis Pub/Sub fan-out
+- **Real-time messaging** — WebSocket with Redis Pub/Sub fan-out (per-chat + per-user channels)
 - **Direct, group, and channel chats** — with roles (owner/admin/member)
 - **Telegram-like UI** — context menus, selection mode, swipe actions, bottom sheets, long press
 - **Message replies, editing, pinning, forwarding** with full attribution
 - **Emoji reactions** on messages
 - **Online/offline/away presence** — tracks tab visibility per connection
 - **Unread badges** and read tracking
+- **Read receipts** — double checkmarks in DMs, read count in groups, privacy opt-out
 - **In-chat message search**
 - **Self-chat / Saved Messages**
 - **File uploads** and **voice messages** (MediaRecorder)
 - **Stickers** (8 seed SVGs)
 - **Invite links** for channels/groups
 - **User avatars** and **chat avatars**
-- **Privacy settings** (last-seen visibility)
+- **Privacy settings** (last-seen visibility, read receipts)
 - **Admin panel** — dashboard, user management, message moderation, support
 - **Browser notifications**
 - **Tauri v2 desktop app** (Windows NSIS installer, macOS DMG)
@@ -97,7 +98,7 @@ make info
 - Builds the C++ backend Docker image
 - Starts PostgreSQL 16, Redis 7, MinIO
 - Creates MinIO buckets and seeds stickers
-- Runs Flyway migrations (V1-V20)
+- Runs Flyway migrations (V1-V21)
 - Starts the C++ API, Prometheus, Grafana, cAdvisor
 
 ### Prerequisites
@@ -132,7 +133,7 @@ make info
 │   │   ├── composables/         7 composables (WebSocket, recorder, swipe, ...)
 │   │   ├── views/               5 views (Login, Register, Messenger, Admin, Join)
 │   │   ├── components/
-│   │   │   ├── layout/          Sidebar, ChatPanel (814 lines), Drawer, AppBar
+│   │   │   ├── layout/          Sidebar, ChatPanel, Drawer, AppBar
 │   │   │   ├── chat/            18 chat components (MessageBubble, Composer, ...)
 │   │   │   ├── modals/          7 modals (NewChat, Profile, Forward, ...)
 │   │   │   ├── admin/           6 admin components (Dashboard, Users, Support, ...)
@@ -152,17 +153,16 @@ make info
 │   ├── tests/                   GTest unit tests
 │   ├── Dockerfile               3-stage (build → test → runtime)
 │   └── www/                     Vite build output served by Drogon
-├── migrations/                  Flyway SQL V1–V20
+├── migrations/                  Flyway SQL V1–V21
 ├── infra/
-│   ├── apisix/                  APISIX config + route templates
+│   ├── nginx/                   Nginx reverse proxy config (nginx.conf)
 │   ├── vault/                   Vault config, policies, init/unseal scripts
-│   ├── consul/                  Consul config + 6 service definitions
+│   ├── consul/                  Consul config + service definitions
 │   ├── nomad/                   Nomad config + messenger.nomad.hcl (3 groups)
-│   ├── systemd/                 Tier 0 units (vault, consul, apisix, nomad)
+│   ├── systemd/                 Tier 0 units (vault, consul, nginx, nomad)
 │   ├── prometheus/              Dev + prod configs
 │   ├── grafana/                 Datasource + dashboard provisioning
-│   ├── scripts/                 Bootstrap, deploy, smoke/feature/presence tests
-│   └── nginx/                   DEPRECATED (kept for rollback reference)
+│   └── scripts/                 Bootstrap, deploy, smoke/feature/presence tests
 ├── docs/
 │   ├── architecture.md          Full system design + scaling strategy
 │   ├── DEPLOY.md                Production deployment runbook
@@ -184,7 +184,7 @@ make info
 ### Tiered Architecture
 
 ```
-Tier 0 (systemd):  Vault → Consul → APISIX → Nomad
+Tier 0 (systemd):  Vault → Consul → Nginx → Nomad
 Tier 1 (Nomad):    PostgreSQL, Redis, MinIO, api_cpp, Prometheus, Grafana, cAdvisor
 ```
 
@@ -194,7 +194,7 @@ Tier 1 (Nomad):    PostgreSQL, Redis, MinIO, api_cpp, Prometheus, Grafana, cAdvi
 |---------|-----------|---------|
 | **Vault** 1.15 | `messenger-vault` | Secrets management (KV v2, AppRole + JWT auth) |
 | **Consul** 1.17 | `messenger-consul` | Service discovery + health checks |
-| **APISIX** 3.15 | `messenger-apisix` | TLS termination, reverse proxy (standalone YAML) |
+| **Nginx** 1.27 | `messenger-nginx` | TLS termination, reverse proxy, rate limiting |
 | **Nomad** | host-native | Container orchestration |
 
 ### Tier 1 — Nomad Job `messenger` (3 task groups)
@@ -205,6 +205,24 @@ Tier 1 (Nomad):    PostgreSQL, Redis, MinIO, api_cpp, Prometheus, Grafana, cAdvi
 | **app** | minio-init (prestart), Flyway (prestart), api_cpp (main) | Init tasks run before API |
 | **monitoring** | Prometheus 2.51, Grafana 10.4, cAdvisor 0.49 | Observability |
 
+### Nginx Reverse Proxy
+
+Subdomain-based routing with full WebSocket support:
+
+| Subdomain | Upstream | Features |
+|-----------|----------|----------|
+| `behappy.rest` | api_cpp:8080 | SPA, MinIO presigned URLs, 301 redirects |
+| `api.behappy.rest` | api_cpp:8080 | REST API, CORS, dual rate limiting (30r/s IP + 60r/s user) |
+| `ws.behappy.rest` | api_cpp:8080 | WebSocket proxy, 3600s timeouts |
+| `grafana.behappy.rest` | grafana:3000 | Monitoring dashboard |
+| `minio-console.behappy.rest` | minio:9001 | Object storage console |
+| `downloads.behappy.rest` | api_cpp:8080 | Static downloads (desktop installers) |
+| `admin.behappy.rest` | api_cpp:8080 | Admin panel SPA |
+| `vlt.behappy.rest` | messenger-vault:8200 | Vault UI |
+| `nomad.behappy.rest` | 172.19.0.1:4646 | Nomad UI |
+
+Security: HSTS preload, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy.
+
 ### Vault Secrets
 
 All credentials stored in `secret/data/messenger/{db,redis,minio,jwt,server,grafana}`.
@@ -213,7 +231,7 @@ Nomad accesses Vault via workload identity (JWT signed by Nomad, validated by Va
 ### TLS
 
 Wildcard cert `*.behappy.rest` + `behappy.rest` via certbot + Cloudflare DNS plugin.
-APISIX reads certs directly from `/etc/letsencrypt/`.
+Nginx reads certs directly from `/etc/letsencrypt/`. TLS 1.2+1.3, OCSP stapling.
 
 ---
 
@@ -230,7 +248,7 @@ All buckets are **private**. Files are delivered via presigned GET URLs (SigV4, 
 
 ---
 
-## Database Migrations (V1–V20)
+## Database Migrations (V1–V21)
 
 | Version | Purpose |
 |---------|---------|
@@ -249,6 +267,42 @@ All buckets are **private**. Files are delivered via presigned GET URLs (SigV4, 
 | V18 | Chat avatars |
 | V19 | Pinned messages CASCADE fix |
 | V20 | Forwarded message attribution |
+| V21 | Read receipts privacy |
+
+---
+
+## WebSocket Protocol
+
+### Client → Server
+
+| Type | Payload | Purpose |
+|------|---------|---------|
+| `auth` | `{ token }` | Authenticate connection |
+| `subscribe` | `{ chat_id }` | Subscribe to chat events |
+| `typing` | `{ chat_id }` | Typing indicator |
+| `presence_update` | `{ status }` | Active/away status |
+| `ping` | — | Heartbeat (every 25s) |
+
+### Server → Client
+
+| Type | Payload | Purpose |
+|------|---------|---------|
+| `pong` | — | Heartbeat response |
+| `message` | Full message object | New message in subscribed chat |
+| `typing` | `{ chat_id, user_id, username }` | Someone is typing |
+| `presence` | `{ user_id, status }` | User online/offline/away |
+| `reaction` | `{ message_id, reactions }` | Emoji reaction update |
+| `message_deleted` | `{ message_id, chat_id }` | Message deleted |
+| `message_updated` | Full message object | Message edited |
+| `message_pinned` | `{ message_id, chat_id }` | Message pinned |
+| `message_unpinned` | `{ message_id, chat_id }` | Message unpinned |
+| `read_receipt` | `{ chat_id, user_id, message_id }` | Message read |
+| `chat_created` | `{ chat_id, chat_type, title }` | New chat created |
+| `chat_updated` | `{ chat_id, title?, description?, avatar_url? }` | Chat metadata changed |
+| `chat_deleted` | `{ chat_id, deleted_by }` | Chat deleted |
+| `chat_member_joined` | `{ chat_id, user_id, username }` | Member joined |
+| `chat_member_left` | `{ chat_id, user_id }` | Member left |
+| `user_profile_updated` | `{ user_id, display_name?, avatar_url? }` | Profile updated |
 
 ---
 
@@ -283,18 +337,9 @@ curl -X POST https://api.behappy.rest/chats/$CHAT/messages \
   -d '{"content":"Hello!","type":"text"}'
 
 # WebSocket
-wscat -c "wss://ws.behappy.rest/ws?token=$TOKEN"
-
-# File upload
-curl -X POST https://api.behappy.rest/files \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@photo.jpg"
+wscat -c "wss://ws.behappy.rest/ws"
+# Then send: {"type":"auth","token":"<jwt>"}
 ```
-
-### WebSocket Protocol
-
-Client-to-server: `auth`, `subscribe`, `typing`, `presence_update`, `ping`
-Server-to-client: `pong`, `message`, `typing`, `presence`, `reaction`, `message_deleted`, `message_updated`, `message_pinned`, `message_unpinned`
 
 ---
 
@@ -304,7 +349,7 @@ Server-to-client: `pong`, `message`, `typing`, `presence`, `reaction`, `message_
 
 | Suite | File | Checks | Scope |
 |-------|------|--------|-------|
-| **Smoke** | `infra/scripts/smoke_test.py` | 53 | 20 sections: health, auth, chats, messages, replies, editing, files, voice, WS, presence, metrics, reactions, pinning, forwarding, privacy, search, chat avatars |
+| **Smoke** | `infra/scripts/smoke_test.py` | 58 | 21 sections: health, auth, chats, messages, replies, editing, files, voice, WS, presence, metrics, reactions, pinning, forwarding, privacy, search, chat avatars, read receipts |
 | **Feature** | `infra/scripts/feature_test.py` | 23 | Self-chat/Saved Messages, delete chat, forward with attribution |
 | **Presence** | `infra/scripts/presence_test.py` | 9 | Active/away detection, presence_update, duplicate suppression, disconnect cleanup, privacy enforcement |
 
