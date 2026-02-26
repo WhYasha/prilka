@@ -1579,6 +1579,40 @@ body {
 .slide-down-enter-from { transform: translateY(-100%); opacity: 0; }
 .slide-down-leave-to { transform: translateY(-100%); opacity: 0; }
 
+.slide-left-enter-active { transition: transform var(--transition-normal) ease-out, opacity .2s ease; }
+.slide-left-leave-active { transition: transform .2s ease-in, opacity .15s ease; }
+.slide-left-enter-from { transform: translateX(100%); opacity: 0; }
+.slide-left-leave-to { transform: translateX(-100%); opacity: 0; }
+
+.slide-right-enter-active { transition: transform var(--transition-normal) ease-out, opacity .2s ease; }
+.slide-right-leave-active { transition: transform .2s ease-in, opacity .15s ease; }
+.slide-right-enter-from { transform: translateX(-100%); opacity: 0; }
+.slide-right-leave-to { transform: translateX(100%); opacity: 0; }
+
+/* ── Profile edit/back button positioning ─────────────────── */
+.profile-edit-btn {
+  position: absolute; top: 12px; right: 52px; z-index: 2;
+  color: #fff;
+}
+.profile-edit-btn:hover { background: rgba(255,255,255,.15); color: #fff; }
+
+.profile-back-btn {
+  position: absolute; top: 12px; left: 12px; z-index: 2;
+  color: var(--text-muted);
+}
+.profile-back-btn:hover { color: var(--text); background: var(--input-bg); }
+
+/* ── Edit-mode header bar ─────────────────────────────────── */
+.profile-edit-header {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .75rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.profile-edit-header__title {
+  flex: 1; font-size: 1.1rem; font-weight: 600; color: var(--text);
+}
+
 /* ============================================================
    Admin Panel Styles (ported from admin.css)
    ============================================================ */
