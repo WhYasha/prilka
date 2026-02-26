@@ -84,8 +84,9 @@ if [ "${DEPLOY_MODE}" = "nomad" ]; then
     # Restart reverse proxy
     if [ "${PROXY_MODE}" = "nginx" ]; then
         log "Validating nginx config..."
-        docker run --rm \
+        docker run --rm --network messenger_net \
             -v /opt/messenger/repo/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+            -v /etc/letsencrypt:/etc/letsencrypt:ro \
             nginx:1.27-alpine nginx -t
         log "Restarting nginx..."
         sudo systemctl restart nginx
