@@ -1,5 +1,5 @@
 <template>
-  <div class="layout" :class="{ 'chat-open': !!chatsStore.activeChatId }">
+  <div class="layout" :class="{ 'chat-open': !!chatsStore.activeChatId }" @contextmenu.prevent>
     <!-- Drawer -->
     <Drawer
       :open="drawerOpen"
@@ -70,6 +70,9 @@
 
     <!-- Context Menu -->
     <ContextMenu />
+
+    <!-- Text Format Menu -->
+    <TextFormatMenu />
   </div>
 </template>
 
@@ -98,6 +101,7 @@ import DownloadModal from '@/components/modals/DownloadModal.vue'
 import InvitePreviewModal from '@/components/modals/InvitePreviewModal.vue'
 import SettingsView from '@/components/settings/SettingsView.vue'
 import ContextMenu from '@/components/chat/ContextMenu.vue'
+import TextFormatMenu from '@/components/ui/TextFormatMenu.vue'
 
 const route = useRoute()
 const router = useRouter()

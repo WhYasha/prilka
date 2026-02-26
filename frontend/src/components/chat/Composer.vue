@@ -37,6 +37,7 @@
         @keydown.enter.exact.prevent="send"
         @keydown.escape="onEscape"
         @input="onInput"
+        @contextmenu="onContextMenu"
       />
       <button
         class="icon-btn composer-btn record-btn"
@@ -153,6 +154,18 @@ function onEditMessage(e: Event) {
     autoResize()
     inputRef.value?.focus()
   })
+}
+
+function onContextMenu(event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+  const el = inputRef.value
+  if (!el) return
+  if (el.selectionStart !== el.selectionEnd) {
+    window.dispatchEvent(new CustomEvent('show-text-format-menu', {
+      detail: { x: event.clientX, y: event.clientY, target: el }
+    }))
+  }
 }
 
 function onInput() {
