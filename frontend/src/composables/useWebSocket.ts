@@ -97,25 +97,30 @@ export function useWebSocket() {
     }
   }
 
+  function startAwayGrace() {
+    if (isPresenceActive && !awayGraceTimer) {
+      awayGraceTimer = setTimeout(() => {
+        awayGraceTimer = null
+        if (isPresenceActive) {
+          isPresenceActive = false
+          sendPresenceUpdate('away')
+        }
+      }, 3_000)
+    }
+  }
+
+  function cancelAwayGrace() {
+    if (awayGraceTimer) {
+      clearTimeout(awayGraceTimer)
+      awayGraceTimer = null
+    }
+  }
+
   function onVisibilityChange() {
     if (document.hidden) {
-      // Tab/window hidden → start 15s grace period before sending away
-      if (isPresenceActive && !awayGraceTimer) {
-        awayGraceTimer = setTimeout(() => {
-          awayGraceTimer = null
-          if (document.hidden && isPresenceActive) {
-            isPresenceActive = false
-            sendPresenceUpdate('away')
-          }
-        }, 3_000)
-      }
+      startAwayGrace()
     } else {
-      // Tab became visible — cancel grace timer if pending
-      if (awayGraceTimer) {
-        clearTimeout(awayGraceTimer)
-        awayGraceTimer = null
-      }
-      // Go active if there was recent interaction
+      cancelAwayGrace()
       if (!isPresenceActive && Date.now() - lastUserActivity < ACTIVITY_TIMEOUT) {
         isPresenceActive = true
         sendPresenceUpdate('active')
@@ -125,6 +130,20 @@ export function useWebSocket() {
       if (chatsStore.activeChatId) {
         markRead(chatsStore.activeChatId).catch(() => {})
       }
+    }
+  }
+
+  function onWindowBlur() {
+    // Fires on Tauri minimize, browser Alt+Tab, etc. — document.hidden may NOT change
+    startAwayGrace()
+  }
+
+  function onWindowFocus() {
+    cancelAwayGrace()
+    lastUserActivity = Date.now()
+    if (!isPresenceActive) {
+      isPresenceActive = true
+      sendPresenceUpdate('active')
     }
   }
 
@@ -146,6 +165,8 @@ export function useWebSocket() {
     document.addEventListener('scroll', onUserActivity, opts)
     document.addEventListener('touchstart', onUserActivity, opts)
     document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('blur', onWindowBlur)
+    window.addEventListener('focus', onWindowFocus)
     presenceCheckTimer = setInterval(presenceCheck, 30_000)
   }
 
@@ -159,6 +180,8 @@ export function useWebSocket() {
     document.removeEventListener('scroll', onUserActivity, opts)
     document.removeEventListener('touchstart', onUserActivity, opts)
     document.removeEventListener('visibilitychange', onVisibilityChange)
+    window.removeEventListener('blur', onWindowBlur)
+    window.removeEventListener('focus', onWindowFocus)
     if (awayGraceTimer) {
       clearTimeout(awayGraceTimer)
       awayGraceTimer = null
