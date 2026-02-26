@@ -6,8 +6,8 @@
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
       </div>
-      <div v-else class="auth-logo">&#128172;</div>
-      <h1 class="auth-title">{{ isAdminHost ? 'Admin Panel' : 'Simple Messenger' }}</h1>
+      <div v-else class="auth-logo"><img src="/favicon.png" alt="BeHappy" class="auth-logo-img" /></div>
+      <h1 class="auth-title">{{ isAdminHost ? 'Admin Panel' : 'BeHappy' }}</h1>
       <p class="auth-subtitle">{{ isAdminHost ? 'Authorized personnel only' : 'Sign in to your account' }}</p>
 
       <div v-if="error" class="alert alert-error">{{ error }}</div>

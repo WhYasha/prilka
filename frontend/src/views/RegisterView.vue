@@ -1,8 +1,8 @@
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <div class="auth-logo">&#128172;</div>
-      <h1 class="auth-title">Simple Messenger</h1>
+      <div class="auth-logo"><img src="/favicon.png" alt="BeHappy" class="auth-logo-img" /></div>
+      <h1 class="auth-title">BeHappy</h1>
       <p class="auth-subtitle">Create a new account</p>
 
       <div v-if="error" class="alert alert-error">{{ error }}</div>

@@ -2,7 +2,7 @@
   <div class="modal-backdrop" @click.self="emit('close')">
     <div class="modal" style="max-width: 420px">
       <div class="modal-header">
-        <h2 class="modal-title">Download Simple Messenger</h2>
+        <h2 class="modal-title">Download BeHappy</h2>
         <button class="icon-btn" aria-label="Close" @click="emit('close')"><X :size="20" /></button>
       </div>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px">

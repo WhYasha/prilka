@@ -63,7 +63,7 @@
       </template>
     </nav>
 
-    <div class="drawer-footer">Simple Messenger v2</div>
+    <div class="drawer-footer">BeHappy v2</div>
   </div>
 </template>
 

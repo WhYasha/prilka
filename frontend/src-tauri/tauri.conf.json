@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "SimpleMessenger",
+  "productName": "BeHappy",
   "version": "0.1.0",
   "identifier": "rest.behappy.messenger",
   "build": {
@@ -10,7 +10,7 @@
   "app": {
     "windows": [
       {
-        "title": "Simple Messenger",
+        "title": "BeHappy",
         "url": "https://behappy.rest",
         "width": 1200,
         "height": 800,
