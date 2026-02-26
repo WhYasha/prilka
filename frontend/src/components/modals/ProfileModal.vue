@@ -1,15 +1,12 @@
 <template>
   <div class="modal-backdrop profile-backdrop" @click.self="emit('close')">
     <div class="modal profile-modal profile-modal--self">
-      <!-- View mode: close + edit buttons -->
-      <template v-if="mode === 'view'">
-        <button class="icon-btn profile-close-btn" aria-label="Close" @click="emit('close')">
-          <X :size="20" :stroke-width="2" />
-        </button>
-        <button class="icon-btn profile-edit-btn" aria-label="Edit profile" @click="goToEdit">
-          <Pencil :size="18" :stroke-width="2" />
-        </button>
-      </template>
+      <button class="icon-btn profile-close-btn" aria-label="Close" @click="emit('close')">
+        <X :size="20" :stroke-width="2" />
+      </button>
+      <button v-if="mode === 'view'" class="icon-btn profile-edit-btn" aria-label="Edit profile" @click="goToEdit">
+        <Pencil :size="18" :stroke-width="2" />
+      </button>
 
       <Transition :name="transitionName" mode="out-in">
         <!-- VIEW PANEL -->
@@ -196,7 +193,7 @@ async function saveProfile() {
       username: updated.username,
     })
     showToast('Profile saved!')
-    goToView()
+    emit('close')
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
     if (err.response?.status === 409) {
