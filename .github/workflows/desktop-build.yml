@@ -68,16 +68,16 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path "dist-desktop/windows" | Out-Null
 
-          Copy-Item $nsis.FullName "dist-desktop/windows/MessengerSetup.exe"
-          Copy-Item $nsis.FullName "dist-desktop/windows/MessengerSetup-${version}.exe"
+          Copy-Item $nsis.FullName "dist-desktop/windows/BeHappySetup.exe"
+          Copy-Item $nsis.FullName "dist-desktop/windows/BeHappySetup-${version}.exe"
 
-          $hash = (Get-FileHash "dist-desktop/windows/MessengerSetup.exe" -Algorithm SHA256).Hash.ToLower()
-          "$hash  MessengerSetup.exe" | Out-File -Encoding ascii "dist-desktop/windows/MessengerSetup.exe.sha256"
+          $hash = (Get-FileHash "dist-desktop/windows/BeHappySetup.exe" -Algorithm SHA256).Hash.ToLower()
+          "$hash  BeHappySetup.exe" | Out-File -Encoding ascii "dist-desktop/windows/BeHappySetup.exe.sha256"
 
           @{
               version = $version
               date    = (Get-Date -Format "yyyy-MM-dd")
-              url     = "https://behappy.rest/downloads/windows/MessengerSetup.exe"
+              url     = "https://behappy.rest/downloads/windows/BeHappySetup.exe"
               sha256  = $hash
           } | ConvertTo-Json | Out-File -Encoding utf8 "dist-desktop/windows/latest.json"
 
@@ -139,23 +139,23 @@ jobs:
 
           mkdir -p dist-desktop/macos
 
-          cp "$DMG" dist-desktop/macos/Messenger.dmg
+          cp "$DMG" dist-desktop/macos/BeHappy.dmg
           cp "$DMG" "dist-desktop/macos/Messenger-${VERSION}.dmg"
 
-          HASH=$(shasum -a 256 dist-desktop/macos/Messenger.dmg | awk '{print $1}')
-          echo "$HASH  Messenger.dmg" > dist-desktop/macos/Messenger.dmg.sha256
+          HASH=$(shasum -a 256 dist-desktop/macos/BeHappy.dmg | awk '{print $1}')
+          echo "$HASH  BeHappy.dmg" > dist-desktop/macos/BeHappy.dmg.sha256
 
           cat > dist-desktop/macos/latest.json <<EOF
           {
             "version": "${VERSION}",
             "date": "$(date +%Y-%m-%d)",
-            "url": "https://behappy.rest/downloads/macos/Messenger.dmg",
+            "url": "https://behappy.rest/downloads/macos/BeHappy.dmg",
             "sha256": "${HASH}"
           }
           EOF
 
           echo "Artifact: $DMG"
-          echo "Size: $(du -h dist-desktop/macos/Messenger.dmg | awk '{print $1}')"
+          echo "Size: $(du -h dist-desktop/macos/BeHappy.dmg | awk '{print $1}')"
           echo "SHA256: $HASH"
 
       - name: Upload artifact

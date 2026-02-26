@@ -17,12 +17,12 @@
           <summary style="cursor: pointer; color: var(--accent)">Other platforms</summary>
           <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px">
             <a
-              href="/downloads/windows/MessengerSetup.exe"
+              href="/downloads/windows/BeHappySetup.exe"
               class="btn btn-ghost btn-full"
               download
             >Windows installer (.exe)</a>
             <a
-              href="/downloads/macos/Messenger.dmg"
+              href="/downloads/macos/BeHappy.dmg"
               class="btn btn-ghost btn-full"
               download
             >macOS installer (.dmg)</a>
@@ -53,7 +53,7 @@ const primaryPlatform = computed(() => {
 })
 
 function downloadPrimary() {
-  if (isWindows) window.location.href = '/downloads/windows/MessengerSetup.exe'
-  else if (isMac) window.location.href = '/downloads/macos/Messenger.dmg'
+  if (isWindows) window.location.href = '/downloads/windows/BeHappySetup.exe'
+  else if (isMac) window.location.href = '/downloads/macos/BeHappy.dmg'
 }
 </script>

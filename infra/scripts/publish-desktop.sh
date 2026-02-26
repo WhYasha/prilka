@@ -3,8 +3,8 @@
 # Usage: bash infra/scripts/publish-desktop.sh [windows|macos|both]
 #
 # Expects artifacts in:
-#   frontend/dist-desktop/windows/MessengerSetup.exe
-#   frontend/dist-desktop/macos/Messenger.dmg
+#   frontend/dist-desktop/windows/BeHappySetup.exe
+#   frontend/dist-desktop/macos/BeHappy.dmg
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -19,16 +19,16 @@ TARGET="${1:-both}"
 
 publish_windows() {
     local dir="$DIST_DIR/windows"
-    if [ ! -f "$dir/MessengerSetup.exe" ]; then
-        echo "ERROR: $dir/MessengerSetup.exe not found. Build first with build_windows.ps1"
+    if [ ! -f "$dir/BeHappySetup.exe" ]; then
+        echo "ERROR: $dir/BeHappySetup.exe not found. Build first with build_windows.ps1"
         return 1
     fi
     echo "==> Uploading Windows installer..."
-    scp "$dir/MessengerSetup.exe" "$dir/MessengerSetup.exe.sha256" "$dir/latest.json" \
+    scp "$dir/BeHappySetup.exe" "$dir/BeHappySetup.exe.sha256" "$dir/latest.json" \
         "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/windows/"
 
     # Also upload versioned copy if it exists
-    for f in "$dir"/MessengerSetup-*.exe; do
+    for f in "$dir"/BeHappySetup-*.exe; do
         [ -f "$f" ] && scp "$f" "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/windows/"
     done
 
@@ -39,12 +39,12 @@ publish_windows() {
 
 publish_macos() {
     local dir="$DIST_DIR/macos"
-    if [ ! -f "$dir/Messenger.dmg" ]; then
-        echo "ERROR: $dir/Messenger.dmg not found. Build first with build_macos.sh"
+    if [ ! -f "$dir/BeHappy.dmg" ]; then
+        echo "ERROR: $dir/BeHappy.dmg not found. Build first with build_macos.sh"
         return 1
     fi
     echo "==> Uploading macOS installer..."
-    scp "$dir/Messenger.dmg" "$dir/Messenger.dmg.sha256" "$dir/latest.json" \
+    scp "$dir/BeHappy.dmg" "$dir/BeHappy.dmg.sha256" "$dir/latest.json" \
         "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/macos/"
 
     for f in "$dir"/Messenger-*.dmg; do
@@ -65,5 +65,5 @@ esac
 
 echo ""
 echo "Download URLs:"
-echo "  Windows: https://behappy.rest/downloads/windows/MessengerSetup.exe"
-echo "  macOS:   https://behappy.rest/downloads/macos/Messenger.dmg"
+echo "  Windows: https://behappy.rest/downloads/windows/BeHappySetup.exe"
+echo "  macOS:   https://behappy.rest/downloads/macos/BeHappy.dmg"

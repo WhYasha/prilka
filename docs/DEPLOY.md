@@ -258,15 +258,15 @@ sudo systemctl start messenger
 Files are served by nginx at:
 
 ```
-http://<SERVER_IP>/downloads/windows/MessengerSetup.exe
-http://<SERVER_IP>/downloads/macos/Messenger.dmg
+http://<SERVER_IP>/downloads/windows/BeHappySetup.exe
+http://<SERVER_IP>/downloads/macos/BeHappy.dmg
 ```
 
 Upload artifacts when they are ready:
 
 ```bash
-scp MessengerSetup.exe deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/windows/
-scp Messenger.dmg      deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/macos/
+scp BeHappySetup.exe deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/windows/
+scp BeHappy.dmg      deploy@<SERVER_IP>:/opt/messenger/repo/infra/nginx/downloads/macos/
 ```
 
 The frontend (`app.html`) auto-detects the OS and shows the matching

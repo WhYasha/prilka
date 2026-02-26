@@ -128,8 +128,8 @@ The desktop app wraps the production web app in a native window using Tauri v2.
 
 | Platform | Bundle | Size | Status |
 |----------|--------|------|--------|
-| Windows  | NSIS installer (`MessengerSetup.exe`) | ~1.9 MB | Published |
-| macOS    | DMG (`Messenger.dmg`) | TBD | CI ready, needs macOS build |
+| Windows  | NSIS installer (`BeHappySetup.exe`) | ~1.9 MB | Published |
+| macOS    | DMG (`BeHappy.dmg`) | TBD | CI ready, needs macOS build |
 
 - **Runtime:** Tauri v2 (Rust) + WebView2 (Windows) / WebKit (macOS)
 - **Mode:** Remote URL — loads `https://behappy.rest` directly
