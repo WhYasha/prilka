@@ -22,8 +22,8 @@
       <div class="chat-item-info">
         <div class="chat-item-top">
           <span class="chat-item-name">
-            <Megaphone v-if="chat.type === 'channel'" class="chat-type-icon" :size="14" :stroke-width="2" />
-            <Users v-else-if="chat.type === 'group'" class="chat-type-icon" :size="14" :stroke-width="2" />
+            <img v-if="chat.type === 'channel'" src="@/assets/icons/chat-type-channel.png" alt="" class="chat-type-icon-img" />
+            <img v-else-if="chat.type === 'group'" src="@/assets/icons/chat-type-group.png" alt="" class="chat-type-icon-img" />
             {{ displayName }}
             <Pin v-if="chat.is_pinned" class="status-icon" :size="14" :stroke-width="1.8" title="Pinned" />
             <BellOff v-if="chat.is_muted" class="status-icon status-icon-muted" :size="14" :stroke-width="1.8" title="Muted" />
@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Pin, BellOff, Megaphone, Users } from 'lucide-vue-next'
+import { Pin, BellOff } from 'lucide-vue-next'
 import Avatar from '@/components/ui/Avatar.vue'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
@@ -224,10 +224,10 @@ function onTouchEnd() {
   color: var(--text-muted, #999);
 }
 
-.chat-type-icon {
+.chat-type-icon-img {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  color: var(--accent, var(--color-primary, #3390ec));
-  opacity: 0.65;
   align-self: center;
 }
 

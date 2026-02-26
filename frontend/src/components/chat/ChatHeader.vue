@@ -13,7 +13,9 @@
       <div class="chat-header-name">{{ displayName }}</div>
       <div v-if="subtitle" class="chat-header-sub" :class="{ 'typing-text': isTyping, 'online-text': isOnline && !isTyping }">{{ subtitle }}<span v-if="isTyping" class="typing-dots"><span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" /></span></div>
     </div>
-    <button class="icon-btn search-btn" aria-label="Search messages" @click="emit('openSearch')">&#128269;</button>
+    <button class="icon-btn search-btn" aria-label="Search messages" @click="emit('openSearch')">
+      <img src="@/assets/icons/search-messages.png" alt="Search" class="search-icon-img" />
+    </button>
   </header>
 </template>
 
@@ -164,5 +166,11 @@ function handleProfileClick() {
 
 .typing-dot:nth-child(3) {
   animation-delay: .3s;
+}
+
+.search-icon-img {
+  width: 20px;
+  height: 20px;
+  display: block;
 }
 </style>
