@@ -1,5 +1,5 @@
 <template>
-  <div class="layout" :class="{ 'chat-open': !!chatsStore.activeChatId }">
+  <div class="layout" :class="{ 'chat-open': !!chatsStore.activeChatId }" @contextmenu.prevent>
     <!-- Drawer -->
     <Drawer
       :open="drawerOpen"
