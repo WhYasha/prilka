@@ -107,7 +107,7 @@ export function useWebSocket() {
             isPresenceActive = false
             sendPresenceUpdate('away')
           }
-        }, 15_000)
+        }, 3_000)
       }
     } else {
       // Tab became visible — cancel grace timer if pending

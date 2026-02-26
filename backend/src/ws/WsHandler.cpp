@@ -377,7 +377,7 @@ void WsHandler::handleConnectionClosed(const drogon::WebSocketConnectionPtr& con
                     {
                         std::lock_guard<std::mutex> lk2(s_userMu);
                         cancelOfflineTimer(uid);
-                        auto timerId = drogon::app().getLoop()->runAfter(10.0, [this, uid, uname]() {
+                        auto timerId = drogon::app().getLoop()->runAfter(5.0, [this, uid, uname]() {
                             if (!isUserOnline(uid)) {
                                 broadcastPresence(uid, uname, "offline");
                                 auto db = drogon::app().getDbClient();
@@ -655,7 +655,7 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                 {
                     std::lock_guard<std::mutex> lk2(s_userMu);
                     cancelOfflineTimer(uid);
-                    auto timerId = drogon::app().getLoop()->runAfter(10.0, [this, uid, uname]() {
+                    auto timerId = drogon::app().getLoop()->runAfter(5.0, [this, uid, uname]() {
                         if (!isUserOnline(uid)) {
                             broadcastPresence(uid, uname, "offline");
                             auto db = drogon::app().getDbClient();
