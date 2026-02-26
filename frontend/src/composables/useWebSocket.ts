@@ -54,12 +54,13 @@ export function useWebSocket() {
   // ── Unified activity-based presence ─────────────────────────────────
   // Single source of truth: real user interaction determines online/offline.
   // document.hasFocus() is NOT used — unreliable in Tauri.
-  const ACTIVITY_TIMEOUT = 10_000 // 10s without interaction → away
+  const ACTIVITY_TIMEOUT = 300_000 // 5min without interaction → away
   let lastUserActivity = Date.now()
   let lastActivityRefreshSent = 0
   let isPresenceActive = false
   let presenceCheckTimer: ReturnType<typeof setInterval> | null = null
   let presenceSetup = false
+  let awayGraceTimer: ReturnType<typeof setTimeout> | null = null
 
   // Deduplicate presence events: backend broadcasts to each shared chat,
   // so observer in N shared chats receives N identical events per status change.
@@ -98,13 +99,23 @@ export function useWebSocket() {
 
   function onVisibilityChange() {
     if (document.hidden) {
-      // Tab/window hidden → immediately away
-      if (isPresenceActive) {
-        isPresenceActive = false
-        sendPresenceUpdate('away')
+      // Tab/window hidden → start 15s grace period before sending away
+      if (isPresenceActive && !awayGraceTimer) {
+        awayGraceTimer = setTimeout(() => {
+          awayGraceTimer = null
+          if (document.hidden && isPresenceActive) {
+            isPresenceActive = false
+            sendPresenceUpdate('away')
+          }
+        }, 15_000)
       }
     } else {
-      // Tab became visible — go active if there was recent interaction
+      // Tab became visible — cancel grace timer if pending
+      if (awayGraceTimer) {
+        clearTimeout(awayGraceTimer)
+        awayGraceTimer = null
+      }
+      // Go active if there was recent interaction
       if (!isPresenceActive && Date.now() - lastUserActivity < ACTIVITY_TIMEOUT) {
         isPresenceActive = true
         sendPresenceUpdate('active')
@@ -135,7 +146,7 @@ export function useWebSocket() {
     document.addEventListener('scroll', onUserActivity, opts)
     document.addEventListener('touchstart', onUserActivity, opts)
     document.addEventListener('visibilitychange', onVisibilityChange)
-    presenceCheckTimer = setInterval(presenceCheck, 5000)
+    presenceCheckTimer = setInterval(presenceCheck, 30_000)
   }
 
   function teardownPresence() {
@@ -148,6 +159,10 @@ export function useWebSocket() {
     document.removeEventListener('scroll', onUserActivity, opts)
     document.removeEventListener('touchstart', onUserActivity, opts)
     document.removeEventListener('visibilitychange', onVisibilityChange)
+    if (awayGraceTimer) {
+      clearTimeout(awayGraceTimer)
+      awayGraceTimer = null
+    }
     if (presenceCheckTimer) {
       clearInterval(presenceCheckTimer)
       presenceCheckTimer = null

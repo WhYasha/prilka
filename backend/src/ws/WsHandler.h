@@ -96,6 +96,11 @@ private:
     static std::mutex                                              s_userMu;
     static std::unordered_map<long long,
            std::vector<drogon::WebSocketConnectionPtr>>           s_userConns;
+    // Per-user pending offline timers (debounce offline broadcast by 10s)
+    static std::unordered_map<long long, trantor::TimerId>        s_offlineTimers;
+
+    // Cancel a pending offline timer for the given user (must be called under s_userMu or externally safe)
+    void cancelOfflineTimer(long long userId);
 };
 
 // Called by controllers after mutations are persisted.

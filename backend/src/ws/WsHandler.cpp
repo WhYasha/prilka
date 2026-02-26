@@ -16,6 +16,7 @@ std::unordered_map<long long, bool> WsHandler::s_redisSubs;
 std::unordered_map<long long, bool> WsHandler::s_redisUserSubs;
 std::mutex WsHandler::s_userMu;
 std::unordered_map<long long, std::vector<drogon::WebSocketConnectionPtr>> WsHandler::s_userConns;
+std::unordered_map<long long, trantor::TimerId> WsHandler::s_offlineTimers;
 
 // Keep Redis subscriber objects alive so callbacks remain valid
 static std::mutex s_redisSubMu;
@@ -192,6 +193,16 @@ void WsHandler::subscribeToUserRedis(long long userId) {
     }
 }
 
+// ── Offline debounce ─────────────────────────────────────────────────────
+
+void WsHandler::cancelOfflineTimer(long long userId) {
+    auto it = s_offlineTimers.find(userId);
+    if (it != s_offlineTimers.end()) {
+        drogon::app().getLoop()->invalidateTimer(it->second);
+        s_offlineTimers.erase(it);
+    }
+}
+
 // ── Presence broadcast ────────────────────────────────────────────────────
 
 // Helper: compute approximate last-seen bucket string
@@ -360,13 +371,27 @@ void WsHandler::handleConnectionClosed(const drogon::WebSocketConnectionPtr& con
                     }
                 }
                 if (shouldBroadcastOffline) {
-                    broadcastPresence(ctx->userId, ctx->username, "offline");
-                    auto db = drogon::app().getDbClient();
-                    db->execSqlAsync(
-                        "UPDATE users SET last_activity = NOW() WHERE id = $1",
-                        [](const drogon::orm::Result&) {},
-                        [](const drogon::orm::DrogonDbException&) {},
-                        ctx->userId);
+                    // Debounce: delay offline broadcast by 10s
+                    long long uid = ctx->userId;
+                    std::string uname = ctx->username;
+                    {
+                        std::lock_guard<std::mutex> lk2(s_userMu);
+                        cancelOfflineTimer(uid);
+                        auto timerId = drogon::app().getLoop()->runAfter(10.0, [this, uid, uname]() {
+                            if (!isUserOnline(uid)) {
+                                broadcastPresence(uid, uname, "offline");
+                                auto db = drogon::app().getDbClient();
+                                db->execSqlAsync(
+                                    "UPDATE users SET last_activity = NOW() WHERE id = $1",
+                                    [](const drogon::orm::Result&) {},
+                                    [](const drogon::orm::DrogonDbException&) {},
+                                    uid);
+                            }
+                            std::lock_guard<std::mutex> lk(s_userMu);
+                            s_offlineTimers.erase(uid);
+                        });
+                        s_offlineTimers[uid] = timerId;
+                    }
                 }
             }
         }
@@ -437,6 +462,10 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                         shouldBroadcastOnline = ctx->active && !wasOnline;
                     }
                     if (shouldBroadcastOnline) {
+                        {
+                            std::lock_guard<std::mutex> lk2(s_userMu);
+                            cancelOfflineTimer(ctx->userId);
+                        }
                         broadcastPresence(ctx->userId, ctx->username, "online");
                     }
                 },
@@ -500,6 +529,10 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                         broadcastOnline = !hadOtherActive;
                     }
                     if (broadcastOnline) {
+                        {
+                            std::lock_guard<std::mutex> lk2(s_userMu);
+                            cancelOfflineTimer(ctx->userId);
+                        }
                         broadcastPresence(ctx->userId, ctx->username, "online");
                     }
                 }
@@ -610,15 +643,33 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
             }
 
             if (broadcastOnline) {
+                {
+                    std::lock_guard<std::mutex> lk2(s_userMu);
+                    cancelOfflineTimer(ctx->userId);
+                }
                 broadcastPresence(ctx->userId, ctx->username, "online");
             } else if (broadcastOffline) {
-                broadcastPresence(ctx->userId, ctx->username, "offline");
-                auto db = drogon::app().getDbClient();
-                db->execSqlAsync(
-                    "UPDATE users SET last_activity = NOW() WHERE id = $1",
-                    [](const drogon::orm::Result&) {},
-                    [](const drogon::orm::DrogonDbException&) {},
-                    ctx->userId);
+                // Debounce: delay offline broadcast by 10s
+                long long uid = ctx->userId;
+                std::string uname = ctx->username;
+                {
+                    std::lock_guard<std::mutex> lk2(s_userMu);
+                    cancelOfflineTimer(uid);
+                    auto timerId = drogon::app().getLoop()->runAfter(10.0, [this, uid, uname]() {
+                        if (!isUserOnline(uid)) {
+                            broadcastPresence(uid, uname, "offline");
+                            auto db = drogon::app().getDbClient();
+                            db->execSqlAsync(
+                                "UPDATE users SET last_activity = NOW() WHERE id = $1",
+                                [](const drogon::orm::Result&) {},
+                                [](const drogon::orm::DrogonDbException&) {},
+                                uid);
+                        }
+                        std::lock_guard<std::mutex> lk(s_userMu);
+                        s_offlineTimers.erase(uid);
+                    });
+                    s_offlineTimers[uid] = timerId;
+                }
             }
             return;
         }
