@@ -268,7 +268,7 @@ const emojiPickerMessageId = ref<number | null>(null)
 const selectionStore = useSelectionStore()
 
 // Drag-to-select
-const { isDragSelecting, onMouseDown: onDragMouseDown, onMouseMove: onDragMouseMove, onMouseUp: onDragMouseUp } = useDragSelect({
+const { onMouseDown: onDragMouseDown, onMouseMove: onDragMouseMove, onMouseUp: onDragMouseUp } = useDragSelect({
   chatId: () => chatsStore.activeChatId,
 })
 
