@@ -1,5 +1,13 @@
 /// <reference types="vite/client" />
 
+declare module 'emoji-mart-vue-fast/src' {
+  import type { DefineComponent } from 'vue'
+  export const Picker: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
+  export const EmojiIndex: any
+  export const store: any
+  export const frequently: any
+}
+
 declare module 'emoji-mart-vue-fast' {
   import type { DefineComponent } from 'vue'
   export const Picker: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
