@@ -870,8 +870,10 @@ void ChatsController::updateChat(const drogon::HttpRequestPtr& req,
                    "RETURNING id, type, name, title, description, public_name";
 
             auto db2 = drogon::app().getDbClient();
+            // Alias for nested lambda capture
+            long long cId = chatId;
             // Shared success callback for all param-count branches
-            auto onUpdateSuccess = [cb, chatId](const drogon::orm::Result& r2) mutable {
+            auto onUpdateSuccess = [cb, cId](const drogon::orm::Result& r2) mutable {
                 if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
                 const auto row = r2[0];
                 Json::Value resp;
@@ -885,10 +887,10 @@ void ChatsController::updateChat(const drogon::HttpRequestPtr& req,
                 // Broadcast chat_updated to all chat members via chat channel
                 Json::Value wsPayload;
                 wsPayload["type"]    = "chat_updated";
-                wsPayload["chat_id"] = Json::Int64(chatId);
+                wsPayload["chat_id"] = Json::Int64(cId);
                 if (!resp["title"].isNull())       wsPayload["title"]       = resp["title"];
                 if (!resp["description"].isNull()) wsPayload["description"] = resp["description"];
-                WsDispatch::publishMessage(chatId, wsPayload);
+                WsDispatch::publishMessage(cId, wsPayload);
 
                 cb(drogon::HttpResponse::newHttpJsonResponse(resp));
             };
@@ -941,7 +943,7 @@ void ChatsController::setChatAvatar(const drogon::HttpRequestPtr& req,
             db2->execSqlAsync(
                 "UPDATE chats SET avatar_file_id = $1, updated_at = NOW() WHERE id = $2 "
                 "RETURNING id",
-                [cb, fileId](const drogon::orm::Result& r2) mutable {
+                [cb, fileId, chatId](const drogon::orm::Result& r2) mutable {
                     if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
 
                     // Get presigned URL for the avatar
