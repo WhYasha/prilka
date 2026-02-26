@@ -50,41 +50,15 @@ export function useWebSocket() {
   let hasConnectedBefore = false
   let disconnectedSince: number | null = null
 
-  // ── Presence: visibility/focus tracking ──────────────────────────────
-  let awayTimer: ReturnType<typeof setTimeout> | null = null
-  let isAppActive = !document.hidden && document.hasFocus()
-  let presenceTrackingSetup = false
-
-  // ── Activity tracking for presence refresh ────────────────────────────
+  // ── Unified activity-based presence ─────────────────────────────────
+  // Single source of truth: real user interaction determines online/offline.
+  // document.hasFocus() is NOT used — unreliable in Tauri.
+  const ACTIVITY_TIMEOUT = 10_000 // 10s without interaction → away
   let lastUserActivity = Date.now()
   let lastActivityRefreshSent = 0
-  let activityTrackingSetup = false
-
-  function onUserActivity() {
-    lastUserActivity = Date.now()
-  }
-
-  function setupActivityTracking() {
-    if (activityTrackingSetup) return
-    activityTrackingSetup = true
-    const opts: AddEventListenerOptions = { passive: true, capture: true }
-    document.addEventListener('mousemove', onUserActivity, opts)
-    document.addEventListener('keydown', onUserActivity, opts)
-    document.addEventListener('click', onUserActivity, opts)
-    document.addEventListener('scroll', onUserActivity, opts)
-    document.addEventListener('touchstart', onUserActivity, opts)
-  }
-
-  function teardownActivityTracking() {
-    if (!activityTrackingSetup) return
-    activityTrackingSetup = false
-    const opts: EventListenerOptions = { capture: true }
-    document.removeEventListener('mousemove', onUserActivity, opts)
-    document.removeEventListener('keydown', onUserActivity, opts)
-    document.removeEventListener('click', onUserActivity, opts)
-    document.removeEventListener('scroll', onUserActivity, opts)
-    document.removeEventListener('touchstart', onUserActivity, opts)
-  }
+  let isPresenceActive = false
+  let presenceCheckTimer: ReturnType<typeof setInterval> | null = null
+  let presenceSetup = false
 
   function sendPresenceUpdate(status: 'active' | 'away') {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -92,49 +66,65 @@ export function useWebSocket() {
     }
   }
 
-  function checkAppActive() {
-    const recentActivity = Date.now() - lastUserActivity < 5000
-    const active = !document.hidden && (document.hasFocus() || recentActivity)
-
-    if (active && !isAppActive) {
-      // Becoming active: cancel pending away, send immediately
-      if (awayTimer) {
-        clearTimeout(awayTimer)
-        awayTimer = null
-      }
-      isAppActive = true
+  function onUserActivity() {
+    lastUserActivity = Date.now()
+    // Immediate away→active transition on real interaction
+    if (!isPresenceActive && !document.hidden) {
+      isPresenceActive = true
       sendPresenceUpdate('active')
-    } else if (!active && isAppActive) {
-      // Becoming away: debounce 3 seconds to avoid spam on quick alt-tabs
-      if (!awayTimer) {
-        awayTimer = setTimeout(() => {
-          awayTimer = null
-          // Re-check activity before actually going away
-          if (Date.now() - lastUserActivity < 5000) return
-          isAppActive = false
-          sendPresenceUpdate('away')
-        }, 3000)
+    }
+  }
+
+  function onVisibilityChange() {
+    if (document.hidden) {
+      // Tab/window hidden → immediately away
+      if (isPresenceActive) {
+        isPresenceActive = false
+        sendPresenceUpdate('away')
+      }
+    } else {
+      // Tab became visible — go active if there was recent interaction
+      if (!isPresenceActive && Date.now() - lastUserActivity < ACTIVITY_TIMEOUT) {
+        isPresenceActive = true
+        sendPresenceUpdate('active')
       }
     }
   }
 
-  function setupPresenceTracking() {
-    if (presenceTrackingSetup) return
-    presenceTrackingSetup = true
-    document.addEventListener('visibilitychange', checkAppActive)
-    window.addEventListener('focus', checkAppActive)
-    window.addEventListener('blur', checkAppActive)
+  function presenceCheck() {
+    if (document.hidden) return // handled by onVisibilityChange
+    if (Date.now() - lastUserActivity > ACTIVITY_TIMEOUT && isPresenceActive) {
+      isPresenceActive = false
+      sendPresenceUpdate('away')
+    }
   }
 
-  function teardownPresenceTracking() {
-    if (!presenceTrackingSetup) return
-    presenceTrackingSetup = false
-    document.removeEventListener('visibilitychange', checkAppActive)
-    window.removeEventListener('focus', checkAppActive)
-    window.removeEventListener('blur', checkAppActive)
-    if (awayTimer) {
-      clearTimeout(awayTimer)
-      awayTimer = null
+  function setupPresence() {
+    if (presenceSetup) return
+    presenceSetup = true
+    const opts: AddEventListenerOptions = { passive: true, capture: true }
+    document.addEventListener('mousemove', onUserActivity, opts)
+    document.addEventListener('keydown', onUserActivity, opts)
+    document.addEventListener('click', onUserActivity, opts)
+    document.addEventListener('scroll', onUserActivity, opts)
+    document.addEventListener('touchstart', onUserActivity, opts)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    presenceCheckTimer = setInterval(presenceCheck, 5000)
+  }
+
+  function teardownPresence() {
+    if (!presenceSetup) return
+    presenceSetup = false
+    const opts: EventListenerOptions = { capture: true }
+    document.removeEventListener('mousemove', onUserActivity, opts)
+    document.removeEventListener('keydown', onUserActivity, opts)
+    document.removeEventListener('click', onUserActivity, opts)
+    document.removeEventListener('scroll', onUserActivity, opts)
+    document.removeEventListener('touchstart', onUserActivity, opts)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+    if (presenceCheckTimer) {
+      clearInterval(presenceCheckTimer)
+      presenceCheckTimer = null
     }
   }
 
@@ -168,13 +158,15 @@ export function useWebSocket() {
       // Stop fallback polling — WS is back
       stopFallbackPolling()
 
-      // Compute current visibility state for auth message
-      isAppActive = !document.hidden && document.hasFocus()
+      // Reset presence state on (re)connect
+      lastUserActivity = Date.now()
+      lastActivityRefreshSent = 0
+      isPresenceActive = !document.hidden
 
       // Send auth with current active state
       const token = localStorage.getItem('access_token')
       if (token) {
-        ws!.send(JSON.stringify({ type: 'auth', token, active: isAppActive }))
+        ws!.send(JSON.stringify({ type: 'auth', token, active: isPresenceActive }))
       }
 
       // Subscribe to all chats
@@ -193,14 +185,9 @@ export function useWebSocket() {
       }
       hasConnectedBefore = true
 
-      // Reset activity refresh state on (re)connect
-      lastUserActivity = Date.now()
-      lastActivityRefreshSent = 0
-
-      // Start heartbeat, presence tracking, and activity tracking
+      // Start heartbeat and unified presence tracking
       startHeartbeat()
-      setupPresenceTracking()
-      setupActivityTracking()
+      setupPresence()
     }
 
     ws.onmessage = (event) => {
@@ -448,8 +435,7 @@ export function useWebSocket() {
     intentionalClose = true
     stopHeartbeat()
     stopFallbackPolling()
-    teardownPresenceTracking()
-    teardownActivityTracking()
+    teardownPresence()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
