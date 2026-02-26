@@ -272,9 +272,11 @@ void ChatsController::listChats(const drogon::HttpRequestPtr& req,
 
                 // DM-specific fields
                 if (!row["other_user_id"].isNull()) {
-                    chat["other_user_id"]      = Json::Int64(row["other_user_id"].as<long long>());
+                    long long otherUid = row["other_user_id"].as<long long>();
+                    chat["other_user_id"]      = Json::Int64(otherUid);
                     chat["other_username"]     = row["other_username"].isNull() ? Json::Value() : Json::Value(row["other_username"].as<std::string>());
                     chat["other_display_name"] = row["other_display_name"].isNull() ? Json::Value() : Json::Value(row["other_display_name"].as<std::string>());
+                    chat["other_is_online"]    = WsHandler::isUserOnline(otherUid);
 
                     std::string avBucket = row["other_avatar_bucket"].isNull() ? "" : row["other_avatar_bucket"].as<std::string>();
                     std::string avKey    = row["other_avatar_key"].isNull()    ? "" : row["other_avatar_key"].as<std::string>();

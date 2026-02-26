@@ -37,7 +37,15 @@ export const useChatsStore = defineStore('chats', () => {
 
   async function loadChats() {
     try {
-      chats.value = await chatsApi.listChats()
+      const loaded = await chatsApi.listChats()
+      chats.value = loaded
+      // Seed online presence from API snapshot (DM partners)
+      for (const chat of loaded) {
+        const raw = chat as unknown as Record<string, unknown>
+        if (chat.type === 'direct' && raw.other_user_id && raw.other_is_online === true) {
+          setUserOnline(raw.other_user_id as number)
+        }
+      }
     } catch (e) {
       console.error('Failed to load chats', e)
     }
