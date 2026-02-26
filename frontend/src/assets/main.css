@@ -341,7 +341,7 @@ body {
   background: var(--drawer-bg);
   display: flex; flex-direction: column;
   transform: translateX(-100%);
-  transition: transform var(--transition-normal) ease;
+  transition: transform var(--transition-slow) cubic-bezier(0.4, 0, 0.2, 1);
   will-change: transform;
   box-shadow: 4px 0 24px rgba(0,0,0,.3);
 }
@@ -350,12 +350,12 @@ body {
   position: fixed; inset: 0; z-index: 199;
   background: var(--modal-backdrop);
   visibility: hidden; opacity: 0; pointer-events: none;
-  transition: opacity var(--transition-normal) ease,
-              visibility 0s linear var(--transition-normal);
+  transition: opacity var(--transition-slow) cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0s linear var(--transition-slow);
 }
 .drawer-overlay.visible {
   visibility: visible; opacity: 1; pointer-events: auto;
-  transition: opacity var(--transition-normal) ease,
+  transition: opacity var(--transition-slow) cubic-bezier(0.4, 0, 0.2, 1),
               visibility 0s linear 0s;
 }
 
