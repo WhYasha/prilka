@@ -60,6 +60,10 @@ export function useWebSocket() {
   let presenceCheckTimer: ReturnType<typeof setInterval> | null = null
   let presenceSetup = false
 
+  // Deduplicate presence events: backend broadcasts to each shared chat,
+  // so observer in N shared chats receives N identical events per status change.
+  const presenceCache = new Map<number, string>()
+
   function sendPresenceUpdate(status: 'active' | 'away') {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'presence_update', status }))
@@ -257,12 +261,15 @@ export function useWebSocket() {
       case 'presence': {
         const userId = data.user_id as number
         const status = data.status as string
+        // Skip if this user's status hasn't actually changed
+        if (presenceCache.get(userId) === status) break
+        presenceCache.set(userId, status)
+
         const lastSeenAt = data.last_seen_at as string | undefined
         const lastSeenBucket = data.last_seen_bucket as string | undefined
         if (status === 'online') {
           chatsStore.setUserOnline(userId)
         } else if (status === 'offline') {
-          // Use current time as fallback so UI shows "last seen just now"
           const effectiveLastSeenAt = lastSeenAt || new Date().toISOString()
           chatsStore.setUserOffline(userId, effectiveLastSeenAt, lastSeenBucket)
         }

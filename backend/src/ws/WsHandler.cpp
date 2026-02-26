@@ -7,6 +7,7 @@
 #include <trantor/utils/Logger.h>
 #include <json/json.h>
 #include <sstream>
+#include <unordered_set>
 
 // ── Static members ─────────────────────────────────────────────────────────
 std::mutex WsHandler::s_mu;
@@ -230,14 +231,18 @@ void WsHandler::broadcastPresence(long long userId, const std::string& username,
             approxPayload["last_seen_bucket"] = lastSeenBucket(status);
 
             if (visibility == "everyone") {
-                // Current behavior: broadcast full presence to everyone
+                // Send once per unique observer via their user channel (not per-chat).
+                // Old approach published to each chat channel, causing N duplicates
+                // for observers in N shared chats.
                 auto db2 = drogon::app().getDbClient();
                 db2->execSqlAsync(
-                    "SELECT chat_id FROM chat_members WHERE user_id = $1",
+                    "SELECT DISTINCT cm2.user_id FROM chat_members cm1 "
+                    "JOIN chat_members cm2 ON cm1.chat_id = cm2.chat_id "
+                    "WHERE cm1.user_id = $1 AND cm2.user_id != $1",
                     [fullPayload](const drogon::orm::Result& r2) {
                         for (const auto& row : r2) {
-                            long long chatId = row["chat_id"].as<long long>();
-                            WsDispatch::publishMessage(chatId, fullPayload);
+                            long long observerId = row["user_id"].as<long long>();
+                            WsDispatch::publishToUser(observerId, fullPayload);
                         }
                     },
                     [userId](const drogon::orm::DrogonDbException& e) {
@@ -246,31 +251,32 @@ void WsHandler::broadcastPresence(long long userId, const std::string& username,
                     },
                     userId);
             } else {
-                // For 'approx_only' and 'nobody': do local filtered broadcast
+                // For 'approx_only' and 'nobody': local filtered broadcast
+                // with connection deduplication (one send per connection).
                 auto db2 = drogon::app().getDbClient();
                 db2->execSqlAsync(
                     "SELECT chat_id FROM chat_members WHERE user_id = $1",
                     [visibility, fullPayload, approxPayload](const drogon::orm::Result& r2) {
+                        std::string fullMsg   = toJsonStr(fullPayload);
+                        std::string approxMsg = toJsonStr(approxPayload);
+                        std::unordered_set<void*> sent;
+
+                        std::lock_guard<std::mutex> lk(s_mu);
                         for (const auto& row : r2) {
                             long long chatId = row["chat_id"].as<long long>();
-                            std::string fullMsg   = toJsonStr(fullPayload);
-                            std::string approxMsg = toJsonStr(approxPayload);
-
-                            std::lock_guard<std::mutex> lk(s_mu);
                             auto it = s_subs.find(chatId);
                             if (it == s_subs.end()) continue;
 
                             for (auto& conn : it->second) {
                                 try {
                                     if (!conn || conn->disconnected()) continue;
+                                    if (!sent.insert(conn.get()).second) continue;
                                     auto ctx = conn->getContext<ConnCtx>();
                                     if (!ctx) continue;
 
                                     if (ctx->isAdmin) {
-                                        // Admins always get full presence
                                         conn->send(fullMsg);
                                     } else if (visibility == "approx_only") {
-                                        // Non-admins get approximate info
                                         conn->send(approxMsg);
                                     }
                                     // visibility == "nobody": non-admins get nothing
