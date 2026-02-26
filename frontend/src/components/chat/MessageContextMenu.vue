@@ -7,30 +7,35 @@
       @click.stop
       @contextmenu.prevent
     >
-      <button class="ctx-item" @click="handleReply">
-        Reply
-      </button>
-      <button v-if="isOwnMessage && messageType === 'text'" class="ctx-item" @click="handleEdit">
-        Edit
-      </button>
-      <button class="ctx-item" @click="handlePin">
-        {{ isPinnedMessage ? 'Unpin' : 'Pin' }}
-      </button>
-      <button class="ctx-item" @click="handleCopyText">
-        Copy text
-      </button>
-      <button v-if="messageLink" class="ctx-item" @click="handleCopyLink">
-        Copy link
-      </button>
-      <button class="ctx-item" @click="handleForward">
-        Forward
-      </button>
-      <button class="ctx-item" @click="handleSelect">
-        Select
-      </button>
-      <button class="ctx-item ctx-delete" @click="handleDelete">
-        Delete
-      </button>
+      <template v-if="areaOnly">
+        <button class="ctx-item" @click="handleSelectMessages">Select Messages</button>
+      </template>
+      <template v-else>
+        <button class="ctx-item" @click="handleReply">
+          Reply
+        </button>
+        <button v-if="isOwnMessage && messageType === 'text'" class="ctx-item" @click="handleEdit">
+          Edit
+        </button>
+        <button class="ctx-item" @click="handlePin">
+          {{ isPinnedMessage ? 'Unpin' : 'Pin' }}
+        </button>
+        <button class="ctx-item" @click="handleCopyText">
+          Copy text
+        </button>
+        <button v-if="messageLink" class="ctx-item" @click="handleCopyLink">
+          Copy link
+        </button>
+        <button class="ctx-item" @click="handleForward">
+          Forward
+        </button>
+        <button class="ctx-item" @click="handleSelect">
+          Select
+        </button>
+        <button class="ctx-item ctx-delete" @click="handleDelete">
+          Delete
+        </button>
+      </template>
     </div>
   </Teleport>
 </template>
@@ -40,10 +45,12 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 import { useMessagesStore } from '@/stores/messages'
+import { useSelectionStore } from '@/stores/selection'
 
 const { showToast } = useToast()
 const authStore = useAuthStore()
 const messagesStore = useMessagesStore()
+const selectionStore = useSelectionStore()
 
 const visible = ref(false)
 const posX = ref(0)
@@ -54,6 +61,7 @@ const messageText = ref('')
 const messageType = ref('')
 const senderName = ref('')
 const senderId = ref<number | null>(null)
+const areaOnly = ref(false)
 
 const isOwnMessage = computed(() => {
   if (!senderId.value || !authStore.user) return false
@@ -72,7 +80,8 @@ const isPinnedMessage = computed(() => {
 })
 
 function onShowMessageContextMenu(e: CustomEvent) {
-  messageId.value = e.detail.messageId
+  areaOnly.value = !!e.detail.areaOnly
+  messageId.value = e.detail.messageId ?? null
   chatId.value = e.detail.chatId
   messageText.value = e.detail.text || ''
   messageType.value = e.detail.messageType || 'text'
@@ -105,6 +114,7 @@ function onClickOutside() {
     messageType.value = ''
     senderName.value = ''
     senderId.value = null
+    areaOnly.value = false
   }
 }
 
@@ -201,6 +211,12 @@ function handlePin() {
       detail: { messageId: messageId.value, chatId: chatId.value },
     }),
   )
+}
+
+function handleSelectMessages() {
+  hide()
+  if (!chatId.value) return
+  selectionStore.enterSelectionMode(chatId.value)
 }
 
 function handleDelete() {

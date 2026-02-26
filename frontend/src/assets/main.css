@@ -553,6 +553,9 @@ body {
   display: flex; align-items: center; justify-content: center;
   padding: .25rem 0;
 }
+/* ── Drag-select state ────────────────────────────────────── */
+.msg-list.drag-selecting { user-select: none; cursor: default; }
+
 .msg-list::-webkit-scrollbar { width: 5px; }
 .msg-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,.12); border-radius: 4px; }
 .msgs-loading { text-align: center; color: var(--text-muted); font-size: .85rem; padding: 1rem; }
@@ -1578,6 +1581,31 @@ body {
 .slide-down-leave-active { transition: transform .15s ease-in, opacity .1s ease; }
 .slide-down-enter-from { transform: translateY(-100%); opacity: 0; }
 .slide-down-leave-to { transform: translateY(-100%); opacity: 0; }
+
+
+/* ── Profile edit/back button positioning ─────────────────── */
+.profile-edit-btn {
+  position: absolute; top: 12px; right: 52px; z-index: 2;
+  color: #fff;
+}
+.profile-edit-btn:hover { background: rgba(255,255,255,.15); color: #fff; }
+
+.profile-back-btn {
+  position: absolute; top: 12px; left: 12px; z-index: 2;
+  color: var(--text-muted);
+}
+.profile-back-btn:hover { color: var(--text); background: var(--input-bg); }
+
+/* ── Edit-mode header bar ─────────────────────────────────── */
+.profile-edit-header {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .75rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.profile-edit-header__title {
+  flex: 1; font-size: 1.1rem; font-weight: 600; color: var(--text);
+}
 
 /* ============================================================
    Admin Panel Styles (ported from admin.css)

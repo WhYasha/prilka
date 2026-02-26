@@ -35,6 +35,14 @@ export const useSelectionStore = defineStore('selection', () => {
     }
   }
 
+  function addMessage(messageId: number) {
+    if (!selectionMode.value) return
+    if (selectedMessageIds.value.has(messageId)) return
+    const next = new Set(selectedMessageIds.value)
+    next.add(messageId)
+    selectedMessageIds.value = next
+  }
+
   function clearSelection() {
     selectedMessageIds.value = new Set()
   }
@@ -51,6 +59,7 @@ export const useSelectionStore = defineStore('selection', () => {
     enterSelectionMode,
     exitSelectionMode,
     toggleMessage,
+    addMessage,
     clearSelection,
     isSelected,
   }
