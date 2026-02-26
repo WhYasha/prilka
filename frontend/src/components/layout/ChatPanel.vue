@@ -390,8 +390,6 @@ const canDeleteForEveryone = ref(false)
 // Reply state
 const replyToMessage = ref<Message | null>(null)
 
-// Polling timer for messages
-let msgPollTimer: ReturnType<typeof setInterval> | null = null
 
 const isChannelReadonly = computed(() => {
   const chat = chatsStore.activeChat
@@ -481,12 +479,6 @@ watch(
     isNearBottom.value = true
     teardownOlderObserver()
 
-    // Stop previous polling
-    if (msgPollTimer) {
-      clearInterval(msgPollTimer)
-      msgPollTimer = null
-    }
-
     if (!chatId) return
 
     // Load messages, pinned message, and read receipts
@@ -513,14 +505,6 @@ watch(
       }
     }
 
-    // Start message polling (fallback — don't interfere with scroll position)
-    msgPollTimer = setInterval(() => {
-      if (chatsStore.activeChatId === chatId) {
-        messagesStore.loadNewer(chatId).then((msgs) => {
-          if (msgs.length > 0) scrollToBottomIfNear(msgs.length)
-        })
-      }
-    }, 2500)
   },
 )
 

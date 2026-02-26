@@ -229,17 +229,40 @@ void UsersController::updateUser(const drogon::HttpRequestPtr& req,
     auto db = drogon::app().getDbClient();
 
     // Build SQL dynamically based on whether username is being changed
+    // Helper: broadcast profile update to all chats the user belongs to
+    auto broadcastProfileUpdate = [](long long uid, const std::string& dn) {
+        auto dbP = drogon::app().getDbClient();
+        dbP->execSqlAsync(
+            "SELECT chat_id FROM chat_members WHERE user_id = $1",
+            [uid, dn](const drogon::orm::Result& cr) {
+                Json::Value wsPayload;
+                wsPayload["type"]         = "user_profile_updated";
+                wsPayload["user_id"]      = Json::Int64(uid);
+                wsPayload["display_name"] = dn;
+                for (const auto& row : cr) {
+                    long long chatId = row["chat_id"].as<long long>();
+                    WsDispatch::publishMessage(chatId, wsPayload);
+                }
+            },
+            [uid](const drogon::orm::DrogonDbException& e) {
+                LOG_ERROR << "broadcastProfileUpdate chats lookup for user " << uid
+                          << ": " << e.base().what();
+            }, uid);
+    };
+
     if (hasUsername) {
         db->execSqlAsync(
             "UPDATE users SET display_name = $1, bio = $2, username = $3, updated_at = NOW() "
             "WHERE id = $4 RETURNING id, username, display_name, bio",
-            [cb](const drogon::orm::Result& r) mutable {
+            [cb, broadcastProfileUpdate, userId](const drogon::orm::Result& r) mutable {
                 if (r.empty()) return cb(jsonErr("User not found", drogon::k404NotFound));
                 Json::Value resp;
                 resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
                 resp["username"]     = r[0]["username"].as<std::string>();
                 resp["display_name"] = r[0]["display_name"].isNull() ? Json::Value() : Json::Value(r[0]["display_name"].as<std::string>());
                 resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
+
+                broadcastProfileUpdate(userId, resp["display_name"].asString());
                 cb(drogon::HttpResponse::newHttpJsonResponse(resp));
             },
             [cb](const drogon::orm::DrogonDbException& e) mutable {
@@ -254,13 +277,15 @@ void UsersController::updateUser(const drogon::HttpRequestPtr& req,
         db->execSqlAsync(
             "UPDATE users SET display_name = $1, bio = $2, updated_at = NOW() WHERE id = $3 "
             "RETURNING id, username, display_name, bio",
-            [cb](const drogon::orm::Result& r) mutable {
+            [cb, broadcastProfileUpdate, userId](const drogon::orm::Result& r) mutable {
                 if (r.empty()) return cb(jsonErr("User not found", drogon::k404NotFound));
                 Json::Value resp;
                 resp["id"]           = Json::Int64(r[0]["id"].as<long long>());
                 resp["username"]     = r[0]["username"].as<std::string>();
                 resp["display_name"] = r[0]["display_name"].isNull() ? Json::Value() : Json::Value(r[0]["display_name"].as<std::string>());
                 resp["bio"]          = r[0]["bio"].isNull() ? Json::Value() : Json::Value(r[0]["bio"].as<std::string>());
+
+                broadcastProfileUpdate(userId, resp["display_name"].asString());
                 cb(drogon::HttpResponse::newHttpJsonResponse(resp));
             },
             [cb](const drogon::orm::DrogonDbException& e) mutable {
@@ -287,14 +312,35 @@ void UsersController::updateMyAvatar(const drogon::HttpRequestPtr& req,
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(
                 "SELECT f.bucket, f.object_key FROM files f WHERE f.id = $1",
-                [cb](const drogon::orm::Result& fr) mutable {
+                [cb, me](const drogon::orm::Result& fr) mutable {
                     Json::Value resp;
+                    std::string url;
                     if (!fr.empty()) {
-                        std::string url = avatarUrl(
+                        url = avatarUrl(
                             fr[0]["bucket"].as<std::string>(),
                             fr[0]["object_key"].as<std::string>());
                         resp["avatar_url"] = url;
                     }
+
+                    // Broadcast avatar update to all chats the user belongs to
+                    auto dbP = drogon::app().getDbClient();
+                    dbP->execSqlAsync(
+                        "SELECT chat_id FROM chat_members WHERE user_id = $1",
+                        [me, url](const drogon::orm::Result& cr) {
+                            Json::Value wsPayload;
+                            wsPayload["type"]       = "user_profile_updated";
+                            wsPayload["user_id"]    = Json::Int64(me);
+                            wsPayload["avatar_url"] = url.empty() ? Json::Value() : Json::Value(url);
+                            for (const auto& row : cr) {
+                                long long chatId = row["chat_id"].as<long long>();
+                                WsDispatch::publishMessage(chatId, wsPayload);
+                            }
+                        },
+                        [me](const drogon::orm::DrogonDbException& e) {
+                            LOG_ERROR << "updateMyAvatar profile broadcast for user " << me
+                                      << ": " << e.base().what();
+                        }, me);
+
                     cb(drogon::HttpResponse::newHttpJsonResponse(resp));
                 },
                 [cb](const drogon::orm::DrogonDbException& e) mutable {

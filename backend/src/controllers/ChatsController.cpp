@@ -99,7 +99,7 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                         // Insert creator as owner first, wait for completion before responding
                         db3->execSqlAsync(
                             "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING",
-                            [cb, members, me, type, chatId](const drogon::orm::Result&) mutable {
+                            [cb, members, me, type, chatId, title](const drogon::orm::Result&) mutable {
                                 // Insert other member fire-and-forget
                                 auto db4 = drogon::app().getDbClient();
                                 for (auto uid : members) {
@@ -110,6 +110,16 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                                         [](const drogon::orm::DrogonDbException& e) {
                                             LOG_WARN << "member insert: " << e.base().what();
                                         }, chatId, uid);
+                                }
+                                // Notify all members about new chat via user channels
+                                Json::Value wsPayload;
+                                wsPayload["type"]       = "chat_created";
+                                wsPayload["chat_id"]    = Json::Int64(chatId);
+                                wsPayload["chat_type"]  = type;
+                                wsPayload["title"]      = title;
+                                wsPayload["created_by"] = Json::Int64(me);
+                                for (auto uid : members) {
+                                    WsDispatch::publishToUser(uid, wsPayload);
                                 }
                                 Json::Value resp;
                                 resp["id"]   = Json::Int64(chatId);
@@ -164,6 +174,16 @@ void ChatsController::createChat(const drogon::HttpRequestPtr& req,
                                     LOG_WARN << "member insert: " << e.base().what();
                                 }, chatId, uid);
                         }
+                    }
+                    // Notify all members about new chat via user channels
+                    Json::Value wsPayload;
+                    wsPayload["type"]       = "chat_created";
+                    wsPayload["chat_id"]    = Json::Int64(chatId);
+                    wsPayload["chat_type"]  = type;
+                    wsPayload["title"]      = title;
+                    wsPayload["created_by"] = Json::Int64(me);
+                    for (auto uid : members) {
+                        WsDispatch::publishToUser(uid, wsPayload);
                     }
                     Json::Value resp;
                     resp["id"]   = Json::Int64(chatId);
@@ -430,7 +450,16 @@ void ChatsController::leaveChat(const drogon::HttpRequestPtr& req,
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(
                 "DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2",
-                [cb](const drogon::orm::Result&) mutable {
+                [cb, chatId, me](const drogon::orm::Result&) mutable {
+                    // Notify chat members about the departure
+                    Json::Value wsPayload;
+                    wsPayload["type"]    = "chat_member_left";
+                    wsPayload["chat_id"] = Json::Int64(chatId);
+                    wsPayload["user_id"] = Json::Int64(me);
+                    WsDispatch::publishMessage(chatId, wsPayload);
+                    // Also notify the leaving user via their user channel
+                    WsDispatch::publishToUser(me, wsPayload);
+
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setStatusCode(drogon::k204NoContent);
                     cb(resp);
@@ -738,22 +767,46 @@ void ChatsController::deleteChat(const drogon::HttpRequestPtr& req,
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "SELECT cm.role FROM chat_members cm WHERE cm.chat_id = $1 AND cm.user_id = $2",
-        [cb, chatId](const drogon::orm::Result& r) mutable {
+        [cb, chatId, me](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(jsonErr("Chat not found or access denied", drogon::k404NotFound));
             std::string role = r[0]["role"].as<std::string>();
             if (role != "owner")
                 return cb(jsonErr("Only the chat owner can delete it", drogon::k403Forbidden));
 
+            // Fetch member list BEFORE deleting (CASCADE removes chat_members)
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(
-                "DELETE FROM chats WHERE id = $1",
-                [cb](const drogon::orm::Result&) mutable {
-                    auto resp = drogon::HttpResponse::newHttpResponse();
-                    resp->setStatusCode(drogon::k204NoContent);
-                    cb(resp);
+                "SELECT user_id FROM chat_members WHERE chat_id = $1",
+                [cb, chatId, me](const drogon::orm::Result& mr) mutable {
+                    std::vector<long long> memberIds;
+                    for (const auto& row : mr) {
+                        memberIds.push_back(row["user_id"].as<long long>());
+                    }
+
+                    auto db3 = drogon::app().getDbClient();
+                    db3->execSqlAsync(
+                        "DELETE FROM chats WHERE id = $1",
+                        [cb, chatId, me, memberIds](const drogon::orm::Result&) mutable {
+                            // Notify all members via user channels (chat channel is gone after CASCADE)
+                            Json::Value wsPayload;
+                            wsPayload["type"]       = "chat_deleted";
+                            wsPayload["chat_id"]    = Json::Int64(chatId);
+                            wsPayload["deleted_by"] = Json::Int64(me);
+                            for (auto uid : memberIds) {
+                                WsDispatch::publishToUser(uid, wsPayload);
+                            }
+
+                            auto resp = drogon::HttpResponse::newHttpResponse();
+                            resp->setStatusCode(drogon::k204NoContent);
+                            cb(resp);
+                        },
+                        [cb](const drogon::orm::DrogonDbException& e) mutable {
+                            LOG_ERROR << "deleteChat: " << e.base().what();
+                            cb(jsonErr("Internal error", drogon::k500InternalServerError));
+                        }, chatId);
                 },
                 [cb](const drogon::orm::DrogonDbException& e) mutable {
-                    LOG_ERROR << "deleteChat: " << e.base().what();
+                    LOG_ERROR << "deleteChat members lookup: " << e.base().what();
                     cb(jsonErr("Internal error", drogon::k500InternalServerError));
                 }, chatId);
         },
@@ -817,73 +870,44 @@ void ChatsController::updateChat(const drogon::HttpRequestPtr& req,
                    "RETURNING id, type, name, title, description, public_name";
 
             auto db2 = drogon::app().getDbClient();
+            // Shared success callback for all param-count branches
+            auto onUpdateSuccess = [cb, chatId](const drogon::orm::Result& r2) mutable {
+                if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
+                const auto row = r2[0];
+                Json::Value resp;
+                resp["id"]          = Json::Int64(row["id"].as<long long>());
+                resp["type"]        = row["type"].as<std::string>();
+                resp["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
+                resp["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
+                resp["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
+                resp["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
+
+                // Broadcast chat_updated to all chat members via chat channel
+                Json::Value wsPayload;
+                wsPayload["type"]    = "chat_updated";
+                wsPayload["chat_id"] = Json::Int64(chatId);
+                if (!resp["title"].isNull())       wsPayload["title"]       = resp["title"];
+                if (!resp["description"].isNull()) wsPayload["description"] = resp["description"];
+                WsDispatch::publishMessage(chatId, wsPayload);
+
+                cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+            };
+            auto onUpdateError = [cb](const drogon::orm::DrogonDbException& e) mutable {
+                std::string what = e.base().what();
+                if (what.find("unique") != std::string::npos ||
+                    what.find("duplicate") != std::string::npos)
+                    return cb(jsonErr("public_name already taken", drogon::k409Conflict));
+                LOG_ERROR << "updateChat: " << what;
+                cb(jsonErr("Internal error", drogon::k500InternalServerError));
+            };
+
             // Use parameterized query based on param count
             if (paramIdx == 2) {
-                db2->execSqlAsync(sql,
-                    [cb](const drogon::orm::Result& r2) mutable {
-                        if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
-                        const auto row = r2[0];
-                        Json::Value resp;
-                        resp["id"]          = Json::Int64(row["id"].as<long long>());
-                        resp["type"]        = row["type"].as<std::string>();
-                        resp["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
-                        resp["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
-                        resp["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
-                        resp["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
-                        cb(drogon::HttpResponse::newHttpJsonResponse(resp));
-                    },
-                    [cb](const drogon::orm::DrogonDbException& e) mutable {
-                        std::string what = e.base().what();
-                        if (what.find("unique") != std::string::npos ||
-                            what.find("duplicate") != std::string::npos)
-                            return cb(jsonErr("public_name already taken", drogon::k409Conflict));
-                        LOG_ERROR << "updateChat: " << what;
-                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
-                    }, chatId, params[1]);
+                db2->execSqlAsync(sql, onUpdateSuccess, onUpdateError, chatId, params[1]);
             } else if (paramIdx == 3) {
-                db2->execSqlAsync(sql,
-                    [cb](const drogon::orm::Result& r2) mutable {
-                        if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
-                        const auto row = r2[0];
-                        Json::Value resp;
-                        resp["id"]          = Json::Int64(row["id"].as<long long>());
-                        resp["type"]        = row["type"].as<std::string>();
-                        resp["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
-                        resp["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
-                        resp["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
-                        resp["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
-                        cb(drogon::HttpResponse::newHttpJsonResponse(resp));
-                    },
-                    [cb](const drogon::orm::DrogonDbException& e) mutable {
-                        std::string what = e.base().what();
-                        if (what.find("unique") != std::string::npos ||
-                            what.find("duplicate") != std::string::npos)
-                            return cb(jsonErr("public_name already taken", drogon::k409Conflict));
-                        LOG_ERROR << "updateChat: " << what;
-                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
-                    }, chatId, params[1], params[2]);
+                db2->execSqlAsync(sql, onUpdateSuccess, onUpdateError, chatId, params[1], params[2]);
             } else {
-                db2->execSqlAsync(sql,
-                    [cb](const drogon::orm::Result& r2) mutable {
-                        if (r2.empty()) return cb(jsonErr("Chat not found", drogon::k404NotFound));
-                        const auto row = r2[0];
-                        Json::Value resp;
-                        resp["id"]          = Json::Int64(row["id"].as<long long>());
-                        resp["type"]        = row["type"].as<std::string>();
-                        resp["name"]        = row["name"].isNull()        ? Json::Value() : Json::Value(row["name"].as<std::string>());
-                        resp["title"]       = row["title"].isNull()       ? Json::Value() : Json::Value(row["title"].as<std::string>());
-                        resp["description"] = row["description"].isNull() ? Json::Value() : Json::Value(row["description"].as<std::string>());
-                        resp["public_name"] = row["public_name"].isNull() ? Json::Value() : Json::Value(row["public_name"].as<std::string>());
-                        cb(drogon::HttpResponse::newHttpJsonResponse(resp));
-                    },
-                    [cb](const drogon::orm::DrogonDbException& e) mutable {
-                        std::string what = e.base().what();
-                        if (what.find("unique") != std::string::npos ||
-                            what.find("duplicate") != std::string::npos)
-                            return cb(jsonErr("public_name already taken", drogon::k409Conflict));
-                        LOG_ERROR << "updateChat: " << what;
-                        cb(jsonErr("Internal error", drogon::k500InternalServerError));
-                    }, chatId, params[1], params[2], params[3]);
+                db2->execSqlAsync(sql, onUpdateSuccess, onUpdateError, chatId, params[1], params[2], params[3]);
             }
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
@@ -924,7 +948,7 @@ void ChatsController::setChatAvatar(const drogon::HttpRequestPtr& req,
                     auto db3 = drogon::app().getDbClient();
                     db3->execSqlAsync(
                         "SELECT f.bucket, f.object_key FROM files f WHERE f.id = $1",
-                        [cb](const drogon::orm::Result& r3) mutable {
+                        [cb, chatId](const drogon::orm::Result& r3) mutable {
                             Json::Value resp;
                             if (!r3.empty()) {
                                 std::string url = avatarUrl(
@@ -934,6 +958,14 @@ void ChatsController::setChatAvatar(const drogon::HttpRequestPtr& req,
                             } else {
                                 resp["avatar_url"] = Json::Value();
                             }
+
+                            // Broadcast chat_updated with new avatar_url
+                            Json::Value wsPayload;
+                            wsPayload["type"]       = "chat_updated";
+                            wsPayload["chat_id"]    = Json::Int64(chatId);
+                            wsPayload["avatar_url"] = resp["avatar_url"];
+                            WsDispatch::publishMessage(chatId, wsPayload);
+
                             cb(drogon::HttpResponse::newHttpJsonResponse(resp));
                         },
                         [cb](const drogon::orm::DrogonDbException& e) mutable {

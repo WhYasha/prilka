@@ -1,4 +1,5 @@
 #include "InvitesController.h"
+#include "../ws/WsHandler.h"
 #include <drogon/orm/DbClient.h>
 #include <trantor/utils/Logger.h>
 
@@ -302,12 +303,48 @@ void InvitesController::joinInvite(const drogon::HttpRequestPtr& req,
                     db3->execSqlAsync(
                         "INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1, $2, 'member') "
                         "ON CONFLICT DO NOTHING",
-                        [cb, chatId](const drogon::orm::Result&) mutable {
-                            Json::Value resp;
-                            resp["chat_id"]        = Json::Int64(chatId);
-                            resp["role"]           = "member";
-                            resp["already_member"] = false;
-                            cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                        [cb, chatId, me](const drogon::orm::Result&) mutable {
+                            // Look up joining user's info and notify chat
+                            auto db4 = drogon::app().getDbClient();
+                            db4->execSqlAsync(
+                                "SELECT username, COALESCE(display_name, username) AS display_name FROM users WHERE id = $1",
+                                [cb, chatId, me](const drogon::orm::Result& ur) mutable {
+                                    std::string username, displayName;
+                                    if (!ur.empty()) {
+                                        username = ur[0]["username"].as<std::string>();
+                                        displayName = ur[0]["display_name"].as<std::string>();
+                                    }
+                                    // Broadcast member_joined to chat
+                                    Json::Value wsPayload;
+                                    wsPayload["type"]         = "chat_member_joined";
+                                    wsPayload["chat_id"]      = Json::Int64(chatId);
+                                    wsPayload["user_id"]      = Json::Int64(me);
+                                    wsPayload["username"]     = username;
+                                    wsPayload["display_name"] = displayName;
+                                    WsDispatch::publishMessage(chatId, wsPayload);
+                                    // Also notify the joining user via their user channel
+                                    // so they can subscribe to the chat
+                                    Json::Value userPayload;
+                                    userPayload["type"]    = "chat_created";
+                                    userPayload["chat_id"] = Json::Int64(chatId);
+                                    userPayload["chat_type"] = "group";
+                                    userPayload["created_by"] = Json::Int64(me);
+                                    WsDispatch::publishToUser(me, userPayload);
+
+                                    Json::Value resp;
+                                    resp["chat_id"]        = Json::Int64(chatId);
+                                    resp["role"]           = "member";
+                                    resp["already_member"] = false;
+                                    cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                                },
+                                [cb, chatId](const drogon::orm::DrogonDbException&) mutable {
+                                    // Even if user lookup fails, the join succeeded
+                                    Json::Value resp;
+                                    resp["chat_id"]        = Json::Int64(chatId);
+                                    resp["role"]           = "member";
+                                    resp["already_member"] = false;
+                                    cb(drogon::HttpResponse::newHttpJsonResponse(resp));
+                                }, me);
                         },
                         [cb](const drogon::orm::DrogonDbException& e) mutable {
                             LOG_ERROR << "joinInvite insert: " << e.base().what();

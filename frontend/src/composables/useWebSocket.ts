@@ -44,8 +44,11 @@ export function useWebSocket() {
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let pingTimer: ReturnType<typeof setInterval> | null = null
+  let fallbackPollTimer: ReturnType<typeof setInterval> | null = null
   let reconnectDelay = 1000
   let intentionalClose = false
+  let hasConnectedBefore = false
+  let disconnectedSince: number | null = null
 
   // ── Presence: visibility/focus tracking ──────────────────────────────
   let awayTimer: ReturnType<typeof setTimeout> | null = null
@@ -106,10 +109,10 @@ export function useWebSocket() {
     if (!token) return null
     const wsBase = import.meta.env.VITE_WS_URL
     if (wsBase) {
-      return `${wsBase}?token=${encodeURIComponent(token)}`
+      return wsBase
     }
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
+    return `${proto}//${window.location.host}/ws`
   }
 
   function connect() {
@@ -126,6 +129,10 @@ export function useWebSocket() {
     ws.onopen = () => {
       connected.value = true
       reconnectDelay = 1000
+      disconnectedSince = null
+
+      // Stop fallback polling — WS is back
+      stopFallbackPolling()
 
       // Compute current visibility state for auth message
       isAppActive = !document.hidden && document.hasFocus()
@@ -141,6 +148,16 @@ export function useWebSocket() {
       for (const chat of chatsStore.chats) {
         ws!.send(JSON.stringify({ type: 'subscribe', chat_id: chat.id }))
       }
+
+      // Resync on reconnect (not first connect) — one-shot fetch
+      if (hasConnectedBefore) {
+        const messagesStore = useMessagesStore()
+        chatsStore.loadChats()
+        if (chatsStore.activeChatId) {
+          messagesStore.loadNewer(chatsStore.activeChatId)
+        }
+      }
+      hasConnectedBefore = true
 
       // Start heartbeat and presence tracking
       startHeartbeat()
@@ -160,7 +177,10 @@ export function useWebSocket() {
       connected.value = false
       stopHeartbeat()
       if (!intentionalClose) {
+        disconnectedSince = disconnectedSince || Date.now()
         scheduleReconnect()
+        // Start fallback polling only if disconnected for >10 seconds
+        startFallbackPolling()
       }
     }
 
@@ -265,6 +285,56 @@ export function useWebSocket() {
         messagesStore.applyReadReceipt(chatId, userId, lastReadMsgId)
         break
       }
+      case 'chat_created': {
+        // New chat was created — reload chat list and subscribe
+        const chatId = data.chat_id as number
+        chatsStore.loadChats().then(() => {
+          subscribeToChat(chatId)
+        })
+        break
+      }
+      case 'chat_updated': {
+        // Chat metadata changed — update in-place
+        const chatId = data.chat_id as number
+        chatsStore.updateChatMetadata(chatId, {
+          title: data.title as string | undefined,
+          description: data.description as string | undefined,
+          avatar_url: data.avatar_url as string | undefined,
+        })
+        break
+      }
+      case 'chat_deleted': {
+        const chatId = data.chat_id as number
+        chatsStore.removeChatLocal(chatId)
+        break
+      }
+      case 'chat_member_joined': {
+        // Optionally refresh chat details if viewing this chat
+        // The member count will update on next full load
+        break
+      }
+      case 'chat_member_left': {
+        const chatId = data.chat_id as number
+        const userId = data.user_id as number
+        // If the current user left, remove the chat locally
+        if (userId === authStore.user?.id) {
+          chatsStore.removeChatLocal(chatId)
+        }
+        break
+      }
+      case 'user_profile_updated': {
+        // Update cached display name / avatar in DM chats
+        const userId = data.user_id as number
+        const displayName = data.display_name as string | undefined
+        const avatarUrl = data.avatar_url as string | undefined
+        for (const chat of chatsStore.chats) {
+          if (chat.type === 'direct' && (chat as Record<string, unknown>).other_user_id === userId) {
+            if (displayName !== undefined) chat.title = displayName
+            if (avatarUrl !== undefined) (chat as Record<string, unknown>).other_avatar_url = avatarUrl
+          }
+        }
+        break
+      }
     }
   }
 
@@ -305,9 +375,32 @@ export function useWebSocket() {
     }
   }
 
+  function startFallbackPolling() {
+    if (fallbackPollTimer) return
+    // Only start polling after 10 seconds of being disconnected
+    fallbackPollTimer = setInterval(() => {
+      if (disconnectedSince && Date.now() - disconnectedSince > 10000) {
+        const chatsStore = useChatsStore()
+        chatsStore.loadChats()
+        const messagesStore = useMessagesStore()
+        if (chatsStore.activeChatId) {
+          messagesStore.loadNewer(chatsStore.activeChatId)
+        }
+      }
+    }, 5000)
+  }
+
+  function stopFallbackPolling() {
+    if (fallbackPollTimer) {
+      clearInterval(fallbackPollTimer)
+      fallbackPollTimer = null
+    }
+  }
+
   function disconnect() {
     intentionalClose = true
     stopHeartbeat()
+    stopFallbackPolling()
     teardownPresenceTracking()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)

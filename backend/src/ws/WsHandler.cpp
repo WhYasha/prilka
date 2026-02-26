@@ -12,6 +12,7 @@
 std::mutex WsHandler::s_mu;
 std::unordered_map<long long, std::vector<drogon::WebSocketConnectionPtr>> WsHandler::s_subs;
 std::unordered_map<long long, bool> WsHandler::s_redisSubs;
+std::unordered_map<long long, bool> WsHandler::s_redisUserSubs;
 std::mutex WsHandler::s_userMu;
 std::unordered_map<long long, std::vector<drogon::WebSocketConnectionPtr>> WsHandler::s_userConns;
 
@@ -84,6 +85,26 @@ void WsHandler::broadcast(long long chatId, const Json::Value& payload) {
     }
 }
 
+// ── Broadcast to all connections of a specific user ──────────────────────────
+
+void WsHandler::broadcastToUser(long long userId, const Json::Value& payload) {
+    try {
+        std::lock_guard<std::mutex> lk(s_userMu);
+        auto it = s_userConns.find(userId);
+        if (it == s_userConns.end()) return;
+        std::string msg = toJsonStr(payload);
+        for (auto& conn : it->second) {
+            try {
+                if (conn && !conn->disconnected()) conn->send(msg);
+            } catch (const std::exception& e) {
+                LOG_ERROR << "WS broadcastToUser send error: " << e.what();
+            }
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR << "WS broadcastToUser error for user " << userId << ": " << e.what();
+    }
+}
+
 // ── Redis subscription ─────────────────────────────────────────────────────
 
 void WsHandler::subscribeToRedis(long long chatId) {
@@ -124,6 +145,49 @@ void WsHandler::subscribeToRedis(long long chatId) {
                   << ": " << e.what();
         std::lock_guard<std::mutex> lk(s_mu);
         s_redisSubs.erase(chatId);
+    }
+}
+
+// ── Redis user-channel subscription ──────────────────────────────────────────
+
+void WsHandler::subscribeToUserRedis(long long userId) {
+    {
+        std::lock_guard<std::mutex> lk(s_userMu);
+        if (s_redisUserSubs.count(userId)) return;
+        s_redisUserSubs[userId] = true;
+    }
+
+    std::string channel = "user:" + std::to_string(userId);
+    auto redis = drogon::app().getRedisClient();
+    if (!redis) {
+        LOG_WARN << "Redis not configured; user-channel fan-out is local-only";
+        return;
+    }
+
+    try {
+        auto subscriber = redis->newSubscriber();
+        subscriber->subscribe(
+            channel,
+            [userId](const std::string& /*channel*/, const std::string& msg) {
+                try {
+                    auto payload = parseJson(msg);
+                    WsHandler::broadcastToUser(userId, payload);
+                } catch (const std::exception& e) {
+                    LOG_ERROR << "Redis user subscribe callback error for user "
+                              << userId << ": " << e.what();
+                }
+            }
+        );
+        {
+            std::lock_guard<std::mutex> lk(s_redisSubMu);
+            // Use negative keys for user channels to avoid collisions with chat channels
+            s_redisSubPtrs[-userId] = std::move(subscriber);
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Failed to subscribe to Redis channel " << channel
+                  << ": " << e.what();
+        std::lock_guard<std::mutex> lk(s_userMu);
+        s_redisUserSubs.erase(userId);
     }
 }
 
@@ -373,6 +437,9 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                 [](const drogon::orm::DrogonDbException&) {},
                 ctx->userId);
 
+            // Subscribe to per-user Redis channel for user-scoped events
+            subscribeToUserRedis(ctx->userId);
+
             Json::Value ok;
             ok["type"]    = "auth_ok";
             ok["user_id"] = Json::Int64(ctx->userId);
@@ -538,6 +605,28 @@ void publishMessage(long long chatId, const Json::Value& payload) {
     } else {
         // Fallback: local broadcast only
         WsHandler::broadcast(chatId, payload);
+    }
+}
+void publishToUser(long long userId, const Json::Value& payload) {
+    auto redis = drogon::app().getRedisClient();
+    std::string channel = "user:" + std::to_string(userId);
+    std::string msg = ([&] {
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        return Json::writeString(wb, payload);
+    })();
+
+    if (redis) {
+        redis->execCommandAsync(
+            [](const drogon::nosql::RedisResult&) {},
+            [](const std::exception& e) {
+                LOG_ERROR << "Redis PUBLISH (user) error: " << e.what();
+            },
+            "PUBLISH %s %s", channel.c_str(), msg.c_str()
+        );
+    } else {
+        // Fallback: local broadcast only
+        WsHandler::broadcastToUser(userId, payload);
     }
 }
 }  // namespace WsDispatch

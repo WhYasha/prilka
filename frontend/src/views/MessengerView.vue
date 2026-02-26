@@ -128,9 +128,6 @@ const pendingScrollMessageId = ref<number | null>(null)
 provide('stickers', stickers)
 provide('pendingScrollMessageId', pendingScrollMessageId)
 
-// Chat polling timer
-let chatsPollTimer: ReturnType<typeof setInterval> | null = null
-
 onMounted(async () => {
   // Load settings
   await settingsStore.loadSettings()
@@ -145,11 +142,8 @@ onMounted(async () => {
   // Load chats
   await chatsStore.loadChats()
 
-  // Connect WebSocket
+  // Connect WebSocket (handles real-time updates + fallback polling if disconnected)
   connect()
-
-  // Start chat polling (fallback alongside WS)
-  chatsPollTimer = setInterval(() => chatsStore.loadChats(), 5000)
 
   // Handle deep links
   handleDeepLink()
@@ -157,10 +151,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   disconnect()
-  if (chatsPollTimer) {
-    clearInterval(chatsPollTimer)
-    chatsPollTimer = null
-  }
 })
 
 // Watch route changes for deep links

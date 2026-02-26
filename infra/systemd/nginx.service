@@ -1,0 +1,36 @@
+[Unit]
+Description=Nginx Reverse Proxy (Docker container)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Restart=always
+RestartSec=10s
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+ExecStartPre=-/usr/bin/docker rm -f messenger-nginx
+ExecStartPre=-/usr/bin/docker network create messenger_net
+
+ExecStart=/usr/bin/docker run --rm \
+    --name messenger-nginx \
+    --network messenger_net \
+    -p 80:80 \
+    -p 443:443 \
+    -v /opt/messenger/repo/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+    -v /etc/letsencrypt:/etc/letsencrypt:ro \
+    -v /opt/messenger/repo/infra/nginx/downloads:/usr/share/nginx/html/downloads:ro \
+    -v /opt/messenger/certbot-webroot:/var/www/certbot:ro \
+    nginx:1.27-alpine
+
+ExecStop=/usr/bin/docker stop messenger-nginx
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nginx
+
+[Install]
+WantedBy=multi-user.target

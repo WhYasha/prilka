@@ -26,8 +26,16 @@
 ///     { "type": "message_pinned", "chat_id": 42, "message_id": 99, "pinned_by": 7, "message": {...} }
 ///     { "type": "message_unpinned", "chat_id": 42, "message_id": 99 }
 ///     { "type": "read_receipt", "chat_id": 42, "user_id": 7, "last_read_msg_id": 500 }
+///     { "type": "chat_created", "chat_id": 42, "chat_type": "group", "title": "...", "created_by": 1 }
+///     { "type": "chat_updated", "chat_id": 42, "title?": "...", "description?": "...", "avatar_url?": "..." }
+///     { "type": "chat_deleted", "chat_id": 42, "deleted_by": 1 }
+///     { "type": "chat_member_joined", "chat_id": 42, "user_id": 7, "username": "alice", "display_name": "Alice" }
+///     { "type": "chat_member_left", "chat_id": 42, "user_id": 7 }
+///     { "type": "user_profile_updated", "user_id": 7, "display_name?": "...", "avatar_url?": "..." }
 ///
-/// Fan-out uses Redis Pub/Sub channel "chat:<chat_id>"
+/// Fan-out uses Redis Pub/Sub:
+///   - "chat:<chat_id>" for chat-scoped events (messages, typing, reactions, etc.)
+///   - "user:<user_id>" for user-scoped events (chat_created, chat_deleted, profile updates)
 class WsHandler : public drogon::WebSocketController<WsHandler> {
 public:
     WS_PATH_LIST_BEGIN
@@ -46,6 +54,9 @@ public:
     // Push a JSON message to all connections subscribed to a chat (local fan-out).
     static void broadcast(long long chatId, const Json::Value& payload);
 
+    // Push a JSON message to all connections of a specific user (local fan-out).
+    static void broadcastToUser(long long userId, const Json::Value& payload);
+
     // Check if a user has any active WebSocket connections.
     static bool isUserOnline(long long userId);
 
@@ -63,6 +74,9 @@ private:
     // Subscribe this process to Redis channel "chat:<chatId>" if not already done.
     void subscribeToRedis(long long chatId);
 
+    // Subscribe this process to Redis channel "user:<userId>" if not already done.
+    void subscribeToUserRedis(long long userId);
+
     // Broadcast presence (online/offline) to all chats the user belongs to.
     void broadcastPresence(long long userId, const std::string& username,
                            const std::string& status);
@@ -71,8 +85,10 @@ private:
     static std::mutex                                              s_mu;
     static std::unordered_map<long long,
            std::vector<drogon::WebSocketConnectionPtr>>           s_subs;
-    // Set of Redis channels already subscribed
+    // Set of Redis chat channels already subscribed
     static std::unordered_map<long long, bool>                    s_redisSubs;
+    // Set of Redis user channels already subscribed
+    static std::unordered_map<long long, bool>                    s_redisUserSubs;
 
     // Per-user connection tracking for presence
     static std::mutex                                              s_userMu;
@@ -80,8 +96,11 @@ private:
            std::vector<drogon::WebSocketConnectionPtr>>           s_userConns;
 };
 
-// Called by MessagesController after a message is persisted.
+// Called by controllers after mutations are persisted.
 // Publishes to Redis so all nodes fan-out to local WS subscribers.
 namespace WsDispatch {
+    // Publish to chat:<chatId> channel (messages, typing, reactions, chat_updated, etc.)
     void publishMessage(long long chatId, const Json::Value& payload);
+    // Publish to user:<userId> channel (chat_created, chat_deleted, profile updates)
+    void publishToUser(long long userId, const Json::Value& payload);
 }

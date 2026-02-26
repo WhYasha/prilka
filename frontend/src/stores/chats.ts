@@ -143,6 +143,24 @@ export const useChatsStore = defineStore('chats', () => {
     }
   }
 
+  function updateChatMetadata(
+    chatId: number,
+    fields: { title?: string; description?: string; avatar_url?: string },
+  ) {
+    const chat = chats.value.find((c) => c.id === chatId)
+    if (!chat) return
+    if (fields.title !== undefined) chat.title = fields.title
+    if (fields.description !== undefined) chat.description = fields.description
+    if (fields.avatar_url !== undefined) (chat as Record<string, unknown>).avatar_url = fields.avatar_url
+  }
+
+  function removeChatLocal(chatId: number) {
+    chats.value = chats.value.filter((c) => c.id !== chatId)
+    if (activeChatId.value === chatId) {
+      activeChatId.value = null
+    }
+  }
+
   function incrementUnread(chatId: number) {
     const chat = chats.value.find((c) => c.id === chatId)
     if (chat) {
@@ -237,6 +255,8 @@ export const useChatsStore = defineStore('chats', () => {
     leave,
     deleteChat,
     updateChatLastMessage,
+    updateChatMetadata,
+    removeChatLocal,
     incrementUnread,
     setTyping,
     clearTyping,
