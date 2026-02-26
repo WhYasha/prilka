@@ -183,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, inject, provide, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, inject, provide, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatsStore } from '@/stores/chats'
 import { useMessagesStore } from '@/stores/messages'
@@ -201,7 +201,7 @@ import Composer from '@/components/chat/Composer.vue'
 import StickerPicker from '@/components/chat/StickerPicker.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
-import EmojiPickerPanel from '@/components/chat/EmojiPickerPanel.vue'
+const EmojiPickerPanel = defineAsyncComponent(() => import('@/components/chat/EmojiPickerPanel.vue'))
 import MessageContextMenu from '@/components/chat/MessageContextMenu.vue'
 import SelectionBar from '@/components/chat/SelectionBar.vue'
 import BottomSheet from '@/components/ui/BottomSheet.vue'
