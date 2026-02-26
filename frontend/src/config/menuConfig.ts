@@ -14,6 +14,7 @@ export interface MenuItemConfig {
 export interface MenuContext {
   isAuthenticated: boolean
   isDesktop: boolean
+  isTauri: boolean
 }
 
 export const menuItems: MenuItemConfig[] = [
@@ -71,7 +72,7 @@ export const menuItems: MenuItemConfig[] = [
     label: 'Download App',
     icon: 'download',
     action: 'openDownload',
-    visible: (ctx) => ctx.isDesktop,
+    visible: (ctx) => ctx.isDesktop && !ctx.isTauri,
     rightSlot: 'none',
   },
   {

@@ -17,15 +17,10 @@
           <summary style="cursor: pointer; color: var(--accent)">Other platforms</summary>
           <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px">
             <a
-              href="/downloads/windows/BeHappySetup.exe"
+              href="https://downloads.behappy.rest/BeHappy_0.1.0_x64-setup.exe"
               class="btn btn-ghost btn-full"
               download
             >Windows installer (.exe)</a>
-            <a
-              href="/downloads/macos/BeHappy.dmg"
-              class="btn btn-ghost btn-full"
-              download
-            >macOS installer (.dmg)</a>
           </div>
         </details>
         <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0">
@@ -53,7 +48,6 @@ const primaryPlatform = computed(() => {
 })
 
 function downloadPrimary() {
-  if (isWindows) window.location.href = '/downloads/windows/BeHappySetup.exe'
-  else if (isMac) window.location.href = '/downloads/macos/BeHappy.dmg'
+  if (isWindows) window.location.href = 'https://downloads.behappy.rest/BeHappy_0.1.0_x64-setup.exe'
 }
 </script>

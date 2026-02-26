@@ -110,9 +110,12 @@ const iconMap: Record<string, Component> = {
   star: StarIcon,
 }
 
+const isTauri = '__TAURI_INTERNALS__' in window
+
 const menuContext = computed<MenuContext>(() => ({
   isAuthenticated: !!authStore.user,
   isDesktop: true,
+  isTauri,
 }))
 
 const visibleMenuItems = computed(() => getVisibleMenuItems(menuContext.value))
