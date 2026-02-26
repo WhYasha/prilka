@@ -3,6 +3,7 @@ import { useMessagesStore } from '@/stores/messages'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import { markRead } from '@/api/chats'
 import type { Message } from '@/api/types'
 
 function showMessageNotification(
@@ -64,6 +65,22 @@ export function useWebSocket() {
   // so observer in N shared chats receives N identical events per status change.
   const presenceCache = new Map<number, string>()
 
+  // Debounced markRead for messages arriving in the active visible chat
+  let markReadTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingMarkReadChatId: number | null = null
+
+  function debouncedMarkRead(chatId: number) {
+    pendingMarkReadChatId = chatId
+    if (markReadTimer) return
+    markReadTimer = setTimeout(() => {
+      markReadTimer = null
+      if (pendingMarkReadChatId !== null) {
+        markRead(pendingMarkReadChatId).catch(() => {})
+        pendingMarkReadChatId = null
+      }
+    }, 1000)
+  }
+
   function sendPresenceUpdate(status: 'active' | 'away') {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'presence_update', status }))
@@ -91,6 +108,11 @@ export function useWebSocket() {
       if (!isPresenceActive && Date.now() - lastUserActivity < ACTIVITY_TIMEOUT) {
         isPresenceActive = true
         sendPresenceUpdate('active')
+      }
+      // Mark active chat as read when tab becomes visible again
+      const chatsStore = useChatsStore()
+      if (chatsStore.activeChatId) {
+        markRead(chatsStore.activeChatId).catch(() => {})
       }
     }
   }
@@ -233,10 +255,12 @@ export function useWebSocket() {
           msg.content || (msg.message_type === 'sticker' ? 'Sticker' : 'Attachment'),
           msg.created_at,
         )
-        // Increment unread if this chat is not currently active
-        // and the message is from someone else
         if (msg.chat_id !== chatsStore.activeChatId && msg.sender_id !== authStore.user?.id) {
           chatsStore.incrementUnread(msg.chat_id)
+        }
+        // Mark read when new messages arrive in the active visible chat
+        if (msg.chat_id === chatsStore.activeChatId && msg.sender_id !== authStore.user?.id && !document.hidden) {
+          debouncedMarkRead(msg.chat_id)
         }
         // Clear typing indicator for the sender (they sent a message)
         chatsStore.clearTyping(msg.chat_id, msg.sender_id)
