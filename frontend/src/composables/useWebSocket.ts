@@ -61,6 +61,7 @@ export function useWebSocket() {
   let presenceCheckTimer: ReturnType<typeof setInterval> | null = null
   let presenceSetup = false
   let awayGraceTimer: ReturnType<typeof setTimeout> | null = null
+  let windowHasFocus = true
 
   // Deduplicate presence events: backend broadcasts to each shared chat,
   // so observer in N shared chats receives N identical events per status change.
@@ -89,6 +90,7 @@ export function useWebSocket() {
   }
 
   function onUserActivity() {
+    if (!windowHasFocus) return // ignore mouse passing over unfocused window
     lastUserActivity = Date.now()
     // Immediate away→active transition on real interaction
     if (!isPresenceActive && !document.hidden) {
@@ -134,11 +136,13 @@ export function useWebSocket() {
   }
 
   function onWindowBlur() {
+    windowHasFocus = false
     // Fires on Tauri minimize, browser Alt+Tab, etc. — document.hidden may NOT change
     startAwayGrace()
   }
 
   function onWindowFocus() {
+    windowHasFocus = true
     cancelAwayGrace()
     lastUserActivity = Date.now()
     if (!isPresenceActive) {
