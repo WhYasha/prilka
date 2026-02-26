@@ -78,7 +78,7 @@
               <div class="msg-reply-quote-text">{{ replyQuoteText }}</div>
             </div>
           </div>
-          <div class="msg-text" v-html="renderedContent" />
+          <span class="msg-text" v-html="renderedContent" />
           <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}<span v-if="isMine && readReceiptIndicator" class="msg-read-check" :class="readReceiptIndicator.cls">{{ readReceiptIndicator.text }}</span></div>
         </div>
       </template>
