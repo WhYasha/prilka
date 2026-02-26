@@ -91,17 +91,41 @@
         <StickerPicker @select="handleSendSticker" />
       </div>
 
+      <!-- Emoji picker panel (composer) -->
+      <EmojiPickerPanel
+        v-if="emojiPanelOpen"
+        @select="onEmojiPanelSelect"
+      />
+
       <!-- Composer (hidden for readonly channels) -->
       <Composer
         v-if="!isChannelReadonly"
         v-show="!isRecording"
+        ref="composerRef"
         :sticker-picker-open="stickerPickerOpen"
         :reply-to="replyToMessage"
         @send="handleSendText"
         @edit-message="handleEditMessage"
         @toggle-stickers="stickerPickerOpen = !stickerPickerOpen"
+        @toggle-emoji-panel="emojiPanelOpen = !emojiPanelOpen"
         @start-recording="startRec"
         @typing="handleTyping"
+        @open-attachment-menu="attachmentMenuOpen = !attachmentMenuOpen"
+      />
+
+      <!-- Attachment menu -->
+      <AttachmentMenu
+        :visible="attachmentMenuOpen"
+        @file-selected="onAttachmentFileSelected"
+        @close="attachmentMenuOpen = false"
+      />
+
+      <!-- Attachment preview -->
+      <AttachmentPreview
+        v-if="attachmentFile"
+        :file="attachmentFile"
+        @send="onAttachmentSend"
+        @cancel="attachmentFile = null"
       />
 
       <!-- Recording bar -->
@@ -177,6 +201,7 @@ import Composer from '@/components/chat/Composer.vue'
 import StickerPicker from '@/components/chat/StickerPicker.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPanel from '@/components/chat/EmojiPickerPanel.vue'
 import MessageContextMenu from '@/components/chat/MessageContextMenu.vue'
 import SelectionBar from '@/components/chat/SelectionBar.vue'
 import BottomSheet from '@/components/ui/BottomSheet.vue'
@@ -184,6 +209,8 @@ import ForwardDialog from '@/components/modals/ForwardDialog.vue'
 import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
 import ChannelInfoModal from '@/components/chat/ChannelInfoModal.vue'
 import SearchBar from '@/components/chat/SearchBar.vue'
+import AttachmentMenu from '@/components/chat/AttachmentMenu.vue'
+import AttachmentPreview from '@/components/chat/AttachmentPreview.vue'
 import { useSelectionStore } from '@/stores/selection'
 import { useDragSelect } from '@/composables/useDragSelect'
 
@@ -206,10 +233,15 @@ const olderSentinelRef = ref<HTMLElement | null>(null)
 const loadingOlder = ref(false)
 let olderObserver: IntersectionObserver | null = null
 const stickerPickerOpen = ref(false)
+const emojiPanelOpen = ref(false)
+const composerRef = ref<InstanceType<typeof Composer> | null>(null)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
 const channelInfoModalOpen = ref(false)
 const searchMode = ref(false)
+const attachmentMenuOpen = ref(false)
+const attachmentFile = ref<File | null>(null)
+const attachmentType = ref<'media' | 'document'>('media')
 
 // Message send animation
 const lastSentMessageId = ref<number | null>(null)
@@ -443,6 +475,7 @@ watch(
   () => chatsStore.activeChatId,
   async (chatId) => {
     stickerPickerOpen.value = false
+    emojiPanelOpen.value = false
     myRole.value = 'member'
     newMessageCount.value = 0
     isNearBottom.value = true
@@ -595,6 +628,15 @@ function onToggleReaction(messageId: number, emoji: string) {
 function closeEmojiPicker() {
   emojiPickerVisible.value = false
   emojiPickerMessageId.value = null
+}
+
+function onEmojiPanelSelect(emoji: string) {
+  if (!emoji) {
+    // ESC pressed — just close
+    emojiPanelOpen.value = false
+    return
+  }
+  composerRef.value?.insertText(emoji)
 }
 
 async function startRec() {
@@ -818,6 +860,11 @@ function onSearchJump(messageId: number) {
 // ESC handler for search mode and channel info modal
 function handleEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
+  if (emojiPanelOpen.value) {
+    emojiPanelOpen.value = false
+    e.stopPropagation()
+    return
+  }
   if (searchMode.value) {
     searchMode.value = false
     e.stopPropagation()
@@ -872,6 +919,44 @@ watch(
     searchMode.value = false
   },
 )
+
+function onAttachmentFileSelected(file: File, type: 'media' | 'document') {
+  attachmentType.value = type
+  attachmentFile.value = file
+  attachmentMenuOpen.value = false
+}
+
+async function onAttachmentSend(file: File, caption: string) {
+  if (!chatsStore.activeChatId) return
+  attachmentFile.value = null
+  try {
+    const fileData = await uploadFile(file)
+    const msgType = file.type.startsWith('image/') ? 'image' : 'file'
+    const extra: Record<string, unknown> = { file_id: fileData.id }
+    if (replyToMessage.value) {
+      extra.reply_to_message_id = replyToMessage.value.id
+    }
+    const msg = await messagesStore.sendMessage(
+      chatsStore.activeChatId,
+      caption,
+      msgType,
+      extra,
+    )
+    if (authStore.user) {
+      msg.sender_id = authStore.user.id
+      msg.sender_username = authStore.user.username
+      msg.sender_display_name = authStore.user.display_name
+    }
+    replyToMessage.value = null
+    lastSentMessageId.value = msg.id
+    setTimeout(() => { if (lastSentMessageId.value === msg.id) lastSentMessageId.value = null }, 500)
+    await nextTick()
+    scrollToBottom()
+    chatsStore.loadChats()
+  } catch {
+    showToast('Failed to send attachment')
+  }
+}
 
 async function uploadVoice(file: File) {
   if (!chatsStore.activeChatId) return

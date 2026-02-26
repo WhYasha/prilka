@@ -59,6 +59,33 @@
         </div>
       </template>
 
+      <!-- File -->
+      <template v-else-if="message.message_type === 'file'">
+        <div class="msg-bubble">
+          <!-- Forwarded attribution -->
+          <div v-if="forwardedLabel" class="msg-forwarded-label">
+            {{ forwardedLabel }}
+          </div>
+          <!-- Reply quote -->
+          <div
+            v-if="message.reply_to_message_id"
+            class="msg-reply-quote"
+            @click.stop="emit('replyClick', message.reply_to_message_id!)"
+          >
+            <div class="msg-reply-quote-bar" />
+            <div>
+              <div class="msg-reply-quote-name">{{ message.reply_to_sender_name || message.reply_to_sender_username || 'Unknown' }}</div>
+              <div class="msg-reply-quote-text">{{ replyQuoteText }}</div>
+            </div>
+          </div>
+          <!-- Image attachment -->
+          <ImageMessage v-if="isImageAttachment" :message="message" />
+          <!-- Document / generic file attachment -->
+          <FileMessage v-else :message="message" />
+          <div class="msg-time"><span v-if="message.is_edited" class="msg-edited-label">(edited)</span> {{ formatTime(message.created_at) }}<span v-if="isMine && readReceiptIndicator" class="msg-read-check" :class="readReceiptIndicator.cls">{{ readReceiptIndicator.text }}</span></div>
+        </div>
+      </template>
+
       <!-- Text -->
       <template v-else>
         <div class="msg-bubble">
@@ -108,6 +135,8 @@
 import { computed, inject, ref, onUnmounted, watch } from 'vue'
 import linkifyStr from 'linkify-string'
 import Badge from '@/components/ui/Badge.vue'
+import ImageMessage from '@/components/chat/ImageMessage.vue'
+import FileMessage from '@/components/chat/FileMessage.vue'
 import type { Message, Sticker } from '@/api/types'
 import { useSelectionStore } from '@/stores/selection'
 import { useChatsStore } from '@/stores/chats'
@@ -330,6 +359,11 @@ onUnmounted(() => {
     voiceAudio = null
   }
   cancelVoiceRaf()
+})
+
+const isImageAttachment = computed(() => {
+  const mime = props.message.attachment_mime_type || ''
+  return mime.startsWith('image/')
 })
 
 const replyQuoteText = computed(() => {

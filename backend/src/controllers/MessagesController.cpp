@@ -73,6 +73,8 @@ static Json::Value buildMsgJson(const drogon::orm::Row& row) {
     std::string attKey    = row["att_key"].isNull()    ? "" : row["att_key"].as<std::string>();
     std::string attUrl    = presign(attBucket, attKey);
     msg["attachment_url"] = attUrl.empty() ? Json::Value() : Json::Value(attUrl);
+    msg["attachment_filename"]  = row["attachment_filename"].isNull() ? Json::Value() : Json::Value(row["attachment_filename"].as<std::string>());
+    msg["attachment_mime_type"] = row["attachment_mime_type"].isNull() ? Json::Value() : Json::Value(row["attachment_mime_type"].as<std::string>());
 
     // Duration for voice messages
     if (!row["duration_seconds"].isNull()) {
@@ -132,6 +134,7 @@ static const char* kEnrichedMsgSelect =
     "       s.label  AS sticker_label, "
     "       sf.bucket AS sticker_bucket, sf.object_key AS sticker_key, "
     "       af.bucket AS att_bucket,    af.object_key  AS att_key, "
+    "       af.filename AS attachment_filename, af.mime_type AS attachment_mime_type, "
     "       rm.content AS reply_to_content, "
     "       rm.message_type AS reply_to_type, "
     "       ru.username AS reply_to_sender_username, "

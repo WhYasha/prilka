@@ -73,6 +73,18 @@ textarea, input, select { font-family: inherit; }
   --ctx-menu-hover:        var(--input-bg);
   --ctx-menu-border:       var(--border);
   --ctx-menu-shadow:       0 4px 20px rgba(0,0,0,.15);
+
+  /* ── Chat component tokens (emoji, attachments, files) ─── */
+  --hover:                 rgba(0,0,0,.04);
+  --text-primary:          #1a1a1a;
+  --text-secondary:        #6b7280;
+  --color-text-secondary:  var(--text-muted);
+  --color-border:          var(--border);
+  --color-bg-input:        var(--input-bg);
+  --color-primary:         var(--accent);
+  --color-danger:          var(--danger);
+  --bg-tertiary:           rgba(0,0,0,.05);
+  --bg-quaternary:         rgba(0,0,0,.08);
 }
 
 /* ── Dark mode tokens ───────────────────────────────────────── */
@@ -124,6 +136,13 @@ textarea, input, select { font-family: inherit; }
   --ctx-menu-hover:        var(--input-bg);
   --ctx-menu-border:       var(--border);
   --ctx-menu-shadow:       0 4px 20px rgba(0,0,0,.4);
+
+  /* ── Chat component tokens (dark) ────────────────────────── */
+  --hover:                 rgba(255,255,255,.06);
+  --text-primary:          #d9dee5;
+  --text-secondary:        #8a9ab0;
+  --bg-tertiary:           rgba(255,255,255,.06);
+  --bg-quaternary:         rgba(255,255,255,.08);
 }
 
 /* ── Animation keyframes ────────────────────────────────────── */

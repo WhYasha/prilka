@@ -5,12 +5,10 @@
       <div class="search-wrap">
         <Search :size="16" class="search-icon" />
         <input
-          ref="searchInputRef"
           v-model="searchQuery"
           class="search-input"
           type="search"
           placeholder="Search"
-          @contextmenu="onSearchContextMenu"
         />
       </div>
       <button
@@ -92,7 +90,6 @@ const emit = defineEmits<{
 
 const chatsStore = useChatsStore()
 const searchQuery = ref('')
-const searchInputRef = ref<HTMLInputElement | null>(null)
 
 const filteredChats = computed(() => {
   const q = searchQuery.value.toLowerCase()
@@ -113,18 +110,6 @@ function chatDisplayName(c: { type: string; title?: string | null; name?: string
   if (c.type === 'channel' || c.type === 'group') return c.title || c.name || 'Untitled'
   if (c.type === 'direct' && !c.other_user_id) return 'Saved Messages'
   return c.other_display_name || c.other_username || c.title || c.name || 'Chat'
-}
-
-function onSearchContextMenu(event: MouseEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-  const el = searchInputRef.value
-  if (!el) return
-  if (el.selectionStart !== el.selectionEnd) {
-    window.dispatchEvent(new CustomEvent('show-text-format-menu', {
-      detail: { x: event.clientX, y: event.clientY, target: el }
-    }))
-  }
 }
 
 // Context menu
