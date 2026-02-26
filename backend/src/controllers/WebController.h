@@ -20,6 +20,8 @@ public:
     ADD_METHOD_TO(WebController::serveAdmin,         "/admin",          drogon::Get);
     ADD_METHOD_TO(WebController::serveAdminSub,      "/admin/{1}",      drogon::Get);
     ADD_METHOD_TO(WebController::serveAdminSubSub,   "/admin/{1}/{2}",  drogon::Get);
+    // Downloads — serve files from ./www/downloads/ with proper headers
+    ADD_METHOD_TO(WebController::serveDownload,      "/downloads/{1}/{2}", drogon::Get);
     METHOD_LIST_END
 
     void serveApp(const drogon::HttpRequestPtr& req,
@@ -53,4 +55,10 @@ public:
                           std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                           const std::string& sub1,
                           const std::string& sub2);
+
+    // Download handler: serves files from ./www/downloads/{platform}/{filename}
+    void serveDownload(const drogon::HttpRequestPtr& req,
+                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                       const std::string& platform,
+                       const std::string& filename);
 };

@@ -70,3 +70,37 @@ void WebController::serveAdminSubSub(const drogon::HttpRequestPtr& req,
                                       const std::string& /*sub2*/) {
     cb(serveHtml("./www/index.html"));
 }
+
+void WebController::serveDownload(const drogon::HttpRequestPtr& req,
+                                   std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                                   const std::string& platform,
+                                   const std::string& filename) {
+    // Block path traversal
+    if (platform.find("..") != std::string::npos ||
+        filename.find("..") != std::string::npos) {
+        auto resp = drogon::HttpResponse::newHttpResponse();
+        resp->setStatusCode(drogon::k403Forbidden);
+        resp->setBody("403 Forbidden");
+        cb(resp);
+        return;
+    }
+
+    std::string path = "./www/downloads/" + platform + "/" + filename;
+    auto resp = drogon::HttpResponse::newFileResponse(path);
+    if (resp->statusCode() == drogon::k404NotFound) {
+        cb(resp);
+        return;
+    }
+
+    // Set Content-Disposition for binary downloads
+    std::string ext;
+    auto dot = filename.rfind('.');
+    if (dot != std::string::npos) ext = filename.substr(dot);
+
+    if (ext == ".exe" || ext == ".msi" || ext == ".dmg" || ext == ".AppImage" ||
+        ext == ".deb" || ext == ".rpm" || ext == ".zip" || ext == ".tar" || ext == ".gz") {
+        resp->addHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+    }
+
+    cb(resp);
+}
