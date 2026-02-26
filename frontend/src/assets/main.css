@@ -359,13 +359,6 @@ body {
               visibility 0s linear 0s;
 }
 
-.drawer-header {
-  display: flex; align-items: center; gap: .5rem;
-  padding: 1rem 1rem .75rem;
-  border-bottom: 1px solid rgba(255,255,255,.07);
-}
-.drawer-title { color: #fff; font-weight: 700; font-size: 1.05rem; }
-
 .drawer-avatar-wrap {
   display: flex; align-items: center; gap: .85rem;
   padding: 1.25rem 1rem;
