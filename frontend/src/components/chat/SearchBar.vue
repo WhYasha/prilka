@@ -9,6 +9,7 @@
         type="text"
         placeholder="Search messages..."
         @keydown.escape="emit('close')"
+        @contextmenu="onContextMenu"
       />
       <button v-if="query" class="icon-btn" aria-label="Clear" @click="query = ''">&#10005;</button>
     </div>
@@ -50,6 +51,18 @@ const searched = ref(false)
 const hasMore = ref(true)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function onContextMenu(event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+  const el = inputRef.value
+  if (!el) return
+  if (el.selectionStart !== el.selectionEnd) {
+    window.dispatchEvent(new CustomEvent('show-text-format-menu', {
+      detail: { x: event.clientX, y: event.clientY, target: el }
+    }))
+  }
+}
 
 onMounted(() => {
   nextTick(() => inputRef.value?.focus())
