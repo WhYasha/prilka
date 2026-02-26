@@ -26,6 +26,8 @@ export function useDragSelect(options: UseDragSelectOptions) {
 
   function onMouseDown(event: MouseEvent) {
     if (event.button !== 0) return
+    const target = event.target as HTMLElement
+    if (!target.closest('[data-message-id]')) return
     const cId = chatId()
     if (cId == null) return
 
