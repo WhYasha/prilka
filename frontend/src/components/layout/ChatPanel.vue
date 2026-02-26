@@ -237,11 +237,56 @@ function onMsgListScroll() {
   }, 100)
 }
 
+function findNearestMessageRow(clientY: number): HTMLElement | null {
+  if (!msgListRef.value) return null
+  const rows = msgListRef.value.querySelectorAll<HTMLElement>('[data-message-id]')
+  let closest: HTMLElement | null = null
+  let closestDist = Infinity
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect()
+    if (clientY >= rect.top - 15 && clientY <= rect.bottom + 15) {
+      const center = (rect.top + rect.bottom) / 2
+      const dist = Math.abs(clientY - center)
+      if (dist < closestDist) {
+        closestDist = dist
+        closest = row
+      }
+    }
+  }
+  return closest
+}
+
 function onAreaContextMenu(event: MouseEvent) {
   // Only handle clicks on the .msg-list background, not on message bubbles
   const target = event.target as HTMLElement
   if (target.closest('.msg-row')) return
   event.preventDefault()
+
+  // Try to find the nearest message row to the click position
+  const nearestRow = findNearestMessageRow(event.clientY)
+  if (nearestRow) {
+    const messageId = Number(nearestRow.dataset.messageId)
+    const msg = messages.value.find((m) => m.id === messageId)
+    if (msg) {
+      window.dispatchEvent(
+        new CustomEvent('show-message-context-menu', {
+          detail: {
+            messageId: msg.id,
+            chatId: chatsStore.activeChatId,
+            text: msg.content || '',
+            messageType: msg.message_type,
+            senderId: msg.sender_id,
+            senderName: msg.sender_display_name || msg.sender_username || '',
+            x: event.clientX,
+            y: event.clientY,
+          },
+        }),
+      )
+      return
+    }
+  }
+
+  // Fallback: area-only context menu
   window.dispatchEvent(
     new CustomEvent('show-message-context-menu', {
       detail: {
