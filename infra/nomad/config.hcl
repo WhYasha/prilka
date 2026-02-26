@@ -22,7 +22,7 @@ client {
   enabled = true
 
   host_volume "downloads" {
-    path      = "/opt/messenger/downloads"
+    path      = "/opt/messenger/repo/infra/nginx/downloads"
     read_only = true
   }
 

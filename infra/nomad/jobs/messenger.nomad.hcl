@@ -218,6 +218,12 @@ job "messenger" {
       read_only = true
     }
 
+    volume "downloads" {
+      type      = "host"
+      source    = "downloads"
+      read_only = true
+    }
+
     # ── MinIO bucket init (prestart) ────────────────────────────────────────
     task "minio-init" {
       driver = "docker"
@@ -364,6 +370,12 @@ job "messenger" {
       meta {
         # Updated by deploy script to force new allocation on each deploy
         deploy_ts = "0"
+      }
+
+      volume_mount {
+        volume      = "downloads"
+        destination = "/app/www/downloads"
+        read_only   = true
       }
 
       config {
