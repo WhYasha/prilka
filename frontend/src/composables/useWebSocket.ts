@@ -93,7 +93,8 @@ export function useWebSocket() {
   }
 
   function checkAppActive() {
-    const active = !document.hidden && document.hasFocus()
+    const recentActivity = Date.now() - lastUserActivity < 5000
+    const active = !document.hidden && (document.hasFocus() || recentActivity)
 
     if (active && !isAppActive) {
       // Becoming active: cancel pending away, send immediately
@@ -108,6 +109,8 @@ export function useWebSocket() {
       if (!awayTimer) {
         awayTimer = setTimeout(() => {
           awayTimer = null
+          // Re-check activity before actually going away
+          if (Date.now() - lastUserActivity < 5000) return
           isAppActive = false
           sendPresenceUpdate('away')
         }, 3000)
