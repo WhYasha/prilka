@@ -1,7 +1,7 @@
 <template>
   <main class="chat-panel">
     <!-- Empty state when no chat selected -->
-    <div v-if="!chatsStore.activeChatId" class="empty-chat">
+    <div v-if="!chatsStore.activeChatId" class="empty-chat" @contextmenu.prevent>
       <div class="empty-chat-icon">&#128172;</div>
       <div class="empty-chat-text">Select a chat to start messaging</div>
     </div>
