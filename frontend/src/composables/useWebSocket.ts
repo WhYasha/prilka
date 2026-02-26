@@ -54,7 +54,7 @@ export function useWebSocket() {
   // ── Unified activity-based presence ─────────────────────────────────
   // Single source of truth: real user interaction determines online/offline.
   // document.hasFocus() is NOT used — unreliable in Tauri.
-  const ACTIVITY_TIMEOUT = 300_000 // 5min without interaction → away
+  const ACTIVITY_TIMEOUT = 60_000 // 60s without interaction → away
   let lastUserActivity = Date.now()
   let lastActivityRefreshSent = 0
   let isPresenceActive = false
@@ -167,7 +167,7 @@ export function useWebSocket() {
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('blur', onWindowBlur)
     window.addEventListener('focus', onWindowFocus)
-    presenceCheckTimer = setInterval(presenceCheck, 30_000)
+    presenceCheckTimer = setInterval(presenceCheck, 15_000)
   }
 
   function teardownPresence() {
@@ -440,7 +440,7 @@ export function useWebSocket() {
         const now = Date.now()
         const recentlyActive = now - lastUserActivity < 60_000
         const refreshDue = now - lastActivityRefreshSent > 120_000
-        if (recentlyActive && refreshDue) {
+        if (isPresenceActive && recentlyActive && refreshDue) {
           ws.send(JSON.stringify({ type: 'ping', active: true }))
           lastActivityRefreshSent = now
         } else {
