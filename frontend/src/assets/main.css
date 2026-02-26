@@ -820,6 +820,7 @@ body {
   background: rgba(0,0,0,.5);
   display: flex; align-items: center; justify-content: center;
   padding: 1rem;
+  animation: modalFadeIn var(--transition-normal) ease;
 }
 .modal {
   background: var(--modal-bg);
@@ -828,6 +829,7 @@ body {
   max-height: 90vh; overflow: hidden;
   display: flex; flex-direction: column;
   box-shadow: 0 16px 48px rgba(0,0,0,.25);
+  animation: modalScaleIn var(--transition-normal) ease;
 }
 .modal-wide { max-width: 520px; }
 
