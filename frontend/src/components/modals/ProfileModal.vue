@@ -18,16 +18,12 @@
               <Avatar
                 :name="authStore.user?.display_name || authStore.user?.username || '?'"
                 :url="authStore.user?.avatar_url"
-                :online="isOnline"
                 size="xxl"
               />
               <div class="profile-header__info">
                 <div class="profile-name">
                   {{ authStore.user?.display_name || authStore.user?.username || '?' }}
                   <Badge v-if="authStore.user?.is_admin" />
-                </div>
-                <div class="profile-status" :class="{ 'profile-status--online': isOnline }">
-                  {{ statusText }}
                 </div>
               </div>
             </div>
@@ -98,13 +94,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useChatsStore } from '@/stores/chats'
 import { updateUser, uploadAvatar } from '@/api/users'
 import { uploadFile } from '@/api/files'
 import { useToast } from '@/composables/useToast'
-import { formatLastSeen } from '@/utils/formatLastSeen'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
 import ProfileInfoList from '@/components/profile/ProfileInfoList.vue'
@@ -114,7 +108,6 @@ import { X, Camera, Pencil, ArrowLeft } from 'lucide-vue-next'
 const emit = defineEmits<{ close: [] }>()
 
 const authStore = useAuthStore()
-const chatsStore = useChatsStore()
 const { showToast } = useToast()
 
 const mode = ref<'view' | 'edit'>('view')
@@ -125,20 +118,6 @@ const username = ref('')
 const bio = ref('')
 const usernameError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
-
-const isOnline = computed(() => {
-  if (!authStore.user) return false
-  return chatsStore.isUserOnline(authStore.user.id)
-})
-
-const statusText = computed(() => {
-  if (isOnline.value) return 'online'
-  if (!authStore.user) return 'offline'
-  const presence = chatsStore.getUserPresence(authStore.user.id)
-  if (presence?.lastSeenAt) return formatLastSeen(presence.lastSeenAt)
-  if (presence?.lastSeenBucket) return `last seen ${presence.lastSeenBucket}`
-  return 'offline'
-})
 
 function resetFormFields() {
   if (authStore.user) {

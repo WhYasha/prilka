@@ -126,7 +126,15 @@ const statusText = computed(() => {
 
 onMounted(async () => {
   try {
-    user.value = await getUserByUsername(props.username)
+    const data = await getUserByUsername(props.username)
+    user.value = data
+    // Seed presence from API response (privacy-aware)
+    const raw = data as unknown as Record<string, unknown>
+    if (raw.is_online === true) {
+      chatsStore.setUserOnline(data.id)
+    } else if (raw.is_online === false) {
+      chatsStore.setUserOffline(data.id, raw.last_activity as string | undefined)
+    }
   } catch {
     user.value = null
   } finally {

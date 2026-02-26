@@ -138,15 +138,69 @@ void UsersController::getUser(const drogon::HttpRequestPtr& req,
 void UsersController::getUserByUsername(const drogon::HttpRequestPtr& req,
                                         std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                                         const std::string& username) {
+    long long viewerId = req->getAttributes()->get<long long>("user_id");
     auto db = drogon::app().getDbClient();
     db->execSqlAsync(
         "SELECT u.id, u.username, u.display_name, u.bio, u.is_admin, "
-        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key "
-        "FROM users u LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "       u.last_activity, "
+        "       f.bucket AS avatar_bucket, f.object_key AS avatar_key, "
+        "       COALESCE(us.last_seen_visibility, 'everyone') AS last_seen_visibility, "
+        "       CASE "
+        "         WHEN u.last_activity IS NULL THEN NULL "
+        "         WHEN u.last_activity > NOW() - INTERVAL '5 minutes' THEN 'just now' "
+        "         WHEN u.last_activity > NOW() - INTERVAL '1 hour' THEN 'within an hour' "
+        "         WHEN u.last_activity > NOW() - INTERVAL '1 day' THEN 'today' "
+        "         WHEN u.last_activity > NOW() - INTERVAL '7 days' THEN 'this week' "
+        "         ELSE 'long ago' "
+        "       END AS last_seen_bucket "
+        "FROM users u "
+        "LEFT JOIN files f ON f.id = u.avatar_file_id "
+        "LEFT JOIN user_settings us ON us.user_id = u.id "
         "WHERE u.username = $1 AND u.is_active = TRUE",
-        [cb](const drogon::orm::Result& r) mutable {
+        [cb, viewerId](const drogon::orm::Result& r) mutable {
             if (r.empty()) return cb(notFound());
-            cb(drogon::HttpResponse::newHttpJsonResponse(buildUserJson(r[0])));
+            Json::Value u = buildUserJson(r[0]);
+
+            long long targetId = r[0]["id"].as<long long>();
+            std::string visibility = r[0]["last_seen_visibility"].as<std::string>();
+            bool isOnline = WsHandler::isUserOnline(targetId);
+
+            std::string lastActivity;
+            if (!r[0]["last_activity"].isNull())
+                lastActivity = r[0]["last_activity"].as<std::string>();
+
+            std::string lastSeenBucket;
+            if (!r[0]["last_seen_bucket"].isNull())
+                lastSeenBucket = r[0]["last_seen_bucket"].as<std::string>();
+
+            auto db2 = drogon::app().getDbClient();
+            db2->execSqlAsync(
+                "SELECT is_admin FROM users WHERE id = $1",
+                [cb, u, visibility, isOnline, lastActivity, lastSeenBucket, viewerId, targetId]
+                (const drogon::orm::Result& vr) mutable {
+                    bool viewerIsAdmin = (!vr.empty() && !vr[0]["is_admin"].isNull() && vr[0]["is_admin"].as<bool>());
+
+                    if (viewerIsAdmin || viewerId == targetId) {
+                        u["is_online"] = isOnline;
+                        u["last_activity"] = lastActivity.empty() ? Json::Value() : Json::Value(lastActivity);
+                    } else if (visibility == "everyone") {
+                        u["is_online"] = isOnline;
+                        u["last_activity"] = lastActivity.empty() ? Json::Value() : Json::Value(lastActivity);
+                    } else if (visibility == "approx_only") {
+                        u["is_online"] = Json::Value();
+                        u["last_activity"] = Json::Value();
+                        u["last_seen_approx"] = lastSeenBucket.empty() ? Json::Value() : Json::Value(lastSeenBucket);
+                    } else {
+                        u["is_online"] = Json::Value();
+                        u["last_activity"] = Json::Value();
+                    }
+
+                    cb(drogon::HttpResponse::newHttpJsonResponse(u));
+                },
+                [cb, u](const drogon::orm::DrogonDbException& e) mutable {
+                    LOG_ERROR << "getUserByUsername viewer check: " << e.base().what();
+                    cb(drogon::HttpResponse::newHttpJsonResponse(u));
+                }, viewerId);
         },
         [cb](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "getUserByUsername: " << e.base().what();
