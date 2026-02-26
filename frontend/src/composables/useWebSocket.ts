@@ -3,6 +3,7 @@ import { useMessagesStore } from '@/stores/messages'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import * as chatsApi from '@/api/chats'
 import type { Message } from '@/api/types'
 
 function showMessageNotification(
@@ -183,10 +184,15 @@ export function useWebSocket() {
           msg.content || (msg.message_type === 'sticker' ? 'Sticker' : 'Attachment'),
           msg.created_at,
         )
-        // Increment unread if this chat is not currently active
-        // and the message is from someone else
-        if (msg.chat_id !== chatsStore.activeChatId && msg.sender_id !== authStore.user?.id) {
-          chatsStore.incrementUnread(msg.chat_id)
+        // If message is from someone else
+        if (msg.sender_id !== authStore.user?.id) {
+          if (msg.chat_id === chatsStore.activeChatId) {
+            // Active chat: mark as read immediately
+            chatsApi.markRead(msg.chat_id).catch(() => {})
+          } else {
+            // Inactive chat: increment unread count
+            chatsStore.incrementUnread(msg.chat_id)
+          }
         }
         // Clear typing indicator for the sender (they sent a message)
         chatsStore.clearTyping(msg.chat_id, msg.sender_id)

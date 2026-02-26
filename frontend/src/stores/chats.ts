@@ -48,7 +48,7 @@ export const useChatsStore = defineStore('chats', () => {
     // Reset unread count for the chat being opened
     if (id !== null) {
       const chat = chats.value.find((c) => c.id === id)
-      if (chat && chat.unread_count > 0) {
+      if (chat) {
         chat.unread_count = 0
         chatsApi.markRead(id).catch(() => {})
       }
