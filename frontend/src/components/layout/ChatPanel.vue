@@ -91,15 +91,23 @@
         <StickerPicker @select="handleSendSticker" />
       </div>
 
+      <!-- Emoji picker panel (composer) -->
+      <EmojiPickerPanel
+        v-if="emojiPanelOpen"
+        @select="onEmojiPanelSelect"
+      />
+
       <!-- Composer (hidden for readonly channels) -->
       <Composer
         v-if="!isChannelReadonly"
         v-show="!isRecording"
+        ref="composerRef"
         :sticker-picker-open="stickerPickerOpen"
         :reply-to="replyToMessage"
         @send="handleSendText"
         @edit-message="handleEditMessage"
         @toggle-stickers="stickerPickerOpen = !stickerPickerOpen"
+        @toggle-emoji-panel="emojiPanelOpen = !emojiPanelOpen"
         @start-recording="startRec"
         @typing="handleTyping"
       />
@@ -177,6 +185,7 @@ import Composer from '@/components/chat/Composer.vue'
 import StickerPicker from '@/components/chat/StickerPicker.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPanel from '@/components/chat/EmojiPickerPanel.vue'
 import MessageContextMenu from '@/components/chat/MessageContextMenu.vue'
 import SelectionBar from '@/components/chat/SelectionBar.vue'
 import BottomSheet from '@/components/ui/BottomSheet.vue'
@@ -206,6 +215,8 @@ const olderSentinelRef = ref<HTMLElement | null>(null)
 const loadingOlder = ref(false)
 let olderObserver: IntersectionObserver | null = null
 const stickerPickerOpen = ref(false)
+const emojiPanelOpen = ref(false)
+const composerRef = ref<InstanceType<typeof Composer> | null>(null)
 const isRecording = ref(false)
 const myRole = ref<string>('member')
 const channelInfoModalOpen = ref(false)
@@ -443,6 +454,7 @@ watch(
   () => chatsStore.activeChatId,
   async (chatId) => {
     stickerPickerOpen.value = false
+    emojiPanelOpen.value = false
     myRole.value = 'member'
     newMessageCount.value = 0
     isNearBottom.value = true
@@ -595,6 +607,15 @@ function onToggleReaction(messageId: number, emoji: string) {
 function closeEmojiPicker() {
   emojiPickerVisible.value = false
   emojiPickerMessageId.value = null
+}
+
+function onEmojiPanelSelect(emoji: string) {
+  if (!emoji) {
+    // ESC pressed — just close
+    emojiPanelOpen.value = false
+    return
+  }
+  composerRef.value?.insertText(emoji)
 }
 
 async function startRec() {
@@ -818,6 +839,11 @@ function onSearchJump(messageId: number) {
 // ESC handler for search mode and channel info modal
 function handleEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
+  if (emojiPanelOpen.value) {
+    emojiPanelOpen.value = false
+    e.stopPropagation()
+    return
+  }
   if (searchMode.value) {
     searchMode.value = false
     e.stopPropagation()
