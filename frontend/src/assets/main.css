@@ -749,10 +749,13 @@ body {
 }
 .emoji-pick-btn:hover { background: var(--input-bg); transform: scale(1.15); }
 
+/* Flex spacer – pushes messages to the bottom of the chat panel */
+.msg-list-spacer { flex: 1 1 0; min-height: 0; }
+
 /* Date separator */
 .date-sep {
   text-align: center; font-size: .75rem; color: var(--text-muted);
-  margin: .5rem 0; user-select: none;
+  margin: .15rem 0; user-select: none;
 }
 .date-sep span {
   background: rgba(0,0,0,.08); border-radius: 12px;

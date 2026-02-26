@@ -55,6 +55,7 @@
       <div ref="msgListRef" class="msg-list" :class="{ 'drag-selecting': isDragSelecting }" @click="closeEmojiPicker" @scroll="onMsgListScroll" @contextmenu="onAreaContextMenu" @mousedown="onDragMouseDown" @mousemove="onDragMouseMove" @mouseup="onDragMouseUp">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
+          <div class="msg-list-spacer"></div>
           <!-- Sentinel for loading older messages -->
           <div ref="olderSentinelRef" class="older-sentinel">
             <Spinner v-if="loadingOlder" />
