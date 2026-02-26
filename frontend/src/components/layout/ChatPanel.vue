@@ -52,7 +52,7 @@
       </button>
 
       <!-- Messages -->
-      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll" @contextmenu="onAreaContextMenu">
+      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll" @contextmenu="onAreaContextMenu" @mousedown="onDragMouseDown" @mousemove="onDragMouseMove" @mouseup="onDragMouseUp">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
           <!-- Sentinel for loading older messages -->
@@ -184,6 +184,7 @@ import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
 import ChannelInfoModal from '@/components/chat/ChannelInfoModal.vue'
 import SearchBar from '@/components/chat/SearchBar.vue'
 import { useSelectionStore } from '@/stores/selection'
+import { useDragSelect } from '@/composables/useDragSelect'
 
 const emit = defineEmits<{
   back: []
@@ -265,6 +266,11 @@ const emojiPickerY = ref(0)
 const emojiPickerMessageId = ref<number | null>(null)
 
 const selectionStore = useSelectionStore()
+
+// Drag-to-select
+const { isDragSelecting, onMouseDown: onDragMouseDown, onMouseMove: onDragMouseMove, onMouseUp: onDragMouseUp } = useDragSelect({
+  chatId: () => chatsStore.activeChatId,
+})
 
 // Bottom sheet state
 const bottomSheetVisible = ref(false)
