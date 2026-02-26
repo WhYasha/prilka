@@ -1,7 +1,7 @@
 <template>
   <main class="chat-panel">
     <!-- Empty state when no chat selected -->
-    <div v-if="!chatsStore.activeChatId" class="empty-chat">
+    <div v-if="!chatsStore.activeChatId" class="empty-chat" @contextmenu.prevent>
       <div class="empty-chat-icon">&#128172;</div>
       <div class="empty-chat-text">Select a chat to start messaging</div>
     </div>
@@ -52,7 +52,7 @@
       </button>
 
       <!-- Messages -->
-      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll">
+      <div ref="msgListRef" class="msg-list" :class="{ 'drag-selecting': isDragSelecting }" @click="closeEmojiPicker" @scroll="onMsgListScroll" @contextmenu="onAreaContextMenu" @mousedown="onDragMouseDown" @mousemove="onDragMouseMove" @mouseup="onDragMouseUp">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
           <!-- Sentinel for loading older messages -->
@@ -184,6 +184,7 @@ import DeleteConfirmModal from '@/components/modals/DeleteConfirmModal.vue'
 import ChannelInfoModal from '@/components/chat/ChannelInfoModal.vue'
 import SearchBar from '@/components/chat/SearchBar.vue'
 import { useSelectionStore } from '@/stores/selection'
+import { useDragSelect } from '@/composables/useDragSelect'
 
 const emit = defineEmits<{
   back: []
@@ -235,6 +236,23 @@ function onMsgListScroll() {
   }, 100)
 }
 
+function onAreaContextMenu(event: MouseEvent) {
+  // Only handle clicks on the .msg-list background, not on message bubbles
+  const target = event.target as HTMLElement
+  if (target.closest('.msg-row')) return
+  event.preventDefault()
+  window.dispatchEvent(
+    new CustomEvent('show-message-context-menu', {
+      detail: {
+        areaOnly: true,
+        chatId: chatsStore.activeChatId,
+        x: event.clientX,
+        y: event.clientY,
+      },
+    }),
+  )
+}
+
 function onNewMessagesPillClick() {
   scrollToBottom()
   newMessageCount.value = 0
@@ -248,6 +266,11 @@ const emojiPickerY = ref(0)
 const emojiPickerMessageId = ref<number | null>(null)
 
 const selectionStore = useSelectionStore()
+
+// Drag-to-select
+const { isDragSelecting, onMouseDown: onDragMouseDown, onMouseMove: onDragMouseMove, onMouseUp: onDragMouseUp } = useDragSelect({
+  chatId: () => chatsStore.activeChatId,
+})
 
 // Bottom sheet state
 const bottomSheetVisible = ref(false)
