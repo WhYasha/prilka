@@ -22,7 +22,7 @@ ExecStart=/usr/bin/docker run --rm \
     -p 443:443 \
     -v /opt/messenger/repo/infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
     -v /etc/letsencrypt:/etc/letsencrypt:ro \
-    -v /opt/messenger/repo/infra/nginx/downloads:/usr/share/nginx/html/downloads:ro \
+    -v /opt/messenger/downloads:/usr/share/nginx/html/downloads:ro \
     -v /opt/messenger/certbot-webroot:/var/www/certbot:ro \
     nginx:1.27-alpine
 
