@@ -54,7 +54,7 @@ export function useWebSocket() {
   // ── Unified activity-based presence ─────────────────────────────────
   // Single source of truth: real user interaction determines online/offline.
   // document.hasFocus() is NOT used — unreliable in Tauri.
-  const ACTIVITY_TIMEOUT = 60_000 // 60s without interaction → away
+  const ACTIVITY_TIMEOUT = 30_000 // 30s without interaction → away
   let lastUserActivity = Date.now()
   let lastActivityRefreshSent = 0
   let isPresenceActive = false
