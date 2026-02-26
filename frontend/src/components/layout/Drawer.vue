@@ -1,12 +1,5 @@
 <template>
   <div class="drawer" :class="{ open }">
-    <div class="drawer-header">
-      <button class="icon-btn" aria-label="Close menu" @click="emit('close')">
-        <X :size="20" :stroke-width="2" />
-      </button>
-      <span class="drawer-title">Menu</span>
-    </div>
-
     <div class="drawer-profile">
       <Avatar
         :name="authStore.user?.display_name || authStore.user?.username || '?'"
@@ -76,7 +69,6 @@ import { getVisibleMenuItems, type MenuContext } from '@/config/menuConfig'
 import Avatar from '@/components/ui/Avatar.vue'
 import MenuItem from '@/components/layout/MenuItem.vue'
 import {
-  X,
   Pencil as PencilIcon,
   User as UserIcon,
   Users as UsersIcon,
