@@ -23,10 +23,12 @@
     <div class="composer">
       <button
         class="icon-btn composer-btn"
-        aria-label="Stickers"
-        title="Stickers"
-        @click="emit('toggleStickers')"
-      >&#127773;</button>
+        aria-label="Attach file"
+        title="Attach file"
+        @click="emit('openAttachmentMenu')"
+      >
+        <Paperclip :size="22" />
+      </button>
       <textarea
         ref="inputRef"
         v-model="text"
@@ -40,23 +42,38 @@
         @contextmenu="onContextMenu"
       />
       <button
+        class="icon-btn composer-btn"
+        aria-label="Emoji"
+        title="Emoji"
+        @click="emit('toggleEmojiPanel')"
+      >
+        <Smile :size="22" />
+      </button>
+      <button
+        v-if="!hasText"
         class="icon-btn composer-btn record-btn"
         aria-label="Voice message"
         title="Record voice"
         @click="emit('startRecording')"
-      >&#127908;</button>
+      >
+        <Mic :size="22" />
+      </button>
       <button
+        v-else
         class="icon-btn composer-btn send-btn"
         aria-label="Send"
         title="Send"
         @click="send"
-      >&#10148;</button>
+      >
+        <SendHorizontal :size="22" />
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { Paperclip, Smile, Mic, SendHorizontal } from 'lucide-vue-next'
 import type { Message } from '@/api/types'
 
 export interface ReplyTarget {
@@ -79,6 +96,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   send: [content: string, replyTo?: { messageId: number; senderName: string; snippet: string }]
   toggleStickers: []
+  toggleEmojiPanel: []
+  openAttachmentMenu: []
   startRecording: []
   typing: []
   editMessage: [messageId: number, content: string]
@@ -89,6 +108,8 @@ const inputRef = ref<HTMLTextAreaElement | null>(null)
 const replyTarget = ref<ReplyTarget | null>(null)
 const editTarget = ref<EditTarget | null>(null)
 let typingThrottle = 0
+
+const hasText = computed(() => text.value.trim().length > 0)
 
 function send() {
   const content = text.value.trim()
@@ -106,6 +127,24 @@ function send() {
 
   text.value = ''
   autoResize()
+}
+
+function insertText(str: string) {
+  const el = inputRef.value
+  if (!el) {
+    text.value += str
+    return
+  }
+  const start = el.selectionStart ?? text.value.length
+  const end = el.selectionEnd ?? text.value.length
+  text.value = text.value.slice(0, start) + str + text.value.slice(end)
+  nextTick(() => {
+    const pos = start + str.length
+    el.selectionStart = pos
+    el.selectionEnd = pos
+    el.focus()
+    autoResize()
+  })
 }
 
 function cancelReply() {
@@ -200,7 +239,7 @@ watch(() => props.replyTo, (val) => {
   if (val) inputRef.value?.focus()
 })
 
-defineExpose({ focus: () => inputRef.value?.focus() })
+defineExpose({ focus: () => inputRef.value?.focus(), insertText })
 </script>
 
 <style scoped>
