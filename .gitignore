@@ -33,6 +33,7 @@ infra/scripts/.smoke_state.json
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Auto Claude data directory
 .auto-claude/
