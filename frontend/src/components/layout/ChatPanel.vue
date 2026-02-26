@@ -52,7 +52,7 @@
       </button>
 
       <!-- Messages -->
-      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll">
+      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll" @contextmenu="onAreaContextMenu">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
           <!-- Sentinel for loading older messages -->
@@ -233,6 +233,23 @@ function onMsgListScroll() {
       newMessageCount.value = 0
     }
   }, 100)
+}
+
+function onAreaContextMenu(event: MouseEvent) {
+  // Only handle clicks on the .msg-list background, not on message bubbles
+  const target = event.target as HTMLElement
+  if (target.closest('.msg-row')) return
+  event.preventDefault()
+  window.dispatchEvent(
+    new CustomEvent('show-message-context-menu', {
+      detail: {
+        areaOnly: true,
+        chatId: chatsStore.activeChatId,
+        x: event.clientX,
+        y: event.clientY,
+      },
+    }),
+  )
 }
 
 function onNewMessagesPillClick() {
