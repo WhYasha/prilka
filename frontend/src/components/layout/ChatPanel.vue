@@ -514,18 +514,6 @@ function scrollToBottom() {
   }
 }
 
-function scrollToBottomIfNear(newCount = 1) {
-  if (!msgListRef.value) return
-  const el = msgListRef.value
-  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
-  if (atBottom) {
-    nextTick(() => {
-      el.scrollTop = el.scrollHeight
-    })
-  } else {
-    newMessageCount.value += newCount
-  }
-}
 
 function handleTyping() {
   if (chatsStore.activeChatId) {
