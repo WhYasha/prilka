@@ -65,6 +65,8 @@ export interface Message {
   sticker_label?: string
   attachment_url?: string
   attachment_path?: string
+  attachment_filename?: string
+  attachment_mime_type?: string
   duration_seconds?: number
   file_id?: number
   forwarded_from_chat_id?: number
