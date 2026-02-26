@@ -453,6 +453,51 @@ void WsHandler::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
         if (type == "ping") {
             Json::Value pong; pong["type"] = "pong";
             sendJson(conn, pong);
+
+            // Activity-based presence refresh: client signals user is interacting
+            if (msg.get("active", false).asBool()) {
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                    now - ctx->lastDbRefresh).count();
+
+                // Throttle DB updates to once per 90 seconds
+                if (elapsed >= 90) {
+                    ctx->lastDbRefresh = now;
+                    auto db = drogon::app().getDbClient();
+                    db->execSqlAsync(
+                        "UPDATE users SET last_activity = NOW() WHERE id = $1",
+                        [](const drogon::orm::Result&) {},
+                        [](const drogon::orm::DrogonDbException&) {},
+                        ctx->userId);
+                }
+
+                // If this connection was away, transition to active
+                if (!ctx->active) {
+                    bool broadcastOnline = false;
+                    {
+                        std::lock_guard<std::mutex> lk(s_userMu);
+                        bool hadOtherActive = false;
+                        auto it = s_userConns.find(ctx->userId);
+                        if (it != s_userConns.end()) {
+                            auto& vec = it->second;
+                            vec.erase(std::remove_if(vec.begin(), vec.end(),
+                                [](const drogon::WebSocketConnectionPtr& c) {
+                                    return !c || c->disconnected();
+                                }), vec.end());
+                            for (const auto& c : vec) {
+                                if (c == conn) continue;
+                                auto cctx = c->getContext<ConnCtx>();
+                                if (cctx && cctx->active) { hadOtherActive = true; break; }
+                            }
+                        }
+                        ctx->active = true;
+                        broadcastOnline = !hadOtherActive;
+                    }
+                    if (broadcastOnline) {
+                        broadcastPresence(ctx->userId, ctx->username, "online");
+                    }
+                }
+            }
             return;
         }
 

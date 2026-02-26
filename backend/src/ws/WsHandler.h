@@ -12,7 +12,8 @@
 ///     { "type": "subscribe", "chat_id": 42 }
 ///     { "type": "typing",    "chat_id": 42 }
 ///     { "type": "presence_update", "status": "active"|"away" }
-///     { "type": "ping" }
+///     { "type": "ping" }                                   — keepalive only
+///     { "type": "ping", "active": true }                   — activity-based presence refresh
 ///
 ///   Server → Client:
 ///     { "type": "pong" }
@@ -69,6 +70,7 @@ private:
         bool      active   = true;   // Whether this connection's tab/window is visible+focused
         std::string username;
         std::vector<long long> subscriptions;
+        std::chrono::steady_clock::time_point lastDbRefresh;  // Throttle DB last_activity updates
     };
 
     // Subscribe this process to Redis channel "chat:<chatId>" if not already done.

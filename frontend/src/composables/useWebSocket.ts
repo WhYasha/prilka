@@ -55,6 +55,37 @@ export function useWebSocket() {
   let isAppActive = !document.hidden && document.hasFocus()
   let presenceTrackingSetup = false
 
+  // ── Activity tracking for presence refresh ────────────────────────────
+  let lastUserActivity = Date.now()
+  let lastActivityRefreshSent = 0
+  let activityTrackingSetup = false
+
+  function onUserActivity() {
+    lastUserActivity = Date.now()
+  }
+
+  function setupActivityTracking() {
+    if (activityTrackingSetup) return
+    activityTrackingSetup = true
+    const opts: AddEventListenerOptions = { passive: true, capture: true }
+    document.addEventListener('mousemove', onUserActivity, opts)
+    document.addEventListener('keydown', onUserActivity, opts)
+    document.addEventListener('click', onUserActivity, opts)
+    document.addEventListener('scroll', onUserActivity, opts)
+    document.addEventListener('touchstart', onUserActivity, opts)
+  }
+
+  function teardownActivityTracking() {
+    if (!activityTrackingSetup) return
+    activityTrackingSetup = false
+    const opts: EventListenerOptions = { capture: true }
+    document.removeEventListener('mousemove', onUserActivity, opts)
+    document.removeEventListener('keydown', onUserActivity, opts)
+    document.removeEventListener('click', onUserActivity, opts)
+    document.removeEventListener('scroll', onUserActivity, opts)
+    document.removeEventListener('touchstart', onUserActivity, opts)
+  }
+
   function sendPresenceUpdate(status: 'active' | 'away') {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'presence_update', status }))
@@ -159,9 +190,14 @@ export function useWebSocket() {
       }
       hasConnectedBefore = true
 
-      // Start heartbeat and presence tracking
+      // Reset activity refresh state on (re)connect
+      lastUserActivity = Date.now()
+      lastActivityRefreshSent = 0
+
+      // Start heartbeat, presence tracking, and activity tracking
       startHeartbeat()
       setupPresenceTracking()
+      setupActivityTracking()
     }
 
     ws.onmessage = (event) => {
@@ -342,7 +378,15 @@ export function useWebSocket() {
     stopHeartbeat()
     pingTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }))
+        const now = Date.now()
+        const recentlyActive = now - lastUserActivity < 60_000
+        const refreshDue = now - lastActivityRefreshSent > 120_000
+        if (recentlyActive && refreshDue) {
+          ws.send(JSON.stringify({ type: 'ping', active: true }))
+          lastActivityRefreshSent = now
+        } else {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        }
       }
     }, 25000)
   }
@@ -402,6 +446,7 @@ export function useWebSocket() {
     stopHeartbeat()
     stopFallbackPolling()
     teardownPresenceTracking()
+    teardownActivityTracking()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
