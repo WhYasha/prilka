@@ -52,7 +52,7 @@
       </button>
 
       <!-- Messages -->
-      <div ref="msgListRef" class="msg-list" @click="closeEmojiPicker" @scroll="onMsgListScroll" @contextmenu="onAreaContextMenu" @mousedown="onDragMouseDown" @mousemove="onDragMouseMove" @mouseup="onDragMouseUp">
+      <div ref="msgListRef" class="msg-list" :class="{ 'drag-selecting': isDragSelecting }" @click="closeEmojiPicker" @scroll="onMsgListScroll" @contextmenu="onAreaContextMenu" @mousedown="onDragMouseDown" @mousemove="onDragMouseMove" @mouseup="onDragMouseUp">
         <Spinner v-if="messagesStore.loadingChat === chatsStore.activeChatId" />
         <template v-else>
           <!-- Sentinel for loading older messages -->
@@ -268,7 +268,7 @@ const emojiPickerMessageId = ref<number | null>(null)
 const selectionStore = useSelectionStore()
 
 // Drag-to-select
-const { onMouseDown: onDragMouseDown, onMouseMove: onDragMouseMove, onMouseUp: onDragMouseUp } = useDragSelect({
+const { isDragSelecting, onMouseDown: onDragMouseDown, onMouseMove: onDragMouseMove, onMouseUp: onDragMouseUp } = useDragSelect({
   chatId: () => chatsStore.activeChatId,
 })
 
