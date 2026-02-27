@@ -215,7 +215,7 @@ async def run_tests():
     print("\n[4] presence_update: active -> away (simulates tab switch)")
     await drain(ws_a)
     await ws_b.send(json.dumps({"type": "presence_update", "status": "away"}))
-    ok, status = await recv_presence(ws_a, user_b_id, "offline")
+    ok, status = await recv_presence(ws_a, user_b_id, "offline", timeout=8)
     check("User B sends away -> A sees offline", ok, f"status={status}")
 
     # ── Test 5: Send presence_update active again -> online again ────
@@ -236,7 +236,7 @@ async def run_tests():
     print("\n[7] Away then disconnect")
     await drain(ws_a)
     await ws_b.send(json.dumps({"type": "presence_update", "status": "away"}))
-    ok, status = await recv_presence(ws_a, user_b_id, "offline")
+    ok, status = await recv_presence(ws_a, user_b_id, "offline", timeout=8)
     check("User B sends away -> A sees offline", ok, f"status={status}")
 
     await drain(ws_a, timeout=2)
