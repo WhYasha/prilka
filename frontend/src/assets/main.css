@@ -411,7 +411,7 @@ body {
 
 /* ── Sidebar resize handle ─────────────────────────────────── */
 .resize-handle {
-  width: 8px; flex-shrink: 0;
+  width: 0px; flex-shrink: 0;
   cursor: col-resize;
   background: transparent;
   position: relative;
@@ -427,14 +427,6 @@ body {
   background: var(--border);
   opacity: .3;
   transition: opacity var(--transition-fast) ease, background var(--transition-fast) ease;
-}
-.resize-handle:hover::after {
-  opacity: .7;
-  background: var(--accent);
-}
-.resize-handle:active::after {
-  opacity: 1;
-  background: var(--accent);
 }
 
 .sidebar-header {

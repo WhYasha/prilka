@@ -211,7 +211,7 @@ function onTouchEnd() {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 7px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -225,8 +225,8 @@ function onTouchEnd() {
 }
 
 .chat-type-icon-img {
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   align-self: center;
 }
