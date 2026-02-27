@@ -266,8 +266,10 @@ function onMsgListScroll() {
     chatsStore.isNearBottom = isNearBottom.value
     if (isNearBottom.value) {
       newMessageCount.value = 0
-      // Mark read when user scrolls to bottom (sees new messages)
+      // Mark read + clear unread badge when user scrolls to bottom
       if (chatsStore.activeChatId) {
+        const chat = chatsStore.chats.find((c) => c.id === chatsStore.activeChatId)
+        if (chat && chat.unread_count > 0) chat.unread_count = 0
         markRead(chatsStore.activeChatId).catch(() => {})
       }
     }

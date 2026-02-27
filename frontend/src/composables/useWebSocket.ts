@@ -129,6 +129,8 @@ export function useWebSocket() {
       // Mark active chat as read when tab becomes visible again (only if near bottom)
       const chatsStore = useChatsStore()
       if (chatsStore.activeChatId && chatsStore.isNearBottom) {
+        const chat = chatsStore.chats.find((c) => c.id === chatsStore.activeChatId)
+        if (chat && chat.unread_count > 0) chat.unread_count = 0
         markRead(chatsStore.activeChatId).catch(() => {})
       }
     }
@@ -151,6 +153,8 @@ export function useWebSocket() {
     // Mark read only if near bottom (user can see latest messages)
     const chatsStore = useChatsStore()
     if (chatsStore.activeChatId && chatsStore.isNearBottom) {
+      const chat = chatsStore.chats.find((c) => c.id === chatsStore.activeChatId)
+      if (chat && chat.unread_count > 0) chat.unread_count = 0
       markRead(chatsStore.activeChatId).catch(() => {})
     }
   }
@@ -301,13 +305,14 @@ export function useWebSocket() {
           msg.content || (msg.message_type === 'sticker' ? 'Sticker' : 'Attachment'),
           msg.created_at,
         )
-        if (msg.chat_id !== chatsStore.activeChatId && msg.sender_id !== authStore.user?.id) {
-          chatsStore.incrementUnread(msg.chat_id)
-        }
-        // Mark read only if user is actively using the app and can see the message
-        if (msg.chat_id === chatsStore.activeChatId && msg.sender_id !== authStore.user?.id
-            && isPresenceActive && windowHasFocus && chatsStore.isNearBottom) {
-          debouncedMarkRead(msg.chat_id)
+        if (msg.sender_id !== authStore.user?.id) {
+          const willBeRead = msg.chat_id === chatsStore.activeChatId
+            && isPresenceActive && windowHasFocus && chatsStore.isNearBottom
+          if (willBeRead) {
+            debouncedMarkRead(msg.chat_id)
+          } else {
+            chatsStore.incrementUnread(msg.chat_id)
+          }
         }
         // Clear typing indicator for the sender (they sent a message)
         chatsStore.clearTyping(msg.chat_id, msg.sender_id)
