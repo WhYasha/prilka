@@ -610,7 +610,7 @@ body {
 .msg-text::after {
   content: '';
   display: inline-block;
-  width: 4.5rem;   /* ≈ timestamp width reserve */
+  width: 0;
   height: 0;
   vertical-align: bottom;
 }
