@@ -20,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
 import { useChatsStore } from '@/stores/chats'
 import { useAuthStore } from '@/stores/auth'
 import { formatLastSeen } from '@/utils/formatLastSeen'
@@ -38,6 +38,11 @@ const chatsStore = useChatsStore()
 const authStore = useAuthStore()
 
 const chat = computed(() => chatsStore.activeChat)
+
+// Reactive clock tick to force "last seen X ago" recalculation
+const now = ref(Date.now())
+const nowTimer = setInterval(() => { now.value = Date.now() }, 30_000)
+onUnmounted(() => clearInterval(nowTimer))
 
 const isSelfChat = computed(() => {
   const c = chat.value
@@ -99,7 +104,7 @@ const subtitle = computed(() => {
     const presence = chatsStore.getUserPresence(c.other_user_id)
     if (presence) {
       if (presence.lastSeenAt) {
-        return formatLastSeen(presence.lastSeenAt)
+        return formatLastSeen(presence.lastSeenAt, now.value)
       }
       if (presence.lastSeenBucket) {
         return `last seen ${presence.lastSeenBucket}`

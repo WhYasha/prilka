@@ -3,7 +3,7 @@
  * Returns strings like "last seen just now", "last seen 5 minutes ago",
  * "last seen 2 hours ago", "last seen yesterday", or "last seen Mar 15".
  */
-export function formatLastSeen(dateStr: string): string {
+export function formatLastSeen(dateStr: string, _now?: number): string {
   const date = new Date(dateStr)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
