@@ -11,7 +11,6 @@ function showMessageNotification(
   chatsStore: ReturnType<typeof useChatsStore>,
   authStore: ReturnType<typeof useAuthStore>,
 ) {
-  if (!document.hidden) return
   if (msg.sender_id === authStore.user?.id) return
   const settingsStore = useSettingsStore()
   if (!settingsStore.notificationsEnabled) return
@@ -127,9 +126,9 @@ export function useWebSocket() {
         isPresenceActive = true
         sendPresenceUpdate('active')
       }
-      // Mark active chat as read when tab becomes visible again
+      // Mark active chat as read when tab becomes visible again (only if near bottom)
       const chatsStore = useChatsStore()
-      if (chatsStore.activeChatId) {
+      if (chatsStore.activeChatId && chatsStore.isNearBottom) {
         markRead(chatsStore.activeChatId).catch(() => {})
       }
     }
@@ -148,6 +147,11 @@ export function useWebSocket() {
     if (!isPresenceActive) {
       isPresenceActive = true
       sendPresenceUpdate('active')
+    }
+    // Mark read only if near bottom (user can see latest messages)
+    const chatsStore = useChatsStore()
+    if (chatsStore.activeChatId && chatsStore.isNearBottom) {
+      markRead(chatsStore.activeChatId).catch(() => {})
     }
   }
 
@@ -300,14 +304,17 @@ export function useWebSocket() {
         if (msg.chat_id !== chatsStore.activeChatId && msg.sender_id !== authStore.user?.id) {
           chatsStore.incrementUnread(msg.chat_id)
         }
-        // Mark read when new messages arrive in the active visible chat
-        if (msg.chat_id === chatsStore.activeChatId && msg.sender_id !== authStore.user?.id && !document.hidden) {
+        // Mark read only if user is actively using the app and can see the message
+        if (msg.chat_id === chatsStore.activeChatId && msg.sender_id !== authStore.user?.id
+            && isPresenceActive && windowHasFocus && chatsStore.isNearBottom) {
           debouncedMarkRead(msg.chat_id)
         }
         // Clear typing indicator for the sender (they sent a message)
         chatsStore.clearTyping(msg.chat_id, msg.sender_id)
-        // Browser notification for background tab
-        showMessageNotification(msg, chatsStore, authStore)
+        // Show notification when user is not actively using the app
+        if (!isPresenceActive || !windowHasFocus || document.hidden) {
+          showMessageNotification(msg, chatsStore, authStore)
+        }
         break
       }
       case 'typing': {

@@ -189,7 +189,7 @@ import { useChatsStore } from '@/stores/chats'
 import { useMessagesStore } from '@/stores/messages'
 import { useRecorder } from '@/composables/useRecorder'
 import { useToast } from '@/composables/useToast'
-import { getChat } from '@/api/chats'
+import { getChat, markRead } from '@/api/chats'
 import { uploadFile } from '@/api/files'
 import * as messagesApi from '@/api/messages'
 import type { Message, Sticker } from '@/api/types'
@@ -263,8 +263,13 @@ function onMsgListScroll() {
   scrollThrottleTimer = setTimeout(() => {
     scrollThrottleTimer = null
     isNearBottom.value = checkIsNearBottom()
+    chatsStore.isNearBottom = isNearBottom.value
     if (isNearBottom.value) {
       newMessageCount.value = 0
+      // Mark read when user scrolls to bottom (sees new messages)
+      if (chatsStore.activeChatId) {
+        markRead(chatsStore.activeChatId).catch(() => {})
+      }
     }
   }, 100)
 }
@@ -477,6 +482,7 @@ watch(
     myRole.value = 'member'
     newMessageCount.value = 0
     isNearBottom.value = true
+    chatsStore.isNearBottom = true
     teardownOlderObserver()
 
     if (!chatId) return

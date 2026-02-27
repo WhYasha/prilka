@@ -10,6 +10,9 @@ export const useChatsStore = defineStore('chats', () => {
   // Typing indicators: chatId → { userId → expiry timer }
   const typingUsers = ref<Record<number, Record<number, { username: string; timer: ReturnType<typeof setTimeout> }>>>({})
 
+  // Scroll position shared state: whether the message list is scrolled near the bottom
+  const isNearBottom = ref(true)
+
   // Online presence: set of user IDs currently online
   const onlineUsers = ref<Set<number>>(new Set())
 
@@ -253,6 +256,7 @@ export const useChatsStore = defineStore('chats', () => {
     activeChatId,
     activeChat,
     sortedChats,
+    isNearBottom,
     typingUsers,
     loadChats,
     setActiveChat,
